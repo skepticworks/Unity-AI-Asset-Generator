@@ -1,0 +1,82 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "unity-ai-assets"
+version = "0.1.0"
+description = "Local AI-assisted Unity 2D asset generation (text-to-image textures)"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = { text = "MIT" }
+authors = [{ name = "Unity AI Asset Generator" }]
+dependencies = [
+    "fastapi>=0.115.0,<0.142.0",
+    "uvicorn[standard]>=0.30.0,<0.36.0",
+    "pydantic>=2.7.0,<3.0.0",
+    "pydantic-settings>=2.3.0,<3.0.0",
+    "python-dotenv>=1.0.0,<2.0.0",
+    "torch>=2.2.0,<2.8.0",
+    "diffusers>=0.30.0,<0.40.0",
+    "transformers>=4.44.0,<4.54.0",
+    "accelerate>=0.33.0,<1.8.0",
+    "safetensors>=0.4.3,<0.6.0",
+    "Pillow>=10.3.0,<12.0.0",
+    "huggingface-hub>=0.24.0,<0.36.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0,<9.0.0",
+    "pytest-asyncio>=0.23.0,<1.0.0",
+    "httpx>=0.27.0,<0.29.0",
+    "ruff>=0.6.0,<0.13.0",
+    "mypy>=1.11.0,<1.16.0",
+    "types-Pillow>=10.0.0",
+]
+
+[project.scripts]
+unity-ai-assets = "unity_ai_assets.main:run"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/unity_ai_assets"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/unity_ai_assets", "README.md", "ARCHITECTURE.md", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "N"]
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+mypy_path = "src"
+packages = ["unity_ai_assets"]
+exclude = ["generated/", "scripts/"]
+
+[[tool.mypy.overrides]]
+module = [
+    "diffusers",
+    "diffusers.*",
+    "transformers",
+    "transformers.*",
+    "accelerate",
+    "accelerate.*",
+]
+ignore_missing_imports = true

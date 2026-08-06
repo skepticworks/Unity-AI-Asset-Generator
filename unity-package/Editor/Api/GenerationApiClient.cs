@@ -1,0 +1,413 @@
+using System;
+using System.Net;
+using System.Net.Http;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using UnityEngine;
+
+namespace UnityAiAssets.Editor.Api
+{
+    public interface IGenerationApiClient : IDisposable
+    {
+        /// <summary>The X-Request-ID header from the most recently completed response, if any.</summary>
+        string LastRequestId { get; }
+
+        Task<HealthResponseDto> GetHealthAsync(CancellationToken cancellationToken);
+
+        Task<CapabilityDocument> GetCapabilitiesAsync(CancellationToken cancellationToken);
+
+        Task<TextureGenerationResponseDto> GenerateTextureAsync(
+            TextureGenerationRequestDto request,
+            CancellationToken cancellationToken);
+
+        Task<byte[]> DownloadGenerationImageAsync(string generationId, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Downloads the versioned generation manifest, preferring an explicit resource path
+        /// (typically <c>resources.manifest</c> from the generation response) and falling back
+        /// to the conventional <c>/manifest</c> endpoint when none is supplied.
+        /// </summary>
+        Task<GenerationManifestDocument> DownloadGenerationManifestAsync(
+            string generationId,
+            string manifestResourcePath,
+            CancellationToken cancellationToken);
+
+        /// <summary>Deprecated: superseded by <see cref="DownloadGenerationManifestAsync"/>.</summary>
+        Task<BackendMetadataDto> DownloadGenerationMetadataAsync(
+            string generationId,
+            CancellationToken cancellationToken);
+    }
+
+    /// <summary>
+    /// Typed HTTP client for the local FastAPI backend.
+    /// Uses HttpClient so long-running generation POSTs do not stall like UnityWebRequest can.
+    /// </summary>
+    public sealed class GenerationApiClient : IGenerationApiClient
+    {
+        const string RequestIdHeader = "X-Request-ID";
+
+        readonly HttpClient _http;
+        readonly int _timeoutSeconds;
+
+        public GenerationApiClient(string baseUrl, int timeoutSeconds)
+        {
+            if (string.IsNullOrWhiteSpace(baseUrl))
+            {
+                throw new ArgumentException("Backend base URL is required.", nameof(baseUrl));
+            }
+
+            _timeoutSeconds = Math.Max(5, timeoutSeconds);
+            var root = baseUrl.Trim().TrimEnd('/') + "/";
+            _http = new HttpClient
+            {
+                BaseAddress = new Uri(root, UriKind.Absolute),
+                Timeout = Timeout.InfiniteTimeSpan
+            };
+        }
+
+        public string LastRequestId { get; private set; }
+
+        public void Dispose()
+        {
+            _http.Dispose();
+        }
+
+        public async Task<HealthResponseDto> GetHealthAsync(CancellationToken cancellationToken)
+        {
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Min(30, _timeoutSeconds)));
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, Trim(ApiEndpoints.Health));
+            using var response = await SendAsync(request, linked.Token, cancellationToken).ConfigureAwait(true);
+            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
+            EnsureSuccess(response, body);
+            return Deserialize<HealthResponseDto>(body);
+        }
+
+        public async Task<CapabilityDocument> GetCapabilitiesAsync(CancellationToken cancellationToken)
+        {
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Min(30, _timeoutSeconds)));
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, Trim(ApiEndpoints.Capabilities));
+            using var response = await SendAsync(request, linked.Token, cancellationToken).ConfigureAwait(true);
+            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
+            EnsureSuccess(response, body);
+            if (!CapabilityDocument.TryParse(body, out var document))
+            {
+                throw new ApiException(
+                    "Failed to parse the capabilities document returned by the backend.",
+                    ApiFailureKind.Deserialization,
+                    response.StatusCode,
+                    requestId: LastRequestId);
+            }
+
+            return document;
+        }
+
+        public async Task<TextureGenerationResponseDto> GenerateTextureAsync(
+            TextureGenerationRequestDto requestDto,
+            CancellationToken cancellationToken)
+        {
+            if (requestDto == null)
+            {
+                throw new ArgumentNullException(nameof(requestDto));
+            }
+
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_timeoutSeconds));
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, Trim(ApiEndpoints.GenerateTexture))
+            {
+                Content = new StringContent(requestDto.ToJson(), Encoding.UTF8, "application/json")
+            };
+            using var response = await SendAsync(request, linked.Token, cancellationToken).ConfigureAwait(true);
+            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
+            EnsureSuccess(response, body);
+            return Deserialize<TextureGenerationResponseDto>(body);
+        }
+
+        public async Task<byte[]> DownloadGenerationImageAsync(
+            string generationId,
+            CancellationToken cancellationToken)
+        {
+            ValidateGenerationId(generationId);
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_timeoutSeconds));
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+            using var request = new HttpRequestMessage(
+                HttpMethod.Get,
+                Trim(ApiEndpoints.GenerationImage(generationId)));
+            using var response = await SendAsync(request, linked.Token, cancellationToken).ConfigureAwait(true);
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
+                EnsureSuccess(response, errorBody);
+            }
+
+            var bytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(true);
+            if (bytes == null || bytes.Length == 0)
+            {
+                throw new ApiException(
+                    "Image download returned empty content.",
+                    ApiFailureKind.Deserialization,
+                    response.StatusCode,
+                    requestId: LastRequestId);
+            }
+
+            if (bytes.Length < 8 ||
+                bytes[0] != 0x89 || bytes[1] != 0x50 || bytes[2] != 0x4E || bytes[3] != 0x47)
+            {
+                throw new ApiException(
+                    "Image download did not contain a PNG payload.",
+                    ApiFailureKind.Deserialization,
+                    response.StatusCode,
+                    requestId: LastRequestId);
+            }
+
+            return bytes;
+        }
+
+        public async Task<GenerationManifestDocument> DownloadGenerationManifestAsync(
+            string generationId,
+            string manifestResourcePath,
+            CancellationToken cancellationToken)
+        {
+            ValidateGenerationId(generationId);
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_timeoutSeconds));
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+            var path = string.IsNullOrWhiteSpace(manifestResourcePath)
+                ? ApiEndpoints.GenerationManifest(generationId)
+                : manifestResourcePath;
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, TrimOrAbsolute(path));
+            using var response = await SendAsync(request, linked.Token, cancellationToken).ConfigureAwait(true);
+            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
+            EnsureSuccess(response, body);
+            if (!GenerationManifestDocument.TryParse(body, out var document))
+            {
+                throw new ApiException(
+                    "Failed to parse the generation manifest returned by the backend.",
+                    ApiFailureKind.Deserialization,
+                    response.StatusCode,
+                    requestId: LastRequestId);
+            }
+
+            return document;
+        }
+
+        public async Task<BackendMetadataDto> DownloadGenerationMetadataAsync(
+            string generationId,
+            CancellationToken cancellationToken)
+        {
+            ValidateGenerationId(generationId);
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_timeoutSeconds));
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+            using var request = new HttpRequestMessage(
+                HttpMethod.Get,
+                Trim(ApiEndpoints.GenerationMetadata(generationId)));
+            using var response = await SendAsync(request, linked.Token, cancellationToken).ConfigureAwait(true);
+            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
+            EnsureSuccess(response, body);
+            return Deserialize<BackendMetadataDto>(body);
+        }
+
+        async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken linkedToken,
+            CancellationToken userToken)
+        {
+            try
+            {
+                var response = await _http.SendAsync(
+                        request,
+                        HttpCompletionOption.ResponseContentRead,
+                        linkedToken)
+                    .ConfigureAwait(true);
+                CaptureRequestId(response);
+                return response;
+            }
+            catch (OperationCanceledException) when (userToken.IsCancellationRequested)
+            {
+                throw new ApiException(
+                    "Request cancelled locally. The backend may still be generating.",
+                    ApiFailureKind.Cancelled);
+            }
+            catch (OperationCanceledException)
+            {
+                throw new ApiException(
+                    $"Request timed out after {_timeoutSeconds}s. " +
+                    "Increase API Timeout in Project Settings, or lower width/height/steps. " +
+                    "Check the Python backend console for activity.",
+                    ApiFailureKind.Timeout);
+            }
+            catch (HttpRequestException ex)
+            {
+                throw new ApiException(
+                    "Could not connect to the backend. Is uvicorn running on the configured URL? " +
+                    ex.Message,
+                    ApiFailureKind.Connection,
+                    innerException: ex);
+            }
+        }
+
+        void CaptureRequestId(HttpResponseMessage response)
+        {
+            if (response.Headers.TryGetValues(RequestIdHeader, out var values))
+            {
+                foreach (var value in values)
+                {
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        LastRequestId = value;
+                        return;
+                    }
+                }
+            }
+        }
+
+        static string Trim(string endpoint) =>
+            string.IsNullOrEmpty(endpoint) ? string.Empty : endpoint.TrimStart('/');
+
+        static string TrimOrAbsolute(string endpoint)
+        {
+            if (string.IsNullOrEmpty(endpoint))
+            {
+                return string.Empty;
+            }
+
+            return Uri.IsWellFormedUriString(endpoint, UriKind.Absolute) ? endpoint : Trim(endpoint);
+        }
+
+        void EnsureSuccess(HttpResponseMessage response, string body)
+        {
+            if (response.IsSuccessStatusCode)
+            {
+                return;
+            }
+
+            var status = response.StatusCode;
+            var kind = Classify(status);
+
+            if (!string.IsNullOrWhiteSpace(body) && body.TrimStart().StartsWith("{", StringComparison.Ordinal))
+            {
+                if (ErrorEnvelope.TryParse(body, out var envelope))
+                {
+                    var requestId = !string.IsNullOrWhiteSpace(envelope.RequestId) ? envelope.RequestId : LastRequestId;
+                    var message = !string.IsNullOrWhiteSpace(envelope.Message)
+                        ? envelope.Message
+                        : $"HTTP {(int)status} from backend.";
+                    throw new ApiException(
+                        message,
+                        kind,
+                        status,
+                        envelope.Code,
+                        envelope.Message,
+                        requestId,
+                        envelope.FieldIssues);
+                }
+
+                // Legacy fallback for older backends using {"error","code","message"}.
+                try
+                {
+                    var legacy = JsonUtility.FromJson<ApiErrorDto>(body);
+                    if (legacy != null && (!string.IsNullOrWhiteSpace(legacy.code) || !string.IsNullOrWhiteSpace(legacy.message)))
+                    {
+                        var message = !string.IsNullOrWhiteSpace(legacy.message)
+                            ? legacy.message
+                            : $"HTTP {(int)status} from backend.";
+                        throw new ApiException(message, kind, status, legacy.code, legacy.message, LastRequestId);
+                    }
+                }
+                catch (ApiException)
+                {
+                    throw;
+                }
+                catch
+                {
+                    // Fall through to the generic transport-level message below.
+                }
+            }
+
+            throw new ApiException($"HTTP {(int)status} from backend.", kind, status, requestId: LastRequestId);
+        }
+
+        static ApiFailureKind Classify(HttpStatusCode status)
+        {
+            var code = (int)status;
+            if (code == 408)
+            {
+                return ApiFailureKind.Timeout;
+            }
+
+            if (code == 409)
+            {
+                return ApiFailureKind.IncompatibleSchema;
+            }
+
+            if (code == 422)
+            {
+                return ApiFailureKind.Validation;
+            }
+
+            if (code >= 500 || code == 404 || code == 503)
+            {
+                return ApiFailureKind.Server;
+            }
+
+            return ApiFailureKind.Unexpected;
+        }
+
+        static T Deserialize<T>(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                throw new ApiException(
+                    "Backend returned an empty JSON body.",
+                    ApiFailureKind.Deserialization);
+            }
+
+            try
+            {
+                var value = JsonUtility.FromJson<T>(json);
+                if (value == null)
+                {
+                    throw new ApiException(
+                        "Failed to deserialize backend JSON.",
+                        ApiFailureKind.Deserialization);
+                }
+
+                return value;
+            }
+            catch (ApiException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new ApiException(
+                    "Failed to deserialize backend JSON.",
+                    ApiFailureKind.Deserialization,
+                    innerException: ex);
+            }
+        }
+
+        static void ValidateGenerationId(string generationId)
+        {
+            if (string.IsNullOrWhiteSpace(generationId))
+            {
+                throw new ApiException("generation_id is required.", ApiFailureKind.Validation);
+            }
+
+            if (generationId.IndexOf("..", StringComparison.Ordinal) >= 0 ||
+                generationId.IndexOf('/') >= 0 ||
+                generationId.IndexOf('\\') >= 0)
+            {
+                throw new ApiException("generation_id is invalid.", ApiFailureKind.Validation);
+            }
+        }
+    }
+}

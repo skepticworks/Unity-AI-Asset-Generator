@@ -2,134 +2,216 @@
 
 ## Overview
 
-The application is a local FastAPI service that generates a single PNG texture from a text prompt, writes reproducibility metadata, and exposes health/generation HTTP endpoints. Inference is behind an explicit backend protocol so Diffusers can be replaced later without changing the API or domain layers.
+Local FastAPI texture generation (Diffusers behind an inference protocol) plus an **editor-only Unity package** that discovers backend capabilities, downloads artifacts by generation ID, verifies integrity, and imports them into `Assets/`.
 
-**ComfyUI is not used** in any form (no workflows, APIs, or nodes).
+**ComfyUI is not used** in any form.
 
-## Component responsibilities
+Application version: **0.3.0** (Milestone 3 — generation contract and capability reporting).
+
+## Backend component responsibilities
 
 | Layer | Responsibility |
 |-------|----------------|
-| `api/` | HTTP transport, Pydantic request/response schemas, status-code mapping |
-| `domain/` | Framework-agnostic dataclasses (`GenerationRequest`, `GeneratedImage`, …) |
-| `services/generation_service.py` | Validation, seed assignment, orchestration, generation lock |
-| `services/output_service.py` | Directory creation, atomic PNG/JSON writes, output-name sanitization |
-| `inference/backend.py` | `ImageGenerationBackend` protocol |
-| `inference/diffusers_backend.py` | Diffusers implementation of the protocol |
-| `inference/fake_backend.py` | Deterministic in-memory backend for tests |
-| `inference/model_manager.py` | Device/dtype resolution, lazy load, reuse, load locking |
-| `core/config.py` | Environment-backed settings |
-| `core/errors.py` | Typed application exceptions |
-| `core/logging.py` | Structured console logging |
+| `api/routes` | HTTP transport: health, capabilities, generation, image/manifest retrieval |
+| `api/schemas` | Versioned public Pydantic models (capabilities, generation, errors) |
+| `domain/generation_policy.py` | **Authoritative** generation limits and validation |
+| `domain/capabilities.py` | Capability domain models |
+| `domain/generation_manifest.py` | Manifest domain model + legacy metadata compatibility |
+| `domain/generation.py` | Generation request/result dataclasses |
+| `services/capability_service.py` | Assemble capability document from policy + inference |
+| `services/generation_service.py` | Policy validation, seed, lock, orchestration |
+| `services/output_service.py` | Atomic PNG + manifest persistence, SHA-256, resolve-by-UUID |
+| `inference/*` | Backend protocol (`describe_capabilities` + `generate`), Diffusers, fake, model manager |
+| `core/version.py` | Central API / schema / application version constants |
+| `core/error_codes.py` | Stable application + field issue codes |
+| `core/exception_handlers.py` | Translate AppError / Pydantic errors into the public envelope |
+| `core/middleware.py` | `X-Request-ID` validation, generation, propagation |
+| `core/config.py` | Settings including policy env vars; startup validation |
 
-## Request flow
+## Unity package components
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant API as FastAPI routes
-    participant Gen as GenerationService
-    participant Backend as ImageGenerationBackend
-    participant Out as OutputService
-
-    Client->>API: POST /api/v1/generations/textures
-    API->>Gen: generate_texture(...)
-    Gen->>Gen: validate params + resolve seed
-    Gen->>Gen: acquire generation lock
-    Gen->>Backend: generate(request)
-    Backend-->>Gen: GeneratedImage
-    Gen->>Out: persist(request, image)
-    Out-->>Gen: GenerationResult
-    Gen-->>API: GenerationResult
-    API-->>Client: JSON (paths, seed, timing)
-```
+| Area | Responsibility |
+|------|----------------|
+| `Editor/Api/` | Typed client, DTOs, SimpleJson, error envelope, endpoints |
+| `Editor/Versioning/` | `SchemaVersion`, `ClientCompatibility` |
+| `Editor/Capabilities/` | Cache, compatibility checker, preflight validator, state |
+| `Editor/Integrity/` | PNG byte-size + SHA-256 verification |
+| `Editor/Configuration/` | Project Settings |
+| `Editor/Generation/` | Request model, state, controller orchestration |
+| `Editor/Importing/` | Path utilities, import profiles, texture importer, materials |
+| `Editor/Metadata/` | Manifest-aware ScriptableObject + importer |
+| `Editor/UI/` | `Tools > AI Asset Generator` window |
+| `Editor/Tests/` | Edit Mode tests (capabilities, errors, manifests, integrity) |
 
 ## Dependency direction
 
 ```mermaid
 flowchart TB
-    API[api routes/schemas]
-    Services[services]
-    Domain[domain]
-    Inference[inference protocol]
-    Diffusers[DiffusersBackend / ModelManager]
-    Fake[FakeImageGenerationBackend]
-    Core[core config/errors/logging]
+  UI[Editor UI]
+  Ctrl[Generation Controller]
+  Caps[Capability Cache / Validator]
+  ApiClient[Typed API Client]
+  Import[Importer / Integrity / Materials]
+  Meta[Metadata]
+  Settings[Project Settings]
+  FastAPI[FastAPI routes]
+  CapSvc[Capability Service]
+  GenSvc[Generation Service]
+  Policy[Generation Policy]
+  Out[Output / Manifest Service]
+  Inference[ImageGenerationBackend]
 
-    API --> Services
-    API --> Core
-    Services --> Domain
-    Services --> Inference
-    Services --> Core
-    Diffusers --> Inference
-    Diffusers --> Domain
-    Diffusers --> Core
-    Fake --> Domain
-    Fake --> Core
+  UI --> Ctrl
+  UI --> Settings
+  Ctrl --> Caps
+  Ctrl --> ApiClient
+  Ctrl --> Import
+  Ctrl --> Meta
+  Caps --> ApiClient
+  ApiClient --> FastAPI
+  FastAPI --> CapSvc
+  FastAPI --> GenSvc
+  CapSvc --> Policy
+  CapSvc --> Inference
+  GenSvc --> Policy
+  GenSvc --> Inference
+  GenSvc --> Out
 ```
 
-- API depends on services, not on Diffusers types.
-- `GenerationService` depends on `ImageGenerationBackend`, not `StableDiffusionPipeline`.
-- Domain models do not import FastAPI or Diffusers (Pillow `Image` is used as the portable bitmap type).
+Unity never imports Diffusers types. Public schemas never expose Python class paths or absolute backend filesystem paths as the primary contract.
 
-## Reasoning behind the inference abstraction
+## Unity capability discovery
 
-Diffusers APIs, pipelines, and memory helpers evolve quickly. Game tooling may later swap to another local engine. By depending on:
+```mermaid
+sequenceDiagram
+    participant Win as EditorWindow
+    participant Ctrl as Controller
+    participant Cache as CapabilityCache
+    participant Client as ApiClient
+    participant API as GET /capabilities
 
-```python
-class ImageGenerationBackend(Protocol):
-    def generate(self, request: GenerationRequest) -> GeneratedImage: ...
+    Win->>Ctrl: RefreshCapabilities
+    Ctrl->>Cache: SetLoading(baseUrl)
+    Ctrl->>Client: GetCapabilitiesAsync
+    Client->>API: GET /api/v1/capabilities
+    Note over API: No model weight load
+    API-->>Client: CapabilityDocument
+    Client-->>Ctrl: typed document
+    Ctrl->>Cache: SetReady / Incompatible
+    Ctrl-->>Win: Progress (version, model, device, precision)
 ```
 
-the orchestration and HTTP layers stay stable. Tests inject `FakeImageGenerationBackend` via `create_app(..., backend=...)` instead of mocking internal Diffusers calls.
+## Generation preflight and authoritative validation
 
-## Model lifecycle
+```mermaid
+sequenceDiagram
+    participant UI as Editor UI
+    participant Val as CapabilityValidator
+    participant API as POST /textures
+    participant Pol as GenerationPolicy
+    participant Inf as InferenceBackend
 
-1. `ModelManager` resolves `DEVICE` (`auto` → cuda → mps → cpu).
-2. Dtype: CUDA/`auto` → float16; CPU/`auto` → float32; explicit values validated.
-3. First `generate` call loads `StableDiffusionPipeline.from_pretrained` under a lock.
-4. Pipeline is reused for subsequent requests (no per-request reload).
-5. Optional `enable_model_cpu_offload` for low VRAM.
-6. Inference runs under `torch.inference_mode()`.
-7. Remote code execution from model repos is **not** enabled.
-
-`GET /health` reports `model_loaded` and the backend’s device name without forcing a load.
-
-## Output directory format
-
-```text
-generated/
-  <generation-uuid>/
-    <sanitized_output_name>.png
-    <sanitized_output_name>.json
+    UI->>Val: Validate(request, capabilities)
+    alt preflight fails
+        Val-->>UI: issues (no coercion)
+    else preflight passes
+        UI->>API: submit request
+        API->>Pol: authoritative validate
+        alt policy rejects
+            Pol-->>API: GENERATION_REQUEST_INVALID
+            API-->>UI: stable error envelope
+        else ok
+            API->>Inf: generate
+            Inf-->>API: image
+            API-->>UI: resources + seed
+        end
+    end
 ```
 
-- Generation directories are created with `exist_ok=False` (never overwrite).
-- Output names are sanitized (no path separators / traversal).
-- PNG and JSON are written via temp files + `os.replace` where practical.
-- Metadata includes generation id, UTC timestamp, model id/revision, prompts, seed, size, steps, guidance, device, dtype, app version, elapsed time, and filename.
+## Error translation and request ID propagation
 
-## Concurrency
+```mermaid
+flowchart LR
+  Req[Incoming request] --> MW[RequestIdMiddleware]
+  MW -->|valid X-Request-ID| Keep[Preserve]
+  MW -->|invalid/missing| Mint[Generate UUID]
+  Keep --> Handler
+  Mint --> Handler[Route / Service]
+  Handler -->|AppError / ValidationError| EH[Exception handlers]
+  EH --> Env[Error envelope + request_id]
+  EH --> Log[Structured logs with request_id]
+  Handler --> Resp[Response + X-Request-ID header]
+```
 
-- An in-process `threading.Lock` serializes generation in `GenerationService`.
-- The API handler uses `asyncio.to_thread` so the event loop is not blocked for the entire diffusion call, but the underlying work remains synchronous and single-flight.
-- Documented limitation: run **one Uvicorn worker** (`--workers 1`).
+## Generation manifest creation and retrieval
 
-## Testing strategy
+```mermaid
+sequenceDiagram
+    participant Gen as GenerationService
+    participant Out as OutputService
+    participant FS as Generation directory
+    participant API as GET /manifest
 
-| Kind | Location | Backend | Network / GPU |
-|------|----------|---------|---------------|
-| Unit | `tests/unit/` | Fake | No |
-| Integration | `tests/integration/` | Fake via app factory | No |
-| Smoke | `scripts/smoke_test.py` | Real Diffusers | Yes (explicit only) |
+    Gen->>Out: persist(request, image)
+    Out->>FS: write PNG atomically
+    Out->>Out: sha256 + byte_size
+    Out->>FS: write manifest.json atomically
+    Note over Out: Relative paths only
+    API->>Out: load_manifest(id)
+    alt versioned manifest
+        Out-->>API: GenerationManifest
+    else legacy flat JSON
+        Out->>Out: compatibility parse
+        Out-->>API: GenerationManifest
+    else unknown schema major
+        Out-->>API: MANIFEST_SCHEMA_UNSUPPORTED
+    end
+```
 
-Coverage includes health, valid generation, invalid/excessive dimensions, missing prompt, random vs explicit seeds, output-name sanitization, metadata creation, backend failure translation, and backend substitution.
+## Unity image download and integrity verification
 
-## Known limitations
+```mermaid
+sequenceDiagram
+    participant Ctrl as Controller
+    participant Client as ApiClient
+    participant Ver as ImageIntegrityVerifier
+    participant Imp as TextureImporter
 
-- Single-image texture workflow only
-- Single-worker / single-flight GPU use
-- No Unity importer yet
-- Default SD 1.5 quality/VRAM tradeoffs; model is configurable
-- Safety checker disabled for local prototyping control — review outputs yourself
-- Reproducibility holds for the same environment, model revision, parameters, and seed; cross-GPU determinism is not guaranteed by PyTorch
+    Ctrl->>Client: GET resources.image
+    Client-->>Ctrl: PNG bytes
+    Ctrl->>Client: GET resources.manifest
+    Client-->>Ctrl: GenerationManifest
+    Ctrl->>Ver: Verify(bytes, sha256, byte_size)
+    alt mismatch
+        Ver-->>Ctrl: Integrity error (no Assets write)
+    else match
+        Ctrl->>Imp: ImportPng
+        Imp-->>Ctrl: Assets path + metadata asset
+    end
+```
+
+## Schema-version responsibilities
+
+| Schema | Owner | Writer | Reader compatibility |
+|--------|-------|--------|----------------------|
+| Capabilities `1.x` | Backend `CapabilityService` | Capability endpoint | Unity major-match; ignore unknown optional fields |
+| Generation manifest `1.x` | Backend `OutputService` | New generations only | Unity major-match; legacy flat metadata converted on read |
+| API `1.x` | Backend routes under `/api/v1` | All versioned endpoints | Unity supports API major `1` |
+
+## Trust boundaries
+
+- Backend binds to loopback by default
+- Generation IDs are UUIDs only; no arbitrary path reads
+- Capability endpoint is read-only and does not mutate model state
+- Errors never include stack traces, tokens, cache paths, or absolute output paths as the primary contract
+- Request IDs are sanitized against header injection
+
+## Extending capabilities for future operations
+
+1. Implement the operation in an inference backend
+2. Report it via `describe_capabilities()` (accurate `supported` flags only)
+3. Extend `OperationsCapabilities` / public schema with a new typed block
+4. Keep unsupported operations as `{ "supported": false }`
+5. Add policy constraints if the operation introduces new parameters
+6. Bump capability schema **minor** for additive fields; **major** for breaking changes
+7. Update fixtures, Unity models, validators, and docs together

@@ -24,6 +24,8 @@ def settings(output_dir: Path) -> Settings:
     clear_settings_cache()
     return Settings(
         model_id="fake/test-model",
+        model_family="sd15",
+        model_display_name="Fake Test Model",
         device="cpu",
         torch_dtype="float32",
         output_directory=output_dir,
@@ -32,13 +34,13 @@ def settings(output_dir: Path) -> Settings:
         enable_cpu_offload=False,
         local_files_only=True,
         log_level="WARNING",
-        app_version="0.1.0-test",
+        app_version="0.3.0-test",
     )
 
 
 @pytest.fixture
 def fake_backend() -> FakeImageGenerationBackend:
-    return FakeImageGenerationBackend(device_name="cpu")
+    return FakeImageGenerationBackend(device_name="cpu", model_loaded=False)
 
 
 @pytest.fixture

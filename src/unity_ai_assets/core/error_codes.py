@@ -1,0 +1,81 @@
+"""Stable public API and field-level error codes.
+
+Codes use uppercase snake case and must remain stable even when human-readable
+messages change. Clients must key behavior off these codes, not messages.
+"""
+
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class AppErrorCode(StrEnum):
+    """Top-level application error codes returned in the public error envelope."""
+
+    REQUEST_BODY_INVALID = "REQUEST_BODY_INVALID"
+    GENERATION_REQUEST_INVALID = "GENERATION_REQUEST_INVALID"
+    OPERATION_UNSUPPORTED = "OPERATION_UNSUPPORTED"
+    ASSET_TYPE_UNSUPPORTED = "ASSET_TYPE_UNSUPPORTED"
+    SCHEDULER_UNSUPPORTED = "SCHEDULER_UNSUPPORTED"
+    MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"
+    MODEL_LOADING_FAILED = "MODEL_LOADING_FAILED"
+    INFERENCE_FAILED = "INFERENCE_FAILED"
+    OUTPUT_PERSISTENCE_FAILED = "OUTPUT_PERSISTENCE_FAILED"
+    GENERATION_NOT_FOUND = "GENERATION_NOT_FOUND"
+    MANIFEST_NOT_FOUND = "MANIFEST_NOT_FOUND"
+    CAPABILITY_SCHEMA_UNSUPPORTED = "CAPABILITY_SCHEMA_UNSUPPORTED"
+    MANIFEST_SCHEMA_UNSUPPORTED = "MANIFEST_SCHEMA_UNSUPPORTED"
+    INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
+
+
+class FieldIssueCode(StrEnum):
+    """Field-level validation issue codes nested under error details."""
+
+    FIELD_REQUIRED = "FIELD_REQUIRED"
+    VALUE_TOO_SHORT = "VALUE_TOO_SHORT"
+    VALUE_TOO_LONG = "VALUE_TOO_LONG"
+    VALUE_BELOW_MINIMUM = "VALUE_BELOW_MINIMUM"
+    VALUE_ABOVE_MAXIMUM = "VALUE_ABOVE_MAXIMUM"
+    VALUE_NOT_MULTIPLE = "VALUE_NOT_MULTIPLE"
+    VALUE_INVALID = "VALUE_INVALID"
+    FORMAT_INVALID = "FORMAT_INVALID"
+
+
+# Default human-readable messages for top-level codes (safe to change).
+DEFAULT_MESSAGES: dict[AppErrorCode, str] = {
+    AppErrorCode.REQUEST_BODY_INVALID: "The request body is invalid.",
+    AppErrorCode.GENERATION_REQUEST_INVALID: "The generation request is invalid.",
+    AppErrorCode.OPERATION_UNSUPPORTED: "The requested operation is not supported.",
+    AppErrorCode.ASSET_TYPE_UNSUPPORTED: "The requested asset type is not supported.",
+    AppErrorCode.SCHEDULER_UNSUPPORTED: "The requested scheduler is not supported.",
+    AppErrorCode.MODEL_UNAVAILABLE: "The configured model is unavailable.",
+    AppErrorCode.MODEL_LOADING_FAILED: "The inference model failed to load.",
+    AppErrorCode.INFERENCE_FAILED: "Image generation failed.",
+    AppErrorCode.OUTPUT_PERSISTENCE_FAILED: "Failed to persist generation outputs.",
+    AppErrorCode.GENERATION_NOT_FOUND: "The requested generation was not found.",
+    AppErrorCode.MANIFEST_NOT_FOUND: "The generation manifest was not found.",
+    AppErrorCode.CAPABILITY_SCHEMA_UNSUPPORTED: "The capability schema version is unsupported.",
+    AppErrorCode.MANIFEST_SCHEMA_UNSUPPORTED: (
+        "The generation manifest schema version is unsupported."
+    ),
+    AppErrorCode.INTERNAL_SERVER_ERROR: "An unexpected server error occurred.",
+}
+
+
+# HTTP status mapping for application error codes.
+HTTP_STATUS_BY_CODE: dict[AppErrorCode, int] = {
+    AppErrorCode.REQUEST_BODY_INVALID: 422,
+    AppErrorCode.GENERATION_REQUEST_INVALID: 422,
+    AppErrorCode.OPERATION_UNSUPPORTED: 422,
+    AppErrorCode.ASSET_TYPE_UNSUPPORTED: 422,
+    AppErrorCode.SCHEDULER_UNSUPPORTED: 422,
+    AppErrorCode.MODEL_UNAVAILABLE: 503,
+    AppErrorCode.MODEL_LOADING_FAILED: 503,
+    AppErrorCode.INFERENCE_FAILED: 500,
+    AppErrorCode.OUTPUT_PERSISTENCE_FAILED: 500,
+    AppErrorCode.GENERATION_NOT_FOUND: 404,
+    AppErrorCode.MANIFEST_NOT_FOUND: 404,
+    AppErrorCode.CAPABILITY_SCHEMA_UNSUPPORTED: 409,
+    AppErrorCode.MANIFEST_SCHEMA_UNSUPPORTED: 409,
+    AppErrorCode.INTERNAL_SERVER_ERROR: 500,
+}

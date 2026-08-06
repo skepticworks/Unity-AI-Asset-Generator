@@ -1,36 +1,34 @@
 # Unity AI Asset Generator
 
-Local, AI-assisted generation of Unity-ready **2D game assets** using pretrained generative models (Hugging Face Diffusers). No ComfyUI.
+Local, AI-assisted generation of Unity-ready **2D game assets** using pretrained generative models (Hugging Face Diffusers) plus an **editor-only Unity package**. No ComfyUI.
 
-## Current milestone scope
+## Current milestone scope (Milestone 3)
 
-This repository currently implements a **text-to-image texture generation** vertical slice:
+1. Versioned capability reporting (`GET /api/v1/capabilities`)
+2. Authoritative generation policy (single source of truth for limits)
+3. Stable machine-readable API error envelope + request IDs
+4. Versioned generation manifests with SHA-256 / byte-size integrity
+5. Unity capability cache, compatibility checks, and preflight validation
+6. Unity download integrity verification before import
+7. Existing texture generation + Unity import workflows preserved
 
-1. Send a prompt to a local FastAPI endpoint
-2. Validate parameters
-3. Generate one image with a Diffusers-compatible model
-4. Save a PNG plus JSON reproducibility metadata
-5. Return generation ID, paths, seed, dimensions, and elapsed time
-
-Automated tests use a **fake inference backend** and do **not** download models.
+Automated Python tests use a **fake inference backend** and do **not** download models.
 
 ## Explicit non-goals (this milestone)
 
 - ComfyUI, ComfyUI APIs, workflows, or custom nodes
-- Unity Editor package / import pipeline
-- Sprites, icons, UI chrome, img2img, or variation workflows
+- Sprites, icons, UI chrome, img2img, ControlNet, IP-Adapter, inpainting, batching
 - Database, Redis, Celery, Docker, auth, cloud storage
-- JavaScript frontend
-- Multi-GPU scheduling or distributed queues
+- Model installation UI, distributed job system
+- Per-request precision or scheduler selection
 
 ## System requirements
 
-- **Python 3.11** (3.12 may work; project targets `>=3.11,<3.13`)
+- **Python 3.11** (project targets `>=3.11,<3.13`)
+- **Unity 2022.3 LTS** or newer (package `unity: 2022.3`)
 - Windows, Linux, or macOS
-- Optional **NVIDIA GPU** with a CUDA-capable PyTorch build (recommended). CPU works but is slow.
-- Disk space for model weights (Stable Diffusion 1.5 is on the order of several GB)
-
-This machine profile used during development: RTX 3050 Laptop (4 GB VRAM). Prefer 512×512 and consider `ENABLE_CPU_OFFLOAD=true` if you hit OOM.
+- Optional **NVIDIA GPU** with a CUDA-capable PyTorch build (recommended)
+- Disk space for model weights (Stable Diffusion 1.5 is several GB)
 
 ## Environment setup
 
@@ -39,19 +37,10 @@ cd C:\Users\tyler\UnityAssetGenerator
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-```
-
-Copy environment defaults:
-
-```powershell
 Copy-Item .env.example .env
 ```
 
-Edit `.env` as needed. **Do not commit `.env`.**
-
 ## Dependency installation
-
-Install the project (API + ML stack) and dev tools:
 
 ```powershell
 pip install -e ".[dev]"
@@ -59,56 +48,20 @@ pip install -e ".[dev]"
 
 ### PyTorch / CUDA note
 
-`pip` may install a CPU-only torch wheel depending on your platform index. For NVIDIA CUDA acceleration on Windows, install a matching wheel from [pytorch.org](https://pytorch.org/get-started/locally/) **after** or **instead of** the default torch from this project, for example:
+For NVIDIA CUDA on Windows:
 
 ```powershell
 pip install torch --index-url https://download.pytorch.org/whl/cu124
-```
-
-Verify:
-
-```powershell
 python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 ```
 
 ## Hugging Face authentication
 
-`runwayml/stable-diffusion-v1-5` is commonly downloadable without a token, but Hugging Face may rate-limit anonymous downloads. If required:
+Default model: [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) (CreativeML Open RAIL-M). Set `HF_TOKEN` if needed. **Outputs are not automatically safe for commercial use.**
 
-1. Create a token at https://huggingface.co/settings/tokens
-2. Set `HF_TOKEN` in your environment or `.env` (supported by `huggingface_hub`)
-3. Accept any model license terms on the model card page if prompted
+## Model and policy configuration
 
-Never commit tokens.
-
-## Model configuration
-
-Configuration is read from environment variables (see `.env.example`):
-
-| Variable | Purpose |
-|----------|---------|
-| `MODEL_ID` | Hugging Face Diffusers model id |
-| `MODEL_REVISION` | Optional git revision / commit |
-| `MODEL_VARIANT` | Optional weight variant (e.g. `fp16`) |
-| `DEVICE` | `auto`, `cuda`, `mps`, or `cpu` |
-| `TORCH_DTYPE` | `auto`, `float16`, `bfloat16`, or `float32` |
-| `OUTPUT_DIRECTORY` | Where PNG/JSON are written |
-| `MAX_WIDTH` / `MAX_HEIGHT` | Hard caps (must be divisible by 8) |
-| `ENABLE_CPU_OFFLOAD` | Lower VRAM usage on CUDA |
-| `LOCAL_FILES_ONLY` | Refuse network downloads |
-
-### Default model choice
-
-**Default:** [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)
-
-- Suitable for local text-to-image prototyping
-- Compatible with Diffusers `StableDiffusionPipeline`
-- Aligns with API defaults (guidance scale ~7, multi-step sampling)
-- License: **CreativeML Open RAIL-M** — review the [license](https://huggingface.co/spaces/CompVis/stable-diffusion-license) before any commercial use
-
-**This project does not claim that model outputs are automatically safe for commercial use.** You are responsible for license compliance, content review, and game-platform requirements.
-
-Change `MODEL_ID` without modifying source code.
+See [`.env.example`](.env.example) for `MODEL_ID`, `MODEL_FAMILY`, `DEVICE`, `TORCH_DTYPE`, dimension/step/guidance/seed/prompt limits, and concurrency. Generation limits are validated at startup and drive both capability reporting and authoritative request validation.
 
 ## Starting the API
 
@@ -116,96 +69,194 @@ Change `MODEL_ID` without modifying source code.
 uvicorn unity_ai_assets.main:app --host 127.0.0.1 --port 8000 --workers 1
 ```
 
-Or:
+Bind defaults to **loopback**. Use a **single worker**.
 
-```powershell
-python -m unity_ai_assets.main
-```
+## Versioning policy
 
-**Use a single worker.** Generation is serialized with an in-process lock; multiple workers would each load their own model copy and bypass that lock.
+| Concern | Source | Notes |
+|---------|--------|-------|
+| Application semver | `pyproject.toml` / `core.version` | Currently `0.3.0` |
+| API major/minor | `core.version` (`API_MAJOR_VERSION`, `API_MINOR_VERSION`) | Independent of app semver |
+| Capabilities schema | `capabilities_schema_version: "1.0"` | Independent of app semver |
+| Generation manifest schema | `generation_manifest_schema_version: "1.0"` | Independent of app semver |
 
-## Example API request
+Do not infer schema compatibility from the application version. Unity accepts higher **minor** schema/API versions when the **major** matches the supported set (API major `1`, capability schema major `1`, manifest schema major `1`).
 
-Health:
+## Capability discovery
 
 ```http
-GET http://127.0.0.1:8000/health
+GET /api/v1/capabilities
 ```
 
-Generate a texture:
+Returns a typed document describing:
+
+- API / application / schema versions
+- Configured vs resolved device and precision
+- Model identity (`id`, `revision`, `family`, `display_name`) without loading weights
+- Supported operations (`text_to_image` only today)
+- Dimension, step, guidance, seed, prompt, negative-prompt, output-name limits
+- Scheduler behavior (`selection_supported: false`, default public id `pndm`)
+- Precision availability and `user_selectable: false`
+- Concurrency limits
+
+Canonical example: [`fixtures/contracts/capabilities.json`](fixtures/contracts/capabilities.json).
+
+Capability requests **must not** load model weights.
+
+## Generation
 
 ```powershell
 curl -X POST http://127.0.0.1:8000/api/v1/generations/textures `
   -H "Content-Type: application/json" `
-  -d '{
-    "prompt": "low-resolution rusted industrial wall texture, PS1 game aesthetic",
-    "negative_prompt": "text, logo, watermark, photorealistic scene",
-    "width": 512,
-    "height": 512,
-    "steps": 25,
-    "guidance_scale": 7.0,
-    "seed": 12345,
-    "output_name": "rusted_wall"
-  }'
+  -H "X-Request-ID: optional-client-id" `
+  -d "{\"prompt\":\"rusted wall texture, PS1\",\"width\":512,\"height\":512,\"seed\":12345,\"output_name\":\"rusted_wall\"}"
 ```
 
-Example response fields: `generation_id`, `status`, `image_path`, `metadata_path`, `seed`, `width`, `height`, `elapsed_seconds`.
+Successful responses expose **resource links** (prefer these over deprecated filesystem path fields):
 
-Outputs land under `generated/<generation-id>/` as `<output_name>.png` and `<output_name>.json`.
+```json
+{
+  "generation_id": "...",
+  "status": "completed",
+  "operation": "text_to_image",
+  "asset_type": "texture",
+  "resources": {
+    "image": "/api/v1/generations/{id}/image",
+    "manifest": "/api/v1/generations/{id}/manifest"
+  },
+  "schema_versions": { "generation_manifest": "1.0" }
+}
+```
 
-## Running tests
+Deprecated fields `image_path`, `metadata_path`, `image_url`, and `metadata_url` may still appear for local debugging / older clients. New Unity code uses `resources` only. Planned removal after Milestone 4.
 
-Tests use the fake backend — **no GPU, no downloads, no Hugging Face network calls**:
+Invalid requests are **rejected** (not silently clamped/rounded/truncated) with a stable error envelope.
+
+## Artifact retrieval
+
+```http
+GET /api/v1/generations/{generation_id}/image
+GET /api/v1/generations/{generation_id}/manifest
+GET /api/v1/generations/{generation_id}/metadata   # deprecated alias → manifest
+```
+
+IDs must be UUIDs. Path traversal and arbitrary filesystem reads are rejected.
+
+### Generation manifest
+
+New generations write `manifest.json` (schema `generation-manifest` / `1.0`) including prompt parameters, resolved runtime, relative output paths, SHA-256, and byte size. Absolute filesystem paths are never stored in the manifest.
+
+Legacy flat metadata from Milestone 1–2 remains **readable** via the manifest endpoint (converted in memory). Files are not rewritten in place. Unknown versioned schemas return `MANIFEST_SCHEMA_UNSUPPORTED`.
+
+Legacy fields that cannot be reconstructed (documented defaults applied):
+
+- `model.family` → `unknown`
+- `runtime.scheduler` → `unknown`
+- output `sha256` / `byte_size` → empty / `0` when absent
+
+## Stable errors and request IDs
+
+Public `/api/v1` errors use:
+
+```json
+{
+  "error": {
+    "code": "GENERATION_REQUEST_INVALID",
+    "message": "…",
+    "request_id": "…",
+    "details": { "fields": { "width": [{ "code": "VALUE_NOT_MULTIPLE", "…": "…" }] } }
+  }
+}
+```
+
+Send optional `X-Request-ID` (letters, digits, `._-`, max 64). Invalid incoming IDs are replaced. Every response includes `X-Request-ID`.
+
+Application codes include: `REQUEST_BODY_INVALID`, `GENERATION_REQUEST_INVALID`, `OPERATION_UNSUPPORTED`, `ASSET_TYPE_UNSUPPORTED`, `SCHEDULER_UNSUPPORTED`, `MODEL_UNAVAILABLE`, `MODEL_LOADING_FAILED`, `INFERENCE_FAILED`, `OUTPUT_PERSISTENCE_FAILED`, `GENERATION_NOT_FOUND`, `MANIFEST_NOT_FOUND`, `CAPABILITY_SCHEMA_UNSUPPORTED`, `MANIFEST_SCHEMA_UNSUPPORTED`, `INTERNAL_SERVER_ERROR`.
+
+## Health
+
+`GET /health` remains lightweight (`status`, `application_version`, `model_loaded`, `resolved_device`, `request_id`). Use `/api/v1/capabilities` for feature discovery.
+
+## Unity package
+
+Package path: [`unity-package/`](unity-package/) (version `0.3.0`)
+
+### Install from disk
+
+1. Unity **2022.3 LTS+** project
+2. Package Manager → **+** → **Add package from disk…** → select `unity-package/package.json`
+
+### Configure
+
+**Edit → Project Settings → AI Asset Generator**
+
+Default backend URL: `http://127.0.0.1:8000`
+
+### Generate from the editor
+
+1. Start the Python API
+2. **Tools → AI Asset Generator**
+3. **Refresh Capabilities** (required before generate)
+4. Enter prompt / options → **Generate And Import**
+
+Unity:
+
+- Caches capabilities per backend URL for the editor session
+- Validates API / capability-schema majors
+- Prefights requests against backend limits (does not silently coerce)
+- Downloads the versioned manifest and verifies PNG byte size + SHA-256 before import
+- Still treats the backend as authoritative
+
+Details: [`unity-package/README.md`](unity-package/README.md) and [`unity-package/Documentation~/getting-started.md`](unity-package/Documentation~/getting-started.md).
+
+### Cancellation note
+
+**Cancel Wait** only stops Unity waiting/importing. Backend GPU work may continue.
+
+## Running Python tests
 
 ```powershell
 pytest
-```
-
-Lint and type-check:
-
-```powershell
 ruff check src tests scripts
 ruff format --check src tests scripts
 mypy src
+python scripts/validate_contract_fixtures.py
 ```
 
-## Running the real-model smoke test
+## Contract fixtures
 
-Only when you intentionally want to load weights:
+Canonical JSON under [`fixtures/contracts/`](fixtures/contracts/) is validated against backend Pydantic schemas and Unity field expectations:
+
+- `capabilities.json`
+- `generation_response.json`
+- `api_error.json`
+- `generation_manifest.json`
+
+## Real-model smoke test
 
 ```powershell
 python scripts/smoke_test.py
 ```
 
-Optional flags: `--prompt`, `--width`, `--height`, `--steps`, `--seed`, `--output-name`.
+## Unity Edit Mode tests
 
-## GPU and VRAM considerations
+After installing the package: **Window → General → Test Runner → EditMode** → run `UnityAiAssets.Editor.Tests`.
 
-- On CUDA, `TORCH_DTYPE=auto` selects **float16**
-- On CPU, auto uses **float32** (float16 on CPU is rejected)
-- 4 GB VRAM: start at 512×512; lower steps; try `ENABLE_CPU_OFFLOAD=true`
-- First request loads the model (slow); later requests reuse the pipeline
-- Dimensions must be divisible by 8; invalid sizes are **rejected**, not silently resized
+## GPU and VRAM
 
-## Troubleshooting
+- CUDA `TORCH_DTYPE=auto` → float16
+- 4 GB VRAM: start at 512×512; try `ENABLE_CPU_OFFLOAD=true`
+- First request loads the model (slow)
+- **Unity Editor also uses GPU VRAM.** On 4 GB cards, Unity + SD 1.5 can stall with Diffusers stuck at `0%`. Before generating: use a lightweight scene, close extra Game/Scene views, or set `ENABLE_CPU_OFFLOAD=true` / temporarily `DEVICE=cpu` in `.env`
 
-| Symptom | What to try |
-|---------|-------------|
-| `model_load_failed` | Check `MODEL_ID`, disk space, `HF_TOKEN`, network, or set `LOCAL_FILES_ONLY=false` |
-| CUDA OOM | Reduce width/height/steps; enable CPU offload; close other GPU apps |
-| `DEVICE=cuda` but no GPU | Install CUDA torch build or set `DEVICE=cpu` |
-| Slow first request | Expected — weights load lazily on first generation |
-| Path / permission errors | Ensure `OUTPUT_DIRECTORY` is writable |
-| Validation 422 | Confirm dimensions ÷ 8 and within `MAX_*` |
+## Known limitations
 
-## Next planned milestones
-
-1. Unity import helpers / package for generated textures
-2. Sprite and icon presets (transparent backgrounds, atlas hints)
-3. Reference-image / img2img variations
-4. Tileable texture constraints and seamless post-process
-5. Batch generation UI (still local; still no ComfyUI)
+- Single concurrent generation (in-process lock; one Uvicorn worker)
+- Scheduler / precision not selectable per request
+- Only `text_to_image` + `texture` are supported
+- Deprecated generation response path fields remain temporarily
+- `/metadata` is a deprecated alias for `/manifest`
 
 ## Architecture
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for component boundaries, dependency direction, and the inference abstraction.
+See [`ARCHITECTURE.md`](ARCHITECTURE.md).

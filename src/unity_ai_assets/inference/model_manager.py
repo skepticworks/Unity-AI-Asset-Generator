@@ -55,13 +55,23 @@ class ModelManager:
 
     @property
     def torch_dtype_name(self) -> str:
-        dtype = self.torch_dtype
-        mapping = {
-            torch.float16: "float16",
-            torch.bfloat16: "bfloat16",
-            torch.float32: "float32",
-        }
-        return mapping.get(dtype, str(dtype).replace("torch.", ""))
+        return self._dtype_to_name(self.torch_dtype)
+
+    def resolve_device_safe(self) -> str:
+        """Resolve device for capability reporting without raising on misconfiguration.
+
+        When an explicitly requested device is unavailable, fall back to the best
+        available device rather than failing capability discovery.
+        """
+        try:
+            return self.resolve_device()
+        except ModelLoadError:
+            if torch.cuda.is_available():
+                return "cuda"
+            mps = getattr(torch.backends, "mps", None)
+            if mps is not None and mps.is_available():
+                return "mps"
+            return "cpu"
 
     def resolve_device(self) -> str:
         """Resolve configured device preference to an available torch device."""
@@ -89,19 +99,39 @@ class ModelManager:
                 )
         return preference
 
+    def resolve_dtype_name_safe(self, device: str) -> str:
+        """Resolve a public precision name without loading weights."""
+        dtype = self._resolve_dtype_for_device(device, strict=False)
+        return self._dtype_to_name(dtype)
+
+    def available_precision_names(self, device: str) -> list[str]:
+        """Return precision modes the current implementation can use on this device."""
+        available = ["float32"]
+        if device in {"cuda", "mps"}:
+            available.insert(0, "float16")
+        if device == "cuda" and torch.cuda.is_available():
+            try:
+                if torch.cuda.is_bf16_supported():
+                    available.append("bfloat16")
+            except Exception:  # noqa: BLE001
+                pass
+        return available
+
     def resolve_dtype(self, device: str) -> torch.dtype:
         """Select a safe torch dtype for the resolved device."""
+        return self._resolve_dtype_for_device(device, strict=True)
+
+    def _resolve_dtype_for_device(self, device: str, *, strict: bool) -> torch.dtype:
         choice = self._settings.torch_dtype
         if choice == "float16":
             if device == "cpu":
-                raise ModelLoadError(
-                    "TORCH_DTYPE=float16 is not supported on CPU. Use float32 or auto."
-                )
+                if strict:
+                    raise ModelLoadError(
+                        "TORCH_DTYPE=float16 is not supported on CPU. Use float32 or auto."
+                    )
+                return torch.float32
             return torch.float16
         if choice == "bfloat16":
-            if device == "cpu" and not torch.cuda.is_bf16_supported():
-                # CPU bf16 support varies; prefer explicit user choice when set.
-                return torch.bfloat16
             return torch.bfloat16
         if choice == "float32":
             return torch.float32
@@ -109,10 +139,18 @@ class ModelManager:
         # auto
         if device == "cuda":
             return torch.float16
-        # MPS float16 is commonly usable; fall back to float32 if issues arise at runtime.
         if device == "mps":
             return torch.float16
         return torch.float32
+
+    @staticmethod
+    def _dtype_to_name(dtype: torch.dtype) -> str:
+        mapping = {
+            torch.float16: "float16",
+            torch.bfloat16: "bfloat16",
+            torch.float32: "float32",
+        }
+        return mapping.get(dtype, str(dtype).replace("torch.", ""))
 
     def get_pipeline(self) -> Any:
         """Return a loaded pipeline, loading it once under a lock."""

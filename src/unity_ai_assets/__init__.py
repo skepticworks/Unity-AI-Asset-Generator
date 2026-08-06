@@ -1,3 +1,5 @@
 """Unity AI Asset Generator — local text-to-image texture generation."""
 
-__version__ = "0.1.0"
+from unity_ai_assets.core.version import APPLICATION_VERSION
+
+__version__ = APPLICATION_VERSION

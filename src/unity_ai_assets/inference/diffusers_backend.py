@@ -8,10 +8,16 @@ import torch
 
 from unity_ai_assets.core.errors import InferenceError, ModelLoadError
 from unity_ai_assets.core.logging import get_logger
+from unity_ai_assets.domain.capabilities import InferenceCapabilities
+from unity_ai_assets.domain.enums import AssetType
 from unity_ai_assets.domain.generation import GeneratedImage, GenerationRequest
 from unity_ai_assets.inference.model_manager import ModelManager
 
 logger = get_logger(__name__)
+
+# Stable public scheduler identifier for the default Stable Diffusion pipeline.
+# Selection is not exposed publicly in this milestone.
+DEFAULT_PUBLIC_SCHEDULER: str = "pndm"
 
 
 class DiffusersBackend:
@@ -29,7 +35,27 @@ class DiffusersBackend:
         try:
             return self._model_manager.device
         except ModelLoadError:
-            return self._model_manager.configured_device
+            return self._model_manager.resolve_device_safe()
+
+    def describe_capabilities(self) -> InferenceCapabilities:
+        """Report implemented operations without loading model weights."""
+        device = self._model_manager.resolve_device_safe()
+        precision = self._model_manager.resolve_dtype_name_safe(device)
+        available = self._model_manager.available_precision_names(device)
+        return InferenceCapabilities(
+            text_to_image_supported=True,
+            image_to_image_supported=False,
+            inpainting_supported=False,
+            supported_asset_types=[AssetType.TEXTURE.value],
+            scheduler_selection_supported=False,
+            default_scheduler=DEFAULT_PUBLIC_SCHEDULER,
+            available_schedulers=[],
+            available_precisions=available,
+            precision_user_selectable=False,
+            model_loaded=self._model_manager.is_loaded,
+            resolved_device=device,
+            resolved_precision=precision,
+        )
 
     def generate(self, request: GenerationRequest) -> GeneratedImage:
         try:
@@ -49,7 +75,20 @@ class DiffusersBackend:
             generator = torch.Generator(device="cpu").manual_seed(request.seed)
 
         started = time.perf_counter()
+        logger.info(
+            "Inference starting generation_id=%s size=%sx%s steps=%s guidance=%s device=%s",
+            request.generation_id,
+            request.width,
+            request.height,
+            request.steps,
+            request.guidance_scale,
+            generator_device,
+        )
         try:
+            # Avoid a tqdm bar that sits at 0% while CUDA is blocked (e.g. Unity using VRAM).
+            if hasattr(pipeline, "set_progress_bar_config"):
+                pipeline.set_progress_bar_config(disable=True)
+
             with torch.inference_mode():
                 result = pipeline(
                     prompt=request.prompt,
@@ -71,6 +110,11 @@ class DiffusersBackend:
             ) from exc
 
         elapsed = time.perf_counter() - started
+        logger.info(
+            "Inference finished generation_id=%s elapsed=%.2fs",
+            request.generation_id,
+            elapsed,
+        )
         return GeneratedImage(
             image=image,
             seed=request.seed,

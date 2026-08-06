@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+from unity_ai_assets.domain.capabilities import InferenceCapabilities
 from unity_ai_assets.domain.generation import GeneratedImage, GenerationRequest
 
 
@@ -17,6 +18,10 @@ class ImageGenerationBackend(Protocol):
 
     def generate(self, request: GenerationRequest) -> GeneratedImage:
         """Generate a single image for the given request."""
+        ...
+
+    def describe_capabilities(self) -> InferenceCapabilities:
+        """Report implemented operations and runtime facts without loading weights."""
         ...
 
     @property

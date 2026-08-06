@@ -1,0 +1,21 @@
+{
+  "generation_id": "4f278114-d3fc-4f7c-962b-9eea06dd6e53",
+  "status": "completed",
+  "operation": "text_to_image",
+  "asset_type": "texture",
+  "seed": 12345,
+  "width": 64,
+  "height": 64,
+  "elapsed_seconds": 0.02,
+  "resources": {
+    "image": "/api/v1/generations/4f278114-d3fc-4f7c-962b-9eea06dd6e53/image",
+    "manifest": "/api/v1/generations/4f278114-d3fc-4f7c-962b-9eea06dd6e53/manifest"
+  },
+  "schema_versions": {
+    "generation_manifest": "1.0"
+  },
+  "image_path": "generated/4f278114-d3fc-4f7c-962b-9eea06dd6e53/rusted_wall.png",
+  "metadata_path": "generated/4f278114-d3fc-4f7c-962b-9eea06dd6e53/manifest.json",
+  "image_url": "/api/v1/generations/4f278114-d3fc-4f7c-962b-9eea06dd6e53/image",
+  "metadata_url": "/api/v1/generations/4f278114-d3fc-4f7c-962b-9eea06dd6e53/manifest"
+}

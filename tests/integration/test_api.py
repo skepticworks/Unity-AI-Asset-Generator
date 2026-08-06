@@ -8,6 +8,12 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from unity_ai_assets.core.config import Settings
+from unity_ai_assets.core.version import (
+    API_MAJOR_VERSION,
+    APPLICATION_NAME,
+    CAPABILITIES_SCHEMA_VERSION,
+    GENERATION_MANIFEST_SCHEMA_VERSION,
+)
 from unity_ai_assets.inference.fake_backend import FakeImageGenerationBackend
 from unity_ai_assets.main import create_app
 
@@ -17,8 +23,10 @@ def test_health_endpoint(client: TestClient) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ok"
-    assert payload["model_loaded"] is True
-    assert payload["device"] == "cpu"
+    assert payload["model_loaded"] is False
+    assert payload["resolved_device"] == "cpu"
+    assert payload["application_version"] == "0.3.0-test"
+    assert "X-Request-ID" in response.headers
 
 
 def test_valid_generation_request(client: TestClient, output_dir: Path) -> None:
@@ -38,18 +46,35 @@ def test_valid_generation_request(client: TestClient, output_dir: Path) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "completed"
+    assert payload["operation"] == "text_to_image"
+    assert payload["asset_type"] == "texture"
     assert payload["seed"] == 12345
     assert payload["width"] == 64
     assert payload["height"] == 64
     assert payload["generation_id"]
     assert payload["elapsed_seconds"] >= 0
+    assert payload["resources"]["image"] == (
+        f"/api/v1/generations/{payload['generation_id']}/image"
+    )
+    assert payload["resources"]["manifest"] == (
+        f"/api/v1/generations/{payload['generation_id']}/manifest"
+    )
+    assert payload["schema_versions"]["generation_manifest"] == GENERATION_MANIFEST_SCHEMA_VERSION
+    # Deprecated fields may still be present for local debugging.
+    assert "image_path" in payload
     image_path = Path(payload["image_path"])
     metadata_path = Path(payload["metadata_path"])
     assert image_path.is_file()
     assert metadata_path.is_file()
     meta = json.loads(metadata_path.read_text(encoding="utf-8"))
-    assert meta["seed"] == 12345
-    assert meta["prompt"].startswith("low-resolution")
+    assert meta["schema"]["version"] == GENERATION_MANIFEST_SCHEMA_VERSION
+    assert meta["request"]["seed"] == 12345
+    assert meta["request"]["prompt"].startswith("low-resolution")
+    assert meta["outputs"][0]["sha256"]
+    assert meta["outputs"][0]["byte_size"] > 0
+    # No absolute Windows drive paths in public resources.
+    assert not payload["resources"]["image"].startswith("C:")
+    assert "\\" not in payload["resources"]["manifest"]
 
 
 def test_invalid_dimensions(client: TestClient) -> None:
@@ -59,8 +84,11 @@ def test_invalid_dimensions(client: TestClient) -> None:
     )
     assert response.status_code == 422
     body = response.json()
-    assert body["code"] == "invalid_parameters"
-    assert "divisible by 8" in body["message"]
+    error = body["error"]
+    assert error["code"] == "GENERATION_REQUEST_INVALID"
+    assert "request_id" in error
+    assert "width" in error["details"]["fields"]
+    assert error["details"]["fields"]["width"][0]["code"] == "VALUE_NOT_MULTIPLE"
 
 
 def test_excessive_dimensions(client: TestClient) -> None:
@@ -69,7 +97,9 @@ def test_excessive_dimensions(client: TestClient) -> None:
         json={"prompt": "wall", "width": 2048, "height": 512},
     )
     assert response.status_code == 422
-    assert "MAX_WIDTH" in response.json()["message"]
+    error = response.json()["error"]
+    assert error["code"] == "GENERATION_REQUEST_INVALID"
+    assert error["details"]["fields"]["width"][0]["code"] == "VALUE_ABOVE_MAXIMUM"
 
 
 def test_missing_prompt(client: TestClient) -> None:
@@ -79,7 +109,7 @@ def test_missing_prompt(client: TestClient) -> None:
     )
     assert response.status_code == 422
     body = response.json()
-    assert body["code"] == "invalid_parameters"
+    assert body["error"]["code"] == "REQUEST_BODY_INVALID"
 
 
 def test_random_seed_assignment(client: TestClient) -> None:
@@ -112,7 +142,7 @@ def test_output_name_sanitization_rejection(client: TestClient) -> None:
         },
     )
     assert response.status_code == 422
-    assert response.json()["code"] == "invalid_parameters"
+    assert response.json()["error"]["code"] == "GENERATION_REQUEST_INVALID"
 
 
 def test_backend_failure_translated_to_api(tmp_path: Path) -> None:
@@ -133,9 +163,9 @@ def test_backend_failure_translated_to_api(tmp_path: Path) -> None:
         )
     assert response.status_code == 500
     body = response.json()
-    assert body["code"] == "inference_failed"
+    assert body["error"]["code"] == "INFERENCE_FAILED"
     assert "stack" not in body
-    assert "Traceback" not in body["message"]
+    assert "Traceback" not in body["error"]["message"]
 
 
 def test_inference_backend_substitution(tmp_path: Path) -> None:
@@ -161,6 +191,48 @@ def test_inference_backend_substitution(tmp_path: Path) -> None:
             },
         )
     assert response.status_code == 200
-    meta = json.loads(Path(response.json()["metadata_path"]).read_text(encoding="utf-8"))
-    assert meta["model_id"] == "injected/fake"
+    generation_id = response.json()["generation_id"]
+    with TestClient(app) as client:
+        manifest = client.get(f"/api/v1/generations/{generation_id}/manifest").json()
+    assert manifest["model"]["id"] == "injected/fake"
     assert len(backend.calls) == 1
+
+
+def test_capabilities_endpoint(
+    client: TestClient, fake_backend: FakeImageGenerationBackend
+) -> None:
+    before = fake_backend.capability_calls
+    response = client.get("/api/v1/capabilities")
+    assert response.status_code == 200
+    assert "application/json" in response.headers["content-type"]
+    payload = response.json()
+    assert payload["api"]["major"] == API_MAJOR_VERSION
+    assert payload["schemas"]["capabilities"] == CAPABILITIES_SCHEMA_VERSION
+    assert payload["schemas"]["generation_manifest"] == GENERATION_MANIFEST_SCHEMA_VERSION
+    assert payload["application"]["name"] == APPLICATION_NAME
+    assert payload["application"]["version"] == "0.3.0-test"
+    assert payload["model"]["id"] == "fake/test-model"
+    assert payload["model"]["family"] == "sd15"
+    assert payload["runtime"]["model_loaded"] is False
+    assert payload["runtime"]["configured_device"] == "cpu"
+    assert payload["runtime"]["resolved_device"] == "cpu"
+    assert payload["operations"]["text_to_image"]["supported"] is True
+    assert payload["operations"]["image_to_image"]["supported"] is False
+    assert payload["operations"]["inpainting"]["supported"] is False
+    assert payload["operations"]["text_to_image"]["dimensions"]["maximum_width"] == 1024
+    assert payload["operations"]["text_to_image"]["schedulers"]["selection_supported"] is False
+    assert payload["precision"]["user_selectable"] is False
+    assert fake_backend.calls == []
+    assert fake_backend.capability_calls == before + 1
+    assert fake_backend.model_loaded is False
+
+
+def test_request_id_propagation(client: TestClient) -> None:
+    response = client.get("/health", headers={"X-Request-ID": "client-req-001"})
+    assert response.headers["X-Request-ID"] == "client-req-001"
+
+
+def test_invalid_request_id_replaced(client: TestClient) -> None:
+    response = client.get("/health", headers={"X-Request-ID": "bad id with spaces"})
+    assert response.headers["X-Request-ID"] != "bad id with spaces"
+    assert response.headers["X-Request-ID"]

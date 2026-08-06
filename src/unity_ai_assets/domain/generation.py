@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any
 
 from PIL import Image
 
@@ -45,52 +43,16 @@ class GenerationResult:
 
     generation_id: str
     status: str
+    operation: str
+    asset_type: str
     image_path: str
     metadata_path: str
+    image_url: str
+    manifest_url: str
     seed: int
     width: int
     height: int
     elapsed_seconds: float
-
-
-@dataclass(frozen=True, slots=True)
-class GenerationMetadata:
-    """Reproducibility metadata written beside the PNG."""
-
-    generation_id: str
-    created_at_utc: datetime
-    model_id: str
-    model_revision: str | None
-    prompt: str
-    negative_prompt: str
-    seed: int
-    width: int
-    height: int
-    steps: int
-    guidance_scale: float
-    device: str
-    torch_dtype: str
-    app_version: str
-    elapsed_seconds: float
-    output_filename: str
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize metadata for JSON persistence."""
-        return {
-            "generation_id": self.generation_id,
-            "created_at_utc": self.created_at_utc.isoformat().replace("+00:00", "Z"),
-            "model_id": self.model_id,
-            "model_revision": self.model_revision,
-            "prompt": self.prompt,
-            "negative_prompt": self.negative_prompt,
-            "seed": self.seed,
-            "width": self.width,
-            "height": self.height,
-            "steps": self.steps,
-            "guidance_scale": self.guidance_scale,
-            "device": self.device,
-            "torch_dtype": self.torch_dtype,
-            "app_version": self.app_version,
-            "elapsed_seconds": self.elapsed_seconds,
-            "output_filename": self.output_filename,
-        }
+    manifest_schema_version: str
+    image_sha256: str
+    image_byte_size: int

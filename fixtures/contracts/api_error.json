@@ -1,0 +1,19 @@
+{
+  "error": {
+    "code": "GENERATION_REQUEST_INVALID",
+    "message": "generation dimensions are invalid",
+    "request_id": "fixture-req-1",
+    "details": {
+      "fields": {
+        "width": [
+          {
+            "code": "VALUE_NOT_MULTIPLE",
+            "message": "Width must be divisible by 8.",
+            "actual": 510,
+            "expected_multiple": 8
+          }
+        ]
+      }
+    }
+  }
+}

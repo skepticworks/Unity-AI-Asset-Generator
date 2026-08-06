@@ -8,9 +8,10 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from unity_ai_assets.core.errors import InvalidGenerationParametersError, OutputPersistenceError
+from unity_ai_assets.core.errors import GenerationRequestInvalidError, OutputPersistenceError
+from unity_ai_assets.core.version import GENERATION_MANIFEST_SCHEMA_VERSION
 from unity_ai_assets.domain.generation import GeneratedImage, GenerationRequest
-from unity_ai_assets.services.output_service import OutputService, sanitize_output_name
+from unity_ai_assets.services.output_service import OutputService, sanitize_output_name, sha256_file
 
 
 @pytest.mark.parametrize(
@@ -25,21 +26,21 @@ from unity_ai_assets.services.output_service import OutputService, sanitize_outp
         "bad name",
         "has.dot",
         "-leading",
-        "a" * 65,
+        "a" * 101,
     ],
 )
 def test_sanitize_output_name_rejects_unsafe_values(raw: str) -> None:
-    with pytest.raises(InvalidGenerationParametersError):
-        sanitize_output_name(raw)
+    with pytest.raises(GenerationRequestInvalidError):
+        sanitize_output_name(raw, max_length=100)
 
 
-@pytest.mark.parametrize("raw", ["rusted_wall", "Wall01", "a", "item-icon_2"])
+@pytest.mark.parametrize("raw", ["rusted_wall", "Wall01", "a", "item-icon_2", "a" * 100])
 def test_sanitize_output_name_accepts_safe_values(raw: str) -> None:
-    assert sanitize_output_name(raw) == raw
+    assert sanitize_output_name(raw, max_length=100) == raw
 
 
-def test_metadata_creation(tmp_path: Path) -> None:
-    service = OutputService(tmp_path / "generated", app_version="0.1.0")
+def test_manifest_creation_with_hash(tmp_path: Path) -> None:
+    service = OutputService(tmp_path / "generated", app_version="0.3.0", model_family="sd15")
     (tmp_path / "generated").mkdir()
     request = GenerationRequest(
         prompt="rusty wall",
@@ -67,23 +68,19 @@ def test_metadata_creation(tmp_path: Path) -> None:
     result = service.persist(request, generated)
     meta_path = Path(result.metadata_path)
     assert meta_path.is_file()
+    assert meta_path.name == "manifest.json"
     payload = json.loads(meta_path.read_text(encoding="utf-8"))
-    assert payload["generation_id"] == request.generation_id
-    assert payload["prompt"] == "rusty wall"
-    assert payload["negative_prompt"] == "photo"
-    assert payload["seed"] == 42
-    assert payload["width"] == 64
-    assert payload["height"] == 64
-    assert payload["steps"] == 10
-    assert payload["guidance_scale"] == 7.0
-    assert payload["model_id"] == "fake/model"
-    assert payload["model_revision"] == "abc"
-    assert payload["device"] == "cpu"
-    assert payload["torch_dtype"] == "float32"
-    assert payload["app_version"] == "0.1.0"
-    assert payload["elapsed_seconds"] == 1.25
-    assert payload["output_filename"] == "rusted_wall.png"
-    assert "created_at_utc" in payload
+    assert payload["schema"]["version"] == GENERATION_MANIFEST_SCHEMA_VERSION
+    assert payload["generation"]["id"] == request.generation_id
+    assert payload["request"]["prompt"] == "rusty wall"
+    assert payload["request"]["seed"] == 42
+    assert payload["model"]["id"] == "fake/model"
+    assert payload["model"]["family"] == "sd15"
+    assert payload["outputs"][0]["relative_path"] == "rusted_wall.png"
+    assert payload["outputs"][0]["sha256"] == result.image_sha256
+    assert payload["outputs"][0]["byte_size"] == result.image_byte_size
+    assert result.image_sha256 == sha256_file(Path(result.image_path))
+    assert Path(result.image_path).stat().st_size == result.image_byte_size
     assert Path(result.image_path).is_file()
 
 
@@ -92,7 +89,7 @@ def test_never_overwrites_existing_generation_directory(tmp_path: Path) -> None:
     root.mkdir()
     generation_id = "22222222-2222-2222-2222-222222222222"
     (root / generation_id).mkdir()
-    service = OutputService(root, app_version="0.1.0")
+    service = OutputService(root, app_version="0.3.0")
     request = GenerationRequest(
         prompt="x",
         negative_prompt="",

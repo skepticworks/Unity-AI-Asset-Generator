@@ -1,18 +1,15 @@
 using System;
 using UnityAiAssets.Editor.Api;
-using UnityAiAssets.Editor.Prompting;
 
 namespace UnityAiAssets.Editor.Profiles
 {
     public sealed class GenerationProfileResolver
     {
-        readonly PromptTemplateRegistry _templates;
-        readonly NegativePromptRegistry _negatives;
+        readonly ProfileCatalog _catalog;
 
-        public GenerationProfileResolver(PromptTemplateRegistry templates, NegativePromptRegistry negatives)
+        public GenerationProfileResolver(ProfileCatalog catalog)
         {
-            _templates = templates ?? throw new ArgumentNullException(nameof(templates));
-            _negatives = negatives ?? throw new ArgumentNullException(nameof(negatives));
+            _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         }
 
         public ResolvedGenerationSettings Resolve(
@@ -20,8 +17,8 @@ namespace UnityAiAssets.Editor.Profiles
         {
             if (profile == null) throw new ArgumentNullException(nameof(profile));
             overrides = overrides ?? new UserProfileOverrides();
-            var template = _templates.Get(profile.Prompt.TemplateId);
-            var negative = _negatives.Get(profile.NegativePrompt.ProfileId);
+            var template = _catalog.GetPromptTemplate(profile.Prompt.TemplateId);
+            var negative = _catalog.GetNegativeProfile(profile.NegativePrompt.ProfileId);
             var maximumNegative = capabilities?.Operations?.TextToImage?.NegativePrompt?.MaximumLength ?? 0;
             var seed = overrides.Seed ??
                 (profile.Defaults.SeedStrategy == "fixed" ? profile.Defaults.FixedSeed : null);

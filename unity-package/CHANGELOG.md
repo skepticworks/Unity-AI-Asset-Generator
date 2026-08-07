@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1 — Milestone 4.5 architecture consolidation
+
+- Consolidated built-in asset types, prompt templates, negative prompts, and Unity import
+  profiles behind `ProfileCatalog`
+- Renamed orchestration and import boundaries to `GenerationController` and
+  `GeneratedAssetImporter`
+- Centralized resolved request DTO construction, profile file loading, profile contracts,
+  capability limit checks, and API HTTP helpers without changing public wire contracts
+- Retained legacy metadata retrieval only as a compatibility fallback
+
 ## 0.4.0 — Milestone 4
 
 - Profile-driven generation with built-in asset type, prompt template, negative prompt,

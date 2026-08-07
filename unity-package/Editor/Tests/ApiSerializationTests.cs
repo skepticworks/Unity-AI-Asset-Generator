@@ -59,6 +59,23 @@ namespace UnityAiAssets.Editor.Tests
         }
 
         [Test]
+        public void TextureGenerationRequest_SerializesOptionalProfileProvenance()
+        {
+            var json = new TextureGenerationRequestDto
+            {
+                prompt = "wall", output_name = "wall",
+                generation_profile_id = "profile", generation_profile_revision = 2,
+                profile_origin = "user", prompt_template_id = "template",
+                prompt_template_revision = 1, negative_prompt_profile_id = "negative",
+                negative_prompt_profile_revision = 3, unity_import_profile_id = "import",
+                asset_type = "texture"
+            }.ToJson();
+            StringAssert.Contains("\"generation_profile_id\":\"profile\"", json);
+            StringAssert.Contains("\"generation_profile_revision\":2", json);
+            StringAssert.Contains("\"asset_type\":\"texture\"", json);
+        }
+
+        [Test]
         public void HealthResponse_DeserializesApplicationVersionAndResolvedDevice()
         {
             const string json =

@@ -42,6 +42,7 @@ from unity_ai_assets.domain.generation_manifest import (
     ManifestGenerationInfo,
     ManifestModelInfo,
     ManifestOutputInfo,
+    ManifestProfileInfo,
     ManifestRequestInfo,
     ManifestRuntimeInfo,
     ManifestSchemaInfo,
@@ -328,7 +329,7 @@ class OutputService:
                 generation=ManifestGenerationInfo(
                     id=request.generation_id,
                     operation=OperationType.TEXT_TO_IMAGE.value,
-                    asset_type=AssetType.TEXTURE.value,
+                    asset_type=request.asset_type or AssetType.TEXTURE.value,
                     status=GenerationStatus.COMPLETED.value,
                     created_at_utc=created_at,
                     completed_at_utc=completed_at,
@@ -358,6 +359,16 @@ class OutputService:
                     guidance_scale=request.guidance_scale,
                     seed=generated.seed,
                     output_name=safe_name,
+                ),
+                profile=ManifestProfileInfo(
+                    generation_profile_id=request.generation_profile_id,
+                    generation_profile_revision=request.generation_profile_revision,
+                    profile_origin=request.profile_origin or "none",
+                    prompt_template_id=request.prompt_template_id,
+                    prompt_template_revision=request.prompt_template_revision,
+                    negative_prompt_profile_id=request.negative_prompt_profile_id,
+                    negative_prompt_profile_revision=request.negative_prompt_profile_revision,
+                    unity_import_profile_id=request.unity_import_profile_id,
                 ),
                 outputs=[
                     ManifestOutputInfo(
@@ -392,7 +403,7 @@ class OutputService:
             generation_id=request.generation_id,
             status=GenerationStatus.COMPLETED.value,
             operation=OperationType.TEXT_TO_IMAGE.value,
-            asset_type=AssetType.TEXTURE.value,
+            asset_type=request.asset_type or AssetType.TEXTURE.value,
             image_path=display_image,
             metadata_path=display_manifest,
             image_url=image_url,

@@ -63,13 +63,14 @@ namespace UnityAiAssets.Editor.Capabilities
                 return issues;
             }
 
-            if (textToImage.AssetTypes == null || !textToImage.AssetTypes.Contains("texture"))
+            var assetType = string.IsNullOrWhiteSpace(request.AssetType) ? "texture" : request.AssetType;
+            if (textToImage.AssetTypes == null || !textToImage.AssetTypes.Contains(assetType))
             {
                 issues.Add(new CapabilityValidationIssue
                 {
                     FieldName = "asset_type",
                     Code = AppErrorCode.AssetTypeUnsupported,
-                    Message = "The backend does not currently support the 'texture' asset type.",
+                    Message = $"The backend does not currently support the '{assetType}' asset type.",
                 });
             }
 

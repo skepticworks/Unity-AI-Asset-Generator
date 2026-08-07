@@ -1,0 +1,41 @@
+{
+  "schema": {
+    "name": "generation-profile",
+    "version": "1.0"
+  },
+  "profile": {
+    "id": "ps1_item_icon",
+    "revision": 1,
+    "display_name": "PS1 Item Icon",
+    "description": "Centered item or weapon icon. Generation requires backend icon support.",
+    "asset_type": "icon",
+    "builtin": true,
+    "tags": ["ps1", "item", "icon"]
+  },
+  "prompt": {
+    "template_id": "ps1_item_icon",
+    "template_revision": 1,
+    "default_modifiers": [
+      "centered composition",
+      "inventory readability"
+    ]
+  },
+  "negative_prompt": {
+    "profile_id": "icon_negative",
+    "profile_revision": 1,
+    "additional_terms": []
+  },
+  "generation_defaults": {
+    "width": 512,
+    "height": 512,
+    "steps": 25,
+    "guidance_scale": 7.0,
+    "seed_strategy": "random",
+    "fixed_seed": null
+  },
+  "unity": {
+    "import_profile_id": "ps1_icon",
+    "suggested_output_directory": "Assets/Generated/Icons",
+    "create_material": false
+  }
+}

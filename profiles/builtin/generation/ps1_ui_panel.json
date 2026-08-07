@@ -1,0 +1,41 @@
+{
+  "schema": {
+    "name": "generation-profile",
+    "version": "1.0"
+  },
+  "profile": {
+    "id": "ps1_ui_panel",
+    "revision": 1,
+    "display_name": "PS1 UI Panel",
+    "description": "Interface panel or frame with PS1-era visual language. Generation requires backend UI support.",
+    "asset_type": "ui",
+    "builtin": true,
+    "tags": ["ps1", "ui", "panel"]
+  },
+  "prompt": {
+    "template_id": "ps1_ui_panel",
+    "template_revision": 1,
+    "default_modifiers": [
+      "clear edges",
+      "usable visual hierarchy"
+    ]
+  },
+  "negative_prompt": {
+    "profile_id": "ui_negative",
+    "profile_revision": 1,
+    "additional_terms": []
+  },
+  "generation_defaults": {
+    "width": 768,
+    "height": 512,
+    "steps": 25,
+    "guidance_scale": 7.0,
+    "seed_strategy": "random",
+    "fixed_seed": null
+  },
+  "unity": {
+    "import_profile_id": "ps1_ui",
+    "suggested_output_directory": "Assets/Generated/UI",
+    "create_material": false
+  }
+}

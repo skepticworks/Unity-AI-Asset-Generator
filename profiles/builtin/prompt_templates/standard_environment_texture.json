@@ -1,0 +1,16 @@
+{
+  "schema": {
+    "name": "prompt-template",
+    "version": "1.0"
+  },
+  "template": {
+    "id": "standard_environment_texture",
+    "revision": 1,
+    "display_name": "Standard Environment Texture",
+    "description": "Clean game-ready environment surface texture prompt.",
+    "asset_type": "texture",
+    "pattern": "game environment texture, {subject}, clean surface representation, suitable for materials, {style_modifiers}",
+    "placeholders": ["subject", "style_modifiers", "asset_type"],
+    "required_placeholders": ["subject"]
+  }
+}

@@ -1,7 +1,7 @@
 {
   "schema": {
     "name": "generation-manifest",
-    "version": "1.0"
+    "version": "1.1"
   },
   "generation": {
     "id": "4f278114-d3fc-4f7c-962b-9eea06dd6e53",
@@ -14,7 +14,7 @@
   },
   "application": {
     "name": "unity-ai-asset-generator",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "api_major": 1
   },
   "model": {
@@ -36,6 +36,16 @@
     "guidance_scale": 7.0,
     "seed": 12345,
     "output_name": "rusted_wall"
+  },
+  "profile": {
+    "generation_profile_id": "ps1_environment_texture",
+    "generation_profile_revision": 1,
+    "profile_origin": "builtin",
+    "prompt_template_id": "ps1_environment_texture",
+    "prompt_template_revision": 1,
+    "negative_prompt_profile_id": "base_ps1_negative",
+    "negative_prompt_profile_revision": 1,
+    "unity_import_profile_id": "ps1_environment_texture"
   },
   "outputs": [
     {

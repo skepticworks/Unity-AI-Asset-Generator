@@ -42,6 +42,15 @@ async def generate_texture(
         guidance_scale=payload.guidance_scale,
         seed=payload.seed,
         output_name=payload.output_name,
+        generation_profile_id=payload.generation_profile_id,
+        generation_profile_revision=payload.generation_profile_revision,
+        profile_origin=payload.profile_origin,
+        prompt_template_id=payload.prompt_template_id,
+        prompt_template_revision=payload.prompt_template_revision,
+        negative_prompt_profile_id=payload.negative_prompt_profile_id,
+        negative_prompt_profile_revision=payload.negative_prompt_profile_revision,
+        unity_import_profile_id=payload.unity_import_profile_id,
+        asset_type=payload.asset_type,
     )
     resources = _resources(result.generation_id)
     return TextureGenerationResponse(

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0 — Milestone 4
+
+- Profile-driven generation with built-in asset type, prompt template, negative prompt,
+  generation, and Unity import profile catalogs
+- User profiles stored outside `Assets/` under
+  `ProjectSettings/AIAssetGenerator/Profiles`, with atomic save, revision tracking,
+  duplicate/import/export, migration, and conflict quarantine
+- Subject-based deterministic prompt construction and ordered exact negative-term deduplication
+- Backend capability checks per asset type; sprite, icon, and UI profiles remain disabled unless
+  the backend advertises those asset types
+- Generation request and manifest 1.1 profile provenance support, persisted in metadata assets
+- Profile manager/editor windows and expanded Edit Mode profile tests
+
 ## 0.3.0 — Milestone 3
 
 - Versioned capability discovery: `GET /api/v1/capabilities`, cached per backend URL for the

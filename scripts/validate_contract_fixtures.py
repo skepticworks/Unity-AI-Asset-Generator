@@ -89,6 +89,7 @@ REQUIRED_MANIFEST_PATHS = [
     ("runtime", "scheduler"),
     ("request", "prompt"),
     ("request", "seed"),
+    ("profile", "profile_origin"),
     ("outputs",),
 ]
 

@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using UnityAiAssets.Editor.AssetTypes;
 using UnityAiAssets.Editor.Importing;
 using UnityEditor;
 using UnityEngine;
@@ -28,6 +30,11 @@ namespace UnityAiAssets.Editor.Configuration
         [SerializeField] TextureImportProfileKind defaultTextureImportProfile = TextureImportProfileKind.Ps1Pixel;
         [SerializeField] bool createMaterialByDefault;
         [SerializeField] string defaultShaderName = "Universal Render Pipeline/Lit";
+        [SerializeField] string userProfileDirectory = "ProjectSettings/AIAssetGenerator/Profiles";
+        [SerializeField] string defaultAssetType = AssetTypeIds.Texture;
+        [SerializeField] string defaultImportProfileId = UnityImportProfileIds.Ps1EnvironmentTexture;
+        [SerializeField] bool showPromptPreviewByDefault = true;
+        [SerializeField] bool refreshCompatibilityOnReconnect = true;
 
         public string BackendBaseUrl
         {
@@ -107,6 +114,40 @@ namespace UnityAiAssets.Editor.Configuration
                     : value.Trim();
                 Save(true);
             }
+        }
+
+        public string UserProfileDirectory
+        {
+            get => string.IsNullOrWhiteSpace(userProfileDirectory)
+                ? "ProjectSettings/AIAssetGenerator/Profiles" : userProfileDirectory.Replace('\\', '/').Trim('/');
+            set { userProfileDirectory = value; Save(true); }
+        }
+
+        public string UserProfileDirectoryAbsolute => Path.GetFullPath(UserProfileDirectory);
+
+        public string DefaultAssetType
+        {
+            get => AssetTypeIds.IsKnown(defaultAssetType) ? defaultAssetType : AssetTypeIds.Texture;
+            set { defaultAssetType = AssetTypeIds.IsKnown(value) ? value : AssetTypeIds.Texture; Save(true); }
+        }
+
+        public string DefaultImportProfileId
+        {
+            get => string.IsNullOrWhiteSpace(defaultImportProfileId)
+                ? UnityImportProfileIds.Ps1EnvironmentTexture : defaultImportProfileId;
+            set { defaultImportProfileId = value; Save(true); }
+        }
+
+        public bool ShowPromptPreviewByDefault
+        {
+            get => showPromptPreviewByDefault;
+            set { showPromptPreviewByDefault = value; Save(true); }
+        }
+
+        public bool RefreshCompatibilityOnReconnect
+        {
+            get => refreshCompatibilityOnReconnect;
+            set { refreshCompatibilityOnReconnect = value; Save(true); }
         }
 
         public void SaveSettings() => Save(true);

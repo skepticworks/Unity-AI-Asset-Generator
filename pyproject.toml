@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "unity-ai-assets"
-version = "0.3.0"
+version = "0.4.0"
 description = "Local AI-assisted Unity 2D asset generation (text-to-image textures)"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"

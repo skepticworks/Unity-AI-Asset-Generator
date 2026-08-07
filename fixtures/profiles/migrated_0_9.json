@@ -1,0 +1,33 @@
+{
+  "schema": {"name": "generation-profile", "version": "0.9"},
+  "profile": {
+    "id": "legacy_texture",
+    "profile_version": 1,
+    "display_name": "Legacy Texture",
+    "description": "Synthetic migration fixture.",
+    "asset_type": "texture",
+    "builtin": false,
+    "tags": ["legacy"]
+  },
+  "prompt": {
+    "template_id": "ps1_environment_texture",
+    "template_revision": 1,
+    "default_modifiers": []
+  },
+  "negative_prompt": {
+    "profile_id": "base_ps1_negative",
+    "profile_revision": 1,
+    "additional_terms": []
+  },
+  "generation_defaults": {
+    "width": 512,
+    "height": 512,
+    "steps": 25,
+    "guidance_scale": 7.0
+  },
+  "unity": {
+    "import_profile_id": "ps1_environment_texture",
+    "suggested_output_directory": "Assets/Generated/Textures",
+    "create_material": true
+  }
+}

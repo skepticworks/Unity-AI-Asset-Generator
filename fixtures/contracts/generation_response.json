@@ -12,7 +12,7 @@
     "manifest": "/api/v1/generations/4f278114-d3fc-4f7c-962b-9eea06dd6e53/manifest"
   },
   "schema_versions": {
-    "generation_manifest": "1.0"
+    "generation_manifest": "1.1"
   },
   "image_path": "generated/4f278114-d3fc-4f7c-962b-9eea06dd6e53/rusted_wall.png",
   "metadata_path": "generated/4f278114-d3fc-4f7c-962b-9eea06dd6e53/manifest.json",

@@ -1,0 +1,22 @@
+{
+  "schema": {
+    "name": "negative-prompt-profile",
+    "version": "1.0"
+  },
+  "profile": {
+    "id": "base_ps1_negative",
+    "revision": 1,
+    "display_name": "Base PS1 Negative",
+    "description": "Avoid modern photorealism and overlays for PS1-style assets.",
+    "tags": ["ps1", "quality"],
+    "terms": [
+      "text",
+      "watermark",
+      "logo",
+      "signature",
+      "UI overlay",
+      "modern photorealistic rendering",
+      "high-resolution photograph"
+    ]
+  }
+}

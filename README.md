@@ -2,7 +2,7 @@
 
 Local, AI-assisted generation of Unity-ready **2D game assets** using pretrained generative models (Hugging Face Diffusers) plus an **editor-only Unity package**. No ComfyUI.
 
-## Current milestone scope (Milestone 3)
+## Current milestone scope (Milestone 4)
 
 1. Versioned capability reporting (`GET /api/v1/capabilities`)
 2. Authoritative generation policy (single source of truth for limits)
@@ -11,13 +11,16 @@ Local, AI-assisted generation of Unity-ready **2D game assets** using pretrained
 5. Unity capability cache, compatibility checks, and preflight validation
 6. Unity download integrity verification before import
 7. Existing texture generation + Unity import workflows preserved
+8. Versioned built-in and user generation profiles, deterministic prompt resolution, migration,
+   compatibility checks, and profile provenance in manifest schema 1.1
 
 Automated Python tests use a **fake inference backend** and do **not** download models.
 
 ## Explicit non-goals (this milestone)
 
 - ComfyUI, ComfyUI APIs, workflows, or custom nodes
-- Sprites, icons, UI chrome, img2img, ControlNet, IP-Adapter, inpainting, batching
+- Sprite/icon/UI **generation pipelines** (catalog profiles exist but remain capability-gated)
+- img2img, ControlNet, IP-Adapter, inpainting, masking, batching, tile seam correction
 - Database, Redis, Celery, Docker, auth, cloud storage
 - Model installation UI, distributed job system
 - Per-request precision or scheduler selection
@@ -75,10 +78,10 @@ Bind defaults to **loopback**. Use a **single worker**.
 
 | Concern | Source | Notes |
 |---------|--------|-------|
-| Application semver | `pyproject.toml` / `core.version` | Currently `0.3.0` |
+| Application semver | `pyproject.toml` / `core.version` | Currently `0.4.0` |
 | API major/minor | `core.version` (`API_MAJOR_VERSION`, `API_MINOR_VERSION`) | Independent of app semver |
 | Capabilities schema | `capabilities_schema_version: "1.0"` | Independent of app semver |
-| Generation manifest schema | `generation_manifest_schema_version: "1.0"` | Independent of app semver |
+| Generation manifest schema | `generation_manifest_schema_version: "1.1"` | Profile provenance is additive |
 
 Do not infer schema compatibility from the application version. Unity accepts higher **minor** schema/API versions when the **major** matches the supported set (API major `1`, capability schema major `1`, manifest schema major `1`).
 
@@ -179,7 +182,7 @@ Application codes include: `REQUEST_BODY_INVALID`, `GENERATION_REQUEST_INVALID`,
 
 ## Unity package
 
-Package path: [`unity-package/`](unity-package/) (version `0.3.0`)
+Package path: [`unity-package/`](unity-package/) (version `0.4.0`)
 
 ### Install from disk
 
@@ -197,7 +200,11 @@ Default backend URL: `http://127.0.0.1:8000`
 1. Start the Python API
 2. **Tools → AI Asset Generator**
 3. **Refresh Capabilities** (required before generate)
-4. Enter prompt / options → **Generate And Import**
+4. Select asset type/profile, enter a subject, review prompts → **Generate And Import**
+
+User generation profiles live in `ProjectSettings/AIAssetGenerator/Profiles`, outside `Assets/`.
+Built-ins are immutable. Sprite/icon/UI profiles are present but generation is capability-gated;
+the current backend normally advertises only `texture`.
 
 Unity:
 

@@ -17,6 +17,17 @@ class AssetType(StrEnum):
     """Public asset categories produced by generation operations."""
 
     TEXTURE = "texture"
+    SPRITE = "sprite"
+    ICON = "icon"
+    UI = "ui"
+
+
+KNOWN_ASSET_TYPES: frozenset[str] = frozenset(item.value for item in AssetType)
+
+
+def is_known_asset_type(value: str) -> bool:
+    """Return whether value is a canonical asset type identifier."""
+    return value in KNOWN_ASSET_TYPES
 
 
 class DeviceType(StrEnum):

@@ -1,0 +1,35 @@
+{
+  "schema": {"name": "generation-profile", "version": "1.0"},
+  "profile": {
+    "id": "incompatible_sprite",
+    "revision": 1,
+    "display_name": "Incompatible Sprite",
+    "description": "Synthetic profile outside baseline texture capabilities.",
+    "asset_type": "sprite",
+    "builtin": false,
+    "tags": ["test"]
+  },
+  "prompt": {
+    "template_id": "ps1_character_sprite",
+    "template_revision": 1,
+    "default_modifiers": []
+  },
+  "negative_prompt": {
+    "profile_id": "sprite_negative",
+    "profile_revision": 1,
+    "additional_terms": []
+  },
+  "generation_defaults": {
+    "width": 513,
+    "height": 512,
+    "steps": 999,
+    "guidance_scale": 7.0,
+    "seed_strategy": "fixed",
+    "fixed_seed": 4294967296
+  },
+  "unity": {
+    "import_profile_id": "ps1_sprite",
+    "suggested_output_directory": "Assets/Generated/Sprites",
+    "create_material": false
+  }
+}

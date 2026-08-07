@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from unity_ai_assets.core.version import GENERATION_MANIFEST_SCHEMA_VERSION
 from unity_ai_assets.domain.generation_policy import GenerationPolicy
+
+_PROFILE_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]*$"
 
 
 def build_texture_request_schema(policy: GenerationPolicy) -> type[BaseModel]:
@@ -51,6 +53,23 @@ def build_texture_request_schema(policy: GenerationPolicy) -> type[BaseModel]:
             min_length=1,
             max_length=policy.maximum_output_name_length,
         )
+        generation_profile_id: str | None = Field(
+            default=None, max_length=128, pattern=_PROFILE_ID_PATTERN
+        )
+        generation_profile_revision: int | None = Field(default=None, ge=1)
+        profile_origin: Literal["builtin", "user", "none"] | None = None
+        prompt_template_id: str | None = Field(
+            default=None, max_length=128, pattern=_PROFILE_ID_PATTERN
+        )
+        prompt_template_revision: int | None = Field(default=None, ge=1)
+        negative_prompt_profile_id: str | None = Field(
+            default=None, max_length=128, pattern=_PROFILE_ID_PATTERN
+        )
+        negative_prompt_profile_revision: int | None = Field(default=None, ge=1)
+        unity_import_profile_id: str | None = Field(
+            default=None, max_length=128, pattern=_PROFILE_ID_PATTERN
+        )
+        asset_type: Literal["texture"] = "texture"
 
     return DynamicTextureGenerationRequest
 
@@ -71,6 +90,23 @@ class TextureGenerationRequest(BaseModel):
     guidance_scale: float = Field(default=7.0)
     seed: int | None = Field(default=None)
     output_name: str = Field(default="texture", min_length=1)
+    generation_profile_id: str | None = Field(
+        default=None, max_length=128, pattern=_PROFILE_ID_PATTERN
+    )
+    generation_profile_revision: int | None = Field(default=None, ge=1)
+    profile_origin: Literal["builtin", "user", "none"] | None = None
+    prompt_template_id: str | None = Field(
+        default=None, max_length=128, pattern=_PROFILE_ID_PATTERN
+    )
+    prompt_template_revision: int | None = Field(default=None, ge=1)
+    negative_prompt_profile_id: str | None = Field(
+        default=None, max_length=128, pattern=_PROFILE_ID_PATTERN
+    )
+    negative_prompt_profile_revision: int | None = Field(default=None, ge=1)
+    unity_import_profile_id: str | None = Field(
+        default=None, max_length=128, pattern=_PROFILE_ID_PATTERN
+    )
+    asset_type: Literal["texture"] = "texture"
 
     @field_validator("prompt")
     @classmethod

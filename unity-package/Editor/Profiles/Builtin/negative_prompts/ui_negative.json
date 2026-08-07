@@ -1,0 +1,21 @@
+{
+  "schema": {
+    "name": "negative-prompt-profile",
+    "version": "1.0"
+  },
+  "profile": {
+    "id": "ui_negative",
+    "revision": 1,
+    "display_name": "UI Negative",
+    "description": "Avoid photographic and cluttered UI artifacts.",
+    "tags": ["ui"],
+    "terms": [
+      "text",
+      "watermark",
+      "logo",
+      "photograph",
+      "3d render clutter",
+      "busy background"
+    ]
+  }
+}

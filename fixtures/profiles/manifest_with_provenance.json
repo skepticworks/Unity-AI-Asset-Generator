@@ -1,0 +1,48 @@
+{
+  "schema": {"name": "generation-manifest", "version": "1.1"},
+  "generation": {
+    "id": "11111111-1111-1111-1111-111111111111",
+    "operation": "text_to_image",
+    "asset_type": "texture",
+    "status": "completed",
+    "created_at_utc": "2026-08-07T12:00:00Z",
+    "completed_at_utc": "2026-08-07T12:00:01Z",
+    "elapsed_seconds": 1.0
+  },
+  "application": {
+    "name": "unity-ai-asset-generator",
+    "version": "0.4.0",
+    "api_major": 1
+  },
+  "model": {"id": "fake/model", "revision": null, "family": "sd15"},
+  "runtime": {"device": "cpu", "precision": "float32", "scheduler": "pndm"},
+  "request": {
+    "prompt": "stone wall",
+    "negative_prompt": "text",
+    "width": 64,
+    "height": 64,
+    "steps": 5,
+    "guidance_scale": 7.0,
+    "seed": 1,
+    "output_name": "stone"
+  },
+  "profile": {
+    "generation_profile_id": "ps1_environment_texture",
+    "generation_profile_revision": 1,
+    "profile_origin": "builtin",
+    "prompt_template_id": "ps1_environment_texture",
+    "prompt_template_revision": 1,
+    "negative_prompt_profile_id": "base_ps1_negative",
+    "negative_prompt_profile_revision": 1,
+    "unity_import_profile_id": "ps1_environment_texture"
+  },
+  "outputs": [{
+    "kind": "image",
+    "format": "png",
+    "relative_path": "stone.png",
+    "width": 64,
+    "height": 64,
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "byte_size": 100
+  }]
+}

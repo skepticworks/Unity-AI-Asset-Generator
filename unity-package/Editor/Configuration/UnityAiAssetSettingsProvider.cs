@@ -37,6 +37,15 @@ namespace UnityAiAssets.Editor.Configuration
             settings.DefaultTextureImportProfile = (TextureImportProfileKind)EditorGUILayout.EnumPopup(
                 "Texture Import Profile",
                 settings.DefaultTextureImportProfile);
+            settings.DefaultImportProfileId = EditorGUILayout.TextField(
+                "Default Import Profile ID", settings.DefaultImportProfileId);
+            settings.DefaultAssetType = EditorGUILayout.TextField("Default Asset Type", settings.DefaultAssetType);
+            settings.UserProfileDirectory = EditorGUILayout.TextField(
+                "User Profile Directory", settings.UserProfileDirectory);
+            settings.ShowPromptPreviewByDefault = EditorGUILayout.Toggle(
+                "Show Prompt Preview", settings.ShowPromptPreviewByDefault);
+            settings.RefreshCompatibilityOnReconnect = EditorGUILayout.Toggle(
+                "Refresh On Reconnect", settings.RefreshCompatibilityOnReconnect);
             settings.CreateMaterialByDefault = EditorGUILayout.Toggle(
                 "Create Material By Default",
                 settings.CreateMaterialByDefault);

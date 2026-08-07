@@ -20,6 +20,15 @@ class GenerationRequest:
     seed: int
     output_name: str
     generation_id: str
+    generation_profile_id: str | None = None
+    generation_profile_revision: int | None = None
+    profile_origin: str | None = None
+    prompt_template_id: str | None = None
+    prompt_template_revision: int | None = None
+    negative_prompt_profile_id: str | None = None
+    negative_prompt_profile_revision: int | None = None
+    unity_import_profile_id: str | None = None
+    asset_type: str = "texture"
 
 
 @dataclass(frozen=True, slots=True)

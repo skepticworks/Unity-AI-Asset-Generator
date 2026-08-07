@@ -1,0 +1,16 @@
+{
+  "schema": {
+    "name": "prompt-template",
+    "version": "1.0"
+  },
+  "template": {
+    "id": "ps1_item_icon",
+    "revision": 1,
+    "display_name": "PS1 Item Icon",
+    "description": "Centered inventory-style item icon.",
+    "asset_type": "icon",
+    "pattern": "PS1-era game item icon, {subject}, single centered item, clear silhouette, inventory icon composition, minimal background, {style_modifiers}",
+    "placeholders": ["subject", "style_modifiers", "asset_type"],
+    "required_placeholders": ["subject"]
+  }
+}

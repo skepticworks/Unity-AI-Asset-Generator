@@ -199,5 +199,14 @@ namespace UnityAiAssets.Editor.Tests
             GenerationCapabilityValidator.Validate(request, BuildCapabilities());
             Assert.AreEqual(originalWidth, request.Width);
         }
+
+        [Test]
+        public void Validate_UsesRequestedAssetType()
+        {
+            var request = ValidRequest();
+            request.AssetType = "sprite";
+            var issues = GenerationCapabilityValidator.Validate(request, BuildCapabilities());
+            Assert.IsTrue(issues.Exists(issue => issue.FieldName == "asset_type"));
+        }
     }
 }

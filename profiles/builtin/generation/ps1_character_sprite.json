@@ -1,0 +1,41 @@
+{
+  "schema": {
+    "name": "generation-profile",
+    "version": "1.0"
+  },
+  "profile": {
+    "id": "ps1_character_sprite",
+    "revision": 1,
+    "display_name": "PS1 Character Sprite",
+    "description": "Single character sprite with PS1-inspired low-resolution appearance. Generation requires backend sprite support.",
+    "asset_type": "sprite",
+    "builtin": true,
+    "tags": ["ps1", "character", "sprite"]
+  },
+  "prompt": {
+    "template_id": "ps1_character_sprite",
+    "template_revision": 1,
+    "default_modifiers": [
+      "front-facing or three-quarter view",
+      "readable proportions"
+    ]
+  },
+  "negative_prompt": {
+    "profile_id": "sprite_negative",
+    "profile_revision": 1,
+    "additional_terms": []
+  },
+  "generation_defaults": {
+    "width": 512,
+    "height": 512,
+    "steps": 25,
+    "guidance_scale": 7.0,
+    "seed_strategy": "random",
+    "fixed_seed": null
+  },
+  "unity": {
+    "import_profile_id": "ps1_sprite",
+    "suggested_output_directory": "Assets/Generated/Sprites",
+    "create_material": false
+  }
+}

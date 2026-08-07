@@ -82,6 +82,14 @@ namespace UnityAiAssets.Editor.Metadata
             asset.OutputSha256 = imageOutput?.Sha256;
             asset.OutputByteSize = imageOutput?.ByteSize ?? 0;
             asset.RequestId = requestId;
+            asset.GenerationProfileId = manifest?.Profile?.GenerationProfileId;
+            asset.GenerationProfileRevision = manifest?.Profile?.GenerationProfileRevision ?? 0;
+            asset.ProfileOrigin = manifest?.Profile?.ProfileOrigin;
+            asset.PromptTemplateId = manifest?.Profile?.PromptTemplateId;
+            asset.PromptTemplateRevision = manifest?.Profile?.PromptTemplateRevision ?? 0;
+            asset.NegativePromptProfileId = manifest?.Profile?.NegativePromptProfileId;
+            asset.NegativePromptProfileRevision = manifest?.Profile?.NegativePromptProfileRevision ?? 0;
+            asset.UnityImportProfileId = manifest?.Profile?.UnityImportProfileId;
 
             AssetDatabase.CreateAsset(asset, uniquePath);
             AssetDatabase.SaveAssets();

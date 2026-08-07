@@ -1,0 +1,16 @@
+{
+  "schema": {
+    "name": "prompt-template",
+    "version": "1.0"
+  },
+  "template": {
+    "id": "ps1_environment_texture",
+    "revision": 1,
+    "display_name": "PS1 Environment Texture",
+    "description": "Surface-focused PS1-era environment texture prompt.",
+    "asset_type": "texture",
+    "pattern": "PS1-era game texture, {subject}, low-resolution game art, hand-authored appearance, surface-focused, {style_modifiers}",
+    "placeholders": ["subject", "style_modifiers", "asset_type"],
+    "required_placeholders": ["subject"]
+  }
+}

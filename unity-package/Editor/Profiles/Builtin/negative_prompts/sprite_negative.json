@@ -1,0 +1,22 @@
+{
+  "schema": {
+    "name": "negative-prompt-profile",
+    "version": "1.0"
+  },
+  "profile": {
+    "id": "sprite_negative",
+    "revision": 1,
+    "display_name": "Sprite Negative",
+    "description": "Avoid crowded scenes and complex backgrounds for sprites.",
+    "tags": ["sprite"],
+    "terms": [
+      "text",
+      "watermark",
+      "logo",
+      "crowd",
+      "busy background",
+      "multiple characters",
+      "photorealistic"
+    ]
+  }
+}

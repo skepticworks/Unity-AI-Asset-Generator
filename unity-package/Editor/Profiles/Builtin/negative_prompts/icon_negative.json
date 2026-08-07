@@ -1,0 +1,22 @@
+{
+  "schema": {
+    "name": "negative-prompt-profile",
+    "version": "1.0"
+  },
+  "profile": {
+    "id": "icon_negative",
+    "revision": 1,
+    "display_name": "Icon Negative",
+    "description": "Avoid scene complexity for inventory icons.",
+    "tags": ["icon"],
+    "terms": [
+      "text",
+      "watermark",
+      "logo",
+      "busy background",
+      "full scene",
+      "landscape",
+      "photorealistic"
+    ]
+  }
+}

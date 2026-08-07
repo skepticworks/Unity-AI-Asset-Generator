@@ -1,0 +1,16 @@
+{
+  "schema": {
+    "name": "prompt-template",
+    "version": "1.0"
+  },
+  "template": {
+    "id": "ps1_character_sprite",
+    "revision": 1,
+    "display_name": "PS1 Character Sprite",
+    "description": "Single character game sprite framing.",
+    "asset_type": "sprite",
+    "pattern": "PS1-era game character sprite, {subject}, single character, clear readable silhouette, low-resolution game art, simple background, {style_modifiers}",
+    "placeholders": ["subject", "style_modifiers", "asset_type"],
+    "required_placeholders": ["subject"]
+  }
+}

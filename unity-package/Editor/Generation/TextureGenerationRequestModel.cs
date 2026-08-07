@@ -1,5 +1,7 @@
 using System;
+using UnityAiAssets.Editor.AssetTypes;
 using UnityAiAssets.Editor.Configuration;
+using UnityAiAssets.Editor.Importing;
 
 namespace UnityAiAssets.Editor.Generation
 {
@@ -9,6 +11,13 @@ namespace UnityAiAssets.Editor.Generation
     [Serializable]
     public sealed class TextureGenerationRequestModel
     {
+        public string AssetType = AssetTypeIds.Texture;
+        public string SelectedProfileId = "ps1_environment_texture";
+        public string Subject = "rusted industrial wall";
+        public string AdditionalPrompt = string.Empty;
+        public string AdditionalNegative = string.Empty;
+        public string PreviewPrompt = string.Empty;
+        public string PreviewNegative = string.Empty;
         public string Prompt = "low-resolution rusted industrial wall texture, PS1 game aesthetic";
         public string NegativePrompt = "text, logo, watermark, photorealistic scene";
         public int Width = 512;
@@ -20,6 +29,7 @@ namespace UnityAiAssets.Editor.Generation
         public string OutputName = "texture";
         public string DestinationFolder = "Assets/Generated/Textures";
         public TextureImportProfileKind ImportProfile = TextureImportProfileKind.Ps1Pixel;
+        public string ImportProfileId = UnityImportProfileIds.Ps1EnvironmentTexture;
         public bool CreateMaterial;
         public string MaterialDestinationFolder = "Assets/Generated/Materials";
         public string ShaderName = "Universal Render Pipeline/Lit";

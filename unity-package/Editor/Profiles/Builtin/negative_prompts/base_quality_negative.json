@@ -1,0 +1,21 @@
+{
+  "schema": {
+    "name": "negative-prompt-profile",
+    "version": "1.0"
+  },
+  "profile": {
+    "id": "base_quality_negative",
+    "revision": 1,
+    "display_name": "Base Quality Negative",
+    "description": "Common quality artifacts to avoid.",
+    "tags": ["quality"],
+    "terms": [
+      "text",
+      "watermark",
+      "logo",
+      "signature",
+      "blurry",
+      "low quality"
+    ]
+  }
+}

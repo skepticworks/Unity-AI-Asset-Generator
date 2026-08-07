@@ -33,5 +33,5 @@ def test_api_error_fixture_validates() -> None:
 def test_manifest_fixture_validates() -> None:
     payload = json.loads((FIXTURES / "generation_manifest.json").read_text(encoding="utf-8"))
     manifest = parse_manifest_payload(payload)
-    assert manifest.schema.version == "1.0"
+    assert manifest.schema.version == "1.1"
     assert manifest.outputs[0].sha256

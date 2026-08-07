@@ -1,0 +1,40 @@
+{
+  "schema": {
+    "name": "asset-type-catalog",
+    "version": "1.0"
+  },
+  "asset_types": [
+    {
+      "id": "texture",
+      "display_name": "Texture",
+      "description": "Environment or material surface textures for Unity materials.",
+      "default_generation_profile_id": "ps1_environment_texture",
+      "default_import_profile_id": "ps1_environment_texture",
+      "suggested_output_directory": "Assets/Generated/Textures"
+    },
+    {
+      "id": "sprite",
+      "display_name": "Sprite",
+      "description": "Character or object sprites for 2D games. Generation support depends on backend capabilities.",
+      "default_generation_profile_id": "ps1_character_sprite",
+      "default_import_profile_id": "ps1_sprite",
+      "suggested_output_directory": "Assets/Generated/Sprites"
+    },
+    {
+      "id": "icon",
+      "display_name": "Icon",
+      "description": "Inventory and UI icons with clear silhouettes. Generation support depends on backend capabilities.",
+      "default_generation_profile_id": "ps1_item_icon",
+      "default_import_profile_id": "ps1_icon",
+      "suggested_output_directory": "Assets/Generated/Icons"
+    },
+    {
+      "id": "ui",
+      "display_name": "UI",
+      "description": "Interface panels and frames. Generation support depends on backend capabilities.",
+      "default_generation_profile_id": "ps1_ui_panel",
+      "default_import_profile_id": "ps1_ui",
+      "suggested_output_directory": "Assets/Generated/UI"
+    }
+  ]
+}

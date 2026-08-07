@@ -86,5 +86,12 @@ namespace UnityAiAssets.Editor.Tests
             Assert.AreEqual("1.0", SchemaVersion.Parse("1").ToString());
             Assert.AreEqual("3.7", SchemaVersion.Parse("3.7").ToString());
         }
+
+        [Test]
+        public void PackageSupportsManifest11ByMajor()
+        {
+            Assert.AreEqual("0.4.0", ClientCompatibility.PackageVersion);
+            Assert.IsTrue(SchemaVersion.Parse("1.1").HasSameMajor(ClientCompatibility.SupportedManifestSchemaMajor));
+        }
     }
 }

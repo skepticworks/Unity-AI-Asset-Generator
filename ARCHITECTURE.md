@@ -6,7 +6,7 @@ Local FastAPI texture generation (Diffusers behind an inference protocol) plus a
 
 **ComfyUI is not used** in any form.
 
-Application version: **0.3.0** (Milestone 3 — generation contract and capability reporting).
+Application/package version: **0.4.0** (Milestone 4 — profile-driven Unity generation).
 
 ## Backend component responsibilities
 
@@ -42,6 +42,69 @@ Application version: **0.3.0** (Milestone 3 — generation contract and capabili
 | `Editor/Metadata/` | Manifest-aware ScriptableObject + importer |
 | `Editor/UI/` | `Tools > AI Asset Generator` window |
 | `Editor/Tests/` | Edit Mode tests (capabilities, errors, manifests, integrity) |
+| `Editor/AssetTypes/` | Asset type catalog and defaults |
+| `Editor/Prompting/` | Prompt/negative profile catalogs and deterministic resolution |
+| `Editor/Profiles/` | Generation schema, registry, compatibility, persistence, migration |
+
+## Milestone 4 profile loading and persistence
+
+```mermaid
+flowchart LR
+  Builtin[Package Builtin JSON] --> Registry[GenerationProfileRegistry]
+  User[ProjectSettings user JSON] --> Registry
+  Registry -->|one bad file| Errors[LoadErrors]
+  Manager[Profile Manager] --> Repo[UserProfileRepository]
+  Repo -->|atomic temp + replace| User
+  Repo -->|conflict| Quarantine[Quarantine]
+```
+
+Built-in profiles are immutable. Duplicating assigns a new UUID, revision 1, `builtin=false`,
+and `Copy of …`; renaming changes only `display_name`, preserving `<id>.json`.
+
+## Profile resolution and compatibility
+
+```mermaid
+sequenceDiagram
+  participant UI as Generator Window
+  participant Reg as Profile Registries
+  participant Res as Profile Resolver
+  participant Caps as Backend Capabilities
+  UI->>Reg: asset type + profile id
+  UI->>Res: subject + explicit overrides
+  Res->>Reg: template + negative + import refs
+  Res->>Caps: check effective asset type/settings
+  alt unsupported asset type or limits
+    Res-->>UI: incompatible reasons (no clamp)
+  else compatible
+    Res-->>UI: constructed prompts + effective settings + provenance
+  end
+```
+
+## Generation with profile provenance
+
+```mermaid
+flowchart LR
+  Subject[Subject and overrides] --> Resolve[Resolve profile]
+  Resolve --> Validate[Capability preflight]
+  Validate --> DTO[Snake-case request + provenance]
+  DTO --> API[Texture generation API]
+  API --> Manifest[Manifest 1.1 profile block]
+  Manifest --> Metadata[Unity metadata asset]
+```
+
+## Migration and built-in versus user flow
+
+```mermaid
+flowchart TD
+  File[Profile JSON] --> Version{Schema version}
+  Version -->|1.x| Parse[Validate and load]
+  Version -->|0.9| Migrate[profile_version to revision<br/>seed_strategy=random]
+  Migrate --> Backup[Write .bak]
+  Backup --> Atomic[Persist 1.0 atomically]
+  Builtin[Built-in selected] --> Duplicate[Duplicate to UUID user profile]
+  User[User profile selected] --> Edit[Edit and save]
+  Duplicate --> Edit
+```
 
 ## Dependency direction
 

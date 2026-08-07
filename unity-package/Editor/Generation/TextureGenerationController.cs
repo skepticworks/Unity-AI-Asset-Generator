@@ -9,6 +9,8 @@ using UnityAiAssets.Editor.Configuration;
 using UnityAiAssets.Editor.Importing;
 using UnityAiAssets.Editor.Integrity;
 using UnityAiAssets.Editor.Metadata;
+using UnityAiAssets.Editor.Profiles;
+using UnityAiAssets.Editor.Prompting;
 using UnityEngine;
 
 namespace UnityAiAssets.Editor.Generation
@@ -61,6 +63,9 @@ namespace UnityAiAssets.Editor.Generation
         readonly GenerationMetadataImporter _metadataImporter;
         readonly MaterialFactory _materialFactory;
         readonly CapabilityCache _capabilityCache;
+        readonly GenerationProfileRegistry _profileRegistry;
+        readonly GenerationProfileResolver _profileResolver;
+        readonly UnityImportProfileRegistry _importProfiles;
 
         CancellationTokenSource _cts;
         string _lastKnownBackendBaseUrl;
@@ -70,7 +75,10 @@ namespace UnityAiAssets.Editor.Generation
             GeneratedTextureImporter textureImporter = null,
             GenerationMetadataImporter metadataImporter = null,
             MaterialFactory materialFactory = null,
-            CapabilityCache capabilityCache = null)
+            CapabilityCache capabilityCache = null,
+            GenerationProfileRegistry profileRegistry = null,
+            GenerationProfileResolver profileResolver = null,
+            UnityImportProfileRegistry importProfiles = null)
         {
             _clientFactory = clientFactory ?? (() =>
             {
@@ -81,6 +89,12 @@ namespace UnityAiAssets.Editor.Generation
             _metadataImporter = metadataImporter ?? new GenerationMetadataImporter();
             _materialFactory = materialFactory ?? new MaterialFactory();
             _capabilityCache = capabilityCache ?? CapabilityCache.Shared;
+            _profileRegistry = profileRegistry ?? new GenerationProfileRegistry(
+                userRoot: UnityAiAssetSettings.instance.UserProfileDirectoryAbsolute);
+            _profileResolver = profileResolver ?? new GenerationProfileResolver(
+                new PromptTemplateRegistry(_profileRegistry.BuiltinRoot),
+                new NegativePromptRegistry(_profileRegistry.BuiltinRoot));
+            _importProfiles = importProfiles ?? new UnityImportProfileRegistry(_profileRegistry.BuiltinRoot);
             Progress = new TextureGenerationProgress();
         }
 
@@ -229,6 +243,38 @@ namespace UnityAiAssets.Editor.Generation
                     return;
                 }
 
+                var selectedProfile = _profileRegistry.Get(request.SelectedProfileId);
+                var resolved = _profileResolver.Resolve(selectedProfile, new UserProfileOverrides
+                {
+                    Subject = request.Subject,
+                    AdditionalPrompt = request.AdditionalPrompt,
+                    AdditionalNegative = request.AdditionalNegative,
+                    Width = request.Width,
+                    Height = request.Height,
+                    Steps = request.Steps,
+                    Guidance = request.GuidanceScale,
+                    Seed = request.UseExplicitSeed ? request.Seed : (long?)null,
+                    DestinationFolder = request.DestinationFolder,
+                    ImportProfileId = request.ImportProfileId,
+                    CreateMaterial = request.CreateMaterial,
+                    OutputName = request.OutputName
+                }, capabilities);
+                if (!resolved.Compatibility.CanGenerate)
+                    throw new InvalidOperationException(string.Join("\n", resolved.Compatibility.Messages));
+                request.AssetType = resolved.AssetType;
+                request.Prompt = request.PreviewPrompt = resolved.ConstructedPrompt;
+                request.NegativePrompt = request.PreviewNegative = resolved.ConstructedNegativePrompt;
+                request.ImportProfileId = resolved.ImportProfileId;
+                request.Width = resolved.Width;
+                request.Height = resolved.Height;
+                request.Steps = resolved.Steps;
+                request.GuidanceScale = resolved.GuidanceScale;
+                request.UseExplicitSeed = resolved.Seed.HasValue;
+                request.Seed = resolved.Seed ?? 0;
+                request.OutputName = resolved.OutputName;
+                request.DestinationFolder = resolved.DestinationFolder;
+                request.CreateMaterial = resolved.CreateMaterial;
+
                 var issues = GenerationCapabilityValidator.Validate(request, capabilities);
                 if (issues.Count > 0)
                 {
@@ -251,7 +297,16 @@ namespace UnityAiAssets.Editor.Generation
                     steps = request.Steps,
                     guidance_scale = request.GuidanceScale,
                     seed = request.UseExplicitSeed ? request.Seed : (long?)null,
-                    output_name = request.OutputName.Trim()
+                    output_name = request.OutputName.Trim(),
+                    generation_profile_id = resolved.GenerationProfileId,
+                    generation_profile_revision = resolved.GenerationProfileRevision,
+                    profile_origin = resolved.ProfileOrigin,
+                    prompt_template_id = resolved.PromptTemplateId,
+                    prompt_template_revision = resolved.PromptTemplateRevision,
+                    negative_prompt_profile_id = resolved.NegativePromptProfileId,
+                    negative_prompt_profile_revision = resolved.NegativePromptProfileRevision,
+                    unity_import_profile_id = resolved.ImportProfileId,
+                    asset_type = resolved.AssetType
                 };
 
                 SetState(GenerationState.Generating, "Waiting for backend generation…");
@@ -311,7 +366,9 @@ namespace UnityAiAssets.Editor.Generation
                 VerifyImageIntegrityOrThrow(png, manifest);
 
                 SetState(GenerationState.Importing, "Importing texture into the Unity project…");
-                var profile = TextureImportProfile.FromKind(request.ImportProfile);
+                var profile = !string.IsNullOrWhiteSpace(request.ImportProfileId)
+                    ? _importProfiles.GetById(request.ImportProfileId)
+                    : _importProfiles.FromLegacyKind(request.ImportProfile);
                 var import = _textureImporter.ImportPng(
                     png,
                     request.DestinationFolder,
@@ -516,9 +573,9 @@ namespace UnityAiAssets.Editor.Generation
 
         static void ValidateRequestStructure(TextureGenerationRequestModel request)
         {
-            if (string.IsNullOrWhiteSpace(request.Prompt))
+            if (string.IsNullOrWhiteSpace(request.Subject) && string.IsNullOrWhiteSpace(request.Prompt))
             {
-                throw new ArgumentException("Prompt is required.");
+                throw new ArgumentException("Subject is required.");
             }
 
             AssetPathUtility.NormalizeAssetPath(request.DestinationFolder);

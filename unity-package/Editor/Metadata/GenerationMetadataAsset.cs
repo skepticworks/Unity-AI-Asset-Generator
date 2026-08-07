@@ -43,5 +43,13 @@ namespace UnityAiAssets.Editor.Metadata
         public string OutputSha256;
         public long OutputByteSize;
         public string RequestId;
+        public string GenerationProfileId;
+        public int GenerationProfileRevision;
+        public string ProfileOrigin;
+        public string PromptTemplateId;
+        public int PromptTemplateRevision;
+        public string NegativePromptProfileId;
+        public int NegativePromptProfileRevision;
+        public string UnityImportProfileId;
     }
 }

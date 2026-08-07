@@ -83,6 +83,20 @@ class ManifestRequestInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class ManifestProfileInfo:
+    """Profile provenance recorded without affecting generated parameters."""
+
+    generation_profile_id: str | None = None
+    generation_profile_revision: int | None = None
+    profile_origin: str = "none"
+    prompt_template_id: str | None = None
+    prompt_template_revision: int | None = None
+    negative_prompt_profile_id: str | None = None
+    negative_prompt_profile_revision: int | None = None
+    unity_import_profile_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ManifestOutputInfo:
     """A single persisted output artifact (relative paths only)."""
 
@@ -106,9 +120,11 @@ class GenerationManifest:
     runtime: ManifestRuntimeInfo
     request: ManifestRequestInfo
     outputs: list[ManifestOutputInfo]
+    profile: ManifestProfileInfo | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to the public JSON shape."""
+        profile = self.profile or ManifestProfileInfo()
         return {
             "schema": {
                 "name": self.schema.name,
@@ -147,6 +163,16 @@ class GenerationManifest:
                 "guidance_scale": self.request.guidance_scale,
                 "seed": self.request.seed,
                 "output_name": self.request.output_name,
+            },
+            "profile": {
+                "generation_profile_id": profile.generation_profile_id,
+                "generation_profile_revision": profile.generation_profile_revision,
+                "profile_origin": profile.profile_origin,
+                "prompt_template_id": profile.prompt_template_id,
+                "prompt_template_revision": profile.prompt_template_revision,
+                "negative_prompt_profile_id": profile.negative_prompt_profile_id,
+                "negative_prompt_profile_revision": profile.negative_prompt_profile_revision,
+                "unity_import_profile_id": profile.unity_import_profile_id,
             },
             "outputs": [
                 {
@@ -226,6 +252,7 @@ def _parse_versioned(payload: dict[str, Any], *, schema_version: str) -> Generat
     runtime = payload["runtime"]
     request = payload["request"]
     outputs_raw = payload["outputs"]
+    profile_raw = payload.get("profile")
 
     created = _parse_utc(generation["created_at_utc"])
     completed = _parse_utc(generation["completed_at_utc"])
@@ -285,6 +312,22 @@ def _parse_versioned(payload: dict[str, Any], *, schema_version: str) -> Generat
             output_name=str(request["output_name"]),
         ),
         outputs=outputs,
+        profile=(
+            ManifestProfileInfo()
+            if not isinstance(profile_raw, dict)
+            else ManifestProfileInfo(
+                generation_profile_id=profile_raw.get("generation_profile_id"),
+                generation_profile_revision=profile_raw.get("generation_profile_revision"),
+                profile_origin=str(profile_raw.get("profile_origin") or "none"),
+                prompt_template_id=profile_raw.get("prompt_template_id"),
+                prompt_template_revision=profile_raw.get("prompt_template_revision"),
+                negative_prompt_profile_id=profile_raw.get("negative_prompt_profile_id"),
+                negative_prompt_profile_revision=profile_raw.get(
+                    "negative_prompt_profile_revision"
+                ),
+                unity_import_profile_id=profile_raw.get("unity_import_profile_id"),
+            )
+        ),
     )
 
 
@@ -361,4 +404,5 @@ def _legacy_to_manifest(payload: dict[str, Any]) -> GenerationManifest:
                 byte_size=int(byte_size) if byte_size is not None else 0,
             )
         ],
+        profile=ManifestProfileInfo(),
     )

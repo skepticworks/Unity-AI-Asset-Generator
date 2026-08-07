@@ -4,6 +4,19 @@
 
 Editor-only package that talks to the local FastAPI backend, downloads generated PNGs by generation ID, imports them with deterministic `TextureImporter` profiles, optionally creates a material, and stores generation metadata in the project.
 
+## Milestone 4 profiles
+
+Generation starts with an asset type, generation profile, and subject. Unity resolves the
+profile's prompt template and negative prompt, applies explicit overrides, checks the effective
+settings against live backend capabilities, then submits constructed prompts with provenance.
+Built-ins are read from `Editor/Profiles/Builtin`; user profiles are atomically stored under
+`ProjectSettings/AIAssetGenerator/Profiles` and never under `Assets/`.
+
+Use **Tools → AI Asset Generator → Profiles** to create, duplicate, edit, import, export,
+validate, and reveal profiles. Built-ins are immutable and must be duplicated before editing.
+Sprite, icon, and UI catalogs are available for authoring/import settings, but generation is
+disabled unless the backend explicitly advertises the selected asset type.
+
 ## Install from disk
 
 1. Open your Unity project (2022.3 LTS or newer recommended).
@@ -49,7 +62,7 @@ Do **not** store Hugging Face tokens here.
 
 1. Click **Refresh Capabilities** (also happens automatically before the first generate).
 2. Click **Check Backend Connection**.
-3. Enter prompt / parameters. Fields show backend-enforced min/max/multiple hints once
+3. Select an asset type/profile and enter a subject. Fields show backend-enforced min/max/multiple hints once
    capabilities are loaded.
 4. Choose destination folder and import profile (**PS1 Pixel** or **Standard Environment**).
 5. Optionally enable **Create Material** and set shader / material folder.
@@ -95,7 +108,7 @@ written into `Assets/`. A mismatch is rejected outright rather than imported.
 | PS1 Pixel Texture | Point | Off | Uncompressed | NPOT scale None |
 | Standard Environment Texture | Bilinear | On | Compressed | Typical environment maps |
 
-Sprite profiles are reserved for a later milestone.
+Sprite/icon/UI import profiles are available. Their generation profiles remain capability-gated.
 
 ## Material creation
 

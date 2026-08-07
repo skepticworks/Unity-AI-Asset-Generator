@@ -1,8 +1,12 @@
 using System;
+using System.Linq;
+using UnityAiAssets.Editor.AssetTypes;
 using UnityAiAssets.Editor.Capabilities;
 using UnityAiAssets.Editor.Configuration;
 using UnityAiAssets.Editor.Generation;
 using UnityAiAssets.Editor.Importing;
+using UnityAiAssets.Editor.Profiles;
+using UnityAiAssets.Editor.Prompting;
 using UnityEditor;
 using UnityEngine;
 
@@ -16,6 +20,9 @@ namespace UnityAiAssets.Editor.UI
         TextureGenerationController _controller;
         TextureGenerationRequestModel _request;
         Vector2 _scroll;
+        AssetTypeRegistry _assetTypes;
+        GenerationProfileRegistry _profiles;
+        GenerationProfileResolver _resolver;
 
         [MenuItem("Tools/AI Asset Generator")]
         public static void Open()
@@ -35,16 +42,22 @@ namespace UnityAiAssets.Editor.UI
         {
             // EditorWindow serializes fields across domain reloads; plain C# objects
             // become null while a stale "_initialized" flag can remain true.
-            if (_controller != null && _request != null)
+            if (_controller != null && _request != null && _assetTypes != null && _profiles != null && _resolver != null)
             {
                 return;
             }
 
             var settings = UnityAiAssetSettings.instance;
+            _assetTypes = new AssetTypeRegistry();
+            _profiles = new GenerationProfileRegistry(userRoot: settings.UserProfileDirectoryAbsolute);
+            _resolver = new GenerationProfileResolver(new PromptTemplateRegistry(), new NegativePromptRegistry());
             _controller = new TextureGenerationController();
             _request = new TextureGenerationRequestModel
             {
                 DestinationFolder = settings.DefaultTextureDirectory,
+                AssetType = settings.DefaultAssetType,
+                SelectedProfileId = _assetTypes.Get(settings.DefaultAssetType).DefaultGenerationProfileId,
+                ImportProfileId = settings.DefaultImportProfileId,
                 MaterialDestinationFolder = settings.DefaultMaterialDirectory,
                 ImportProfile = settings.DefaultTextureImportProfile,
                 CreateMaterial = settings.CreateMaterialByDefault,
@@ -156,8 +169,54 @@ namespace UnityAiAssets.Editor.UI
         {
             var t2i = progress.Capabilities?.Operations?.TextToImage;
 
-            EditorGUILayout.LabelField("Prompt", EditorStyles.boldLabel);
-            _request.Prompt = EditorGUILayout.TextArea(_request.Prompt, GUILayout.MinHeight(60));
+            EditorGUILayout.LabelField("Profile", EditorStyles.boldLabel);
+            var assetTypes = _assetTypes.GetAll().ToArray();
+            var assetIndex = Math.Max(0, Array.FindIndex(assetTypes, item => item.Id == _request.AssetType));
+            var selectedAsset = EditorGUILayout.Popup("Asset Type", assetIndex, assetTypes.Select(x => x.DisplayName).ToArray());
+            if (selectedAsset != assetIndex)
+            {
+                if (!HasDirtyOverrides() || EditorUtility.DisplayDialog(
+                    "Replace Overrides?", "Switching asset type resets profile override fields.", "Switch", "Cancel"))
+                {
+                    _request.AssetType = assetTypes[selectedAsset].Id;
+                    _request.SelectedProfileId = assetTypes[selectedAsset].DefaultGenerationProfileId;
+                    ResetToProfileDefaults();
+                }
+            }
+            var profiles = _profiles.FilterByAssetType(_request.AssetType).ToArray();
+            var profileIndex = Math.Max(0, Array.FindIndex(profiles, item => item.Id == _request.SelectedProfileId));
+            if (profiles.Length > 0)
+            {
+                var labels = profiles.Select(profile =>
+                {
+                    var compatibility = GenerationProfileCompatibilityChecker.Check(profile, progress.Capabilities);
+                    return $"{profile.DisplayName} ({profile.Origin}, {compatibility.State})";
+                }).ToArray();
+                var selectedProfile = EditorGUILayout.Popup("Generation Profile", profileIndex, labels);
+                if (selectedProfile != profileIndex)
+                {
+                    if (!HasDirtyOverrides() || EditorUtility.DisplayDialog(
+                        "Replace Overrides?", "Switching profiles resets override fields.", "Switch", "Cancel"))
+                    {
+                        _request.SelectedProfileId = profiles[selectedProfile].Id;
+                        ResetToProfileDefaults();
+                    }
+                }
+                var current = profiles[Math.Min(selectedProfile, profiles.Length - 1)];
+                EditorGUILayout.HelpBox(current.Description + "\nTags: " + string.Join(", ", current.Tags) +
+                    $"\nSchema {current.SchemaVersion}, revision {current.Revision}", MessageType.None);
+            }
+
+            _request.Subject = EditorGUILayout.TextField("Subject", _request.Subject);
+            _request.AdditionalPrompt = EditorGUILayout.TextField("Additional Prompt", _request.AdditionalPrompt);
+            _request.AdditionalNegative = EditorGUILayout.TextField("Additional Negative", _request.AdditionalNegative);
+            UpdatePromptPreview(progress);
+            EditorGUILayout.LabelField("Prompt Preview", EditorStyles.boldLabel);
+            using (new EditorGUI.DisabledScope(true))
+            {
+                EditorGUILayout.TextArea(_request.PreviewPrompt, GUILayout.MinHeight(50));
+                EditorGUILayout.TextArea(_request.PreviewNegative, GUILayout.MinHeight(40));
+            }
             if (t2i != null)
             {
                 EditorGUILayout.LabelField(
@@ -166,7 +225,6 @@ namespace UnityAiAssets.Editor.UI
                     EditorStyles.miniLabel);
             }
 
-            _request.NegativePrompt = EditorGUILayout.TextField("Negative Prompt", _request.NegativePrompt);
             if (t2i != null && !t2i.NegativePrompt.Supported && !string.IsNullOrEmpty(_request.NegativePrompt))
             {
                 EditorGUILayout.HelpBox("The backend does not currently support a negative prompt.", MessageType.Warning);
@@ -212,9 +270,15 @@ namespace UnityAiAssets.Editor.UI
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Unity Import", EditorStyles.boldLabel);
             _request.DestinationFolder = EditorGUILayout.TextField("Destination Folder", _request.DestinationFolder);
+            var previousKind = _request.ImportProfile;
             _request.ImportProfile = (TextureImportProfileKind)EditorGUILayout.EnumPopup(
-                "Texture Import Profile",
+                "Legacy Import Kind",
                 _request.ImportProfile);
+            if (_request.ImportProfile != previousKind)
+            {
+                _request.ImportProfileId = TextureImportProfile.FromKind(_request.ImportProfile).Id;
+            }
+            _request.ImportProfileId = EditorGUILayout.TextField("Import Profile ID", _request.ImportProfileId);
             _request.CreateMaterial = EditorGUILayout.Toggle("Create Material", _request.CreateMaterial);
             using (new EditorGUI.DisabledScope(!_request.CreateMaterial))
             {
@@ -222,6 +286,70 @@ namespace UnityAiAssets.Editor.UI
                     "Material Destination",
                     _request.MaterialDestinationFolder);
                 _request.ShaderName = EditorGUILayout.TextField("Shader", _request.ShaderName);
+            }
+
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("Reset to Profile Defaults")) ResetToProfileDefaults();
+            if (GUILayout.Button("Duplicate Profile")) GenerationProfileManagerWindow.OpenWithProfile(_request.SelectedProfileId);
+            if (GUILayout.Button("Manage Profiles")) GenerationProfileManagerWindow.Open();
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("Create New Profile"))
+                GenerationProfileEditorWindow.OpenNew(new UserProfileRepository(
+                    UnityAiAssetSettings.instance.UserProfileDirectoryAbsolute));
+            using (new EditorGUI.DisabledScope(
+                !_profiles.TryGet(_request.SelectedProfileId, out var editable) || editable.Builtin))
+            {
+                if (GUILayout.Button("Edit User Profile"))
+                    GenerationProfileEditorWindow.Open(editable, new UserProfileRepository(
+                        UnityAiAssetSettings.instance.UserProfileDirectoryAbsolute));
+            }
+            EditorGUILayout.EndHorizontal();
+        }
+
+        void ResetToProfileDefaults()
+        {
+            if (!_profiles.TryGet(_request.SelectedProfileId, out var profile)) return;
+            _request.Width = profile.Defaults.Width;
+            _request.Height = profile.Defaults.Height;
+            _request.Steps = profile.Defaults.Steps;
+            _request.GuidanceScale = profile.Defaults.GuidanceScale;
+            _request.UseExplicitSeed = profile.Defaults.SeedStrategy == "fixed";
+            _request.Seed = profile.Defaults.FixedSeed ?? 0;
+            _request.DestinationFolder = profile.Unity.SuggestedOutputDirectory;
+            _request.ImportProfileId = profile.Unity.ImportProfileId;
+            _request.CreateMaterial = profile.Unity.CreateMaterial;
+        }
+
+        bool HasDirtyOverrides()
+        {
+            if (!_profiles.TryGet(_request.SelectedProfileId, out var profile)) return false;
+            return _request.Width != profile.Defaults.Width ||
+                   _request.Height != profile.Defaults.Height ||
+                   _request.Steps != profile.Defaults.Steps ||
+                   Math.Abs(_request.GuidanceScale - profile.Defaults.GuidanceScale) > 0.0001f ||
+                   _request.DestinationFolder != profile.Unity.SuggestedOutputDirectory ||
+                   _request.ImportProfileId != profile.Unity.ImportProfileId ||
+                   _request.CreateMaterial != profile.Unity.CreateMaterial;
+        }
+
+        void UpdatePromptPreview(TextureGenerationProgress progress)
+        {
+            try
+            {
+                var resolved = _resolver.Resolve(_profiles.Get(_request.SelectedProfileId), new UserProfileOverrides
+                {
+                    Subject = _request.Subject,
+                    AdditionalPrompt = _request.AdditionalPrompt,
+                    AdditionalNegative = _request.AdditionalNegative
+                }, progress.Capabilities);
+                _request.PreviewPrompt = _request.Prompt = resolved.ConstructedPrompt;
+                _request.PreviewNegative = _request.NegativePrompt = resolved.ConstructedNegativePrompt;
+            }
+            catch (Exception exception)
+            {
+                _request.PreviewPrompt = "Invalid profile input: " + exception.Message;
+                _request.PreviewNegative = string.Empty;
             }
         }
 
@@ -263,7 +391,12 @@ namespace UnityAiAssets.Editor.UI
 
         void DrawActions(TextureGenerationProgress progress, bool busy)
         {
-            var canGenerate = progress.CanGenerate;
+            var profileCompatibility = _profiles.TryGet(_request.SelectedProfileId, out var profile)
+                ? GenerationProfileCompatibilityChecker.Check(profile, progress.Capabilities)
+                : null;
+            var canGenerate = progress.CanGenerate &&
+                              profileCompatibility?.CanGenerate == true &&
+                              !string.IsNullOrWhiteSpace(_request.Subject);
 
             EditorGUILayout.BeginHorizontal();
             using (new EditorGUI.DisabledScope(busy))
@@ -294,7 +427,12 @@ namespace UnityAiAssets.Editor.UI
 
             if (!canGenerate && !busy)
             {
-                EditorGUILayout.HelpBox(GenerateUnavailableReason(progress), MessageType.Warning);
+                var reason = profileCompatibility != null && !profileCompatibility.CanGenerate
+                    ? string.Join("\n", profileCompatibility.Messages)
+                    : string.IsNullOrWhiteSpace(_request.Subject)
+                        ? "Generate is disabled: subject is required."
+                        : GenerateUnavailableReason(progress);
+                EditorGUILayout.HelpBox(reason, MessageType.Warning);
             }
 
             EditorGUILayout.BeginHorizontal();

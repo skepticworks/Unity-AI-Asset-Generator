@@ -154,5 +154,23 @@ namespace UnityAiAssets.Editor.Tests
             Assert.IsEmpty(manifest.Outputs);
             Assert.IsNull(manifest.FindOutput("image"));
         }
+
+        [Test]
+        public void Parse_ReadsOptionalProfileBlockFromManifest11()
+        {
+            var json = FixtureJson.Replace(
+                @"""version"": ""1.0""",
+                @"""version"": ""1.1""").Replace(
+                @"""outputs"": [",
+                @"""profile"": { ""generation_profile_id"": ""p"", ""generation_profile_revision"": 2,
+                    ""profile_origin"": ""builtin"", ""prompt_template_id"": ""t"",
+                    ""prompt_template_revision"": 1, ""negative_prompt_profile_id"": ""n"",
+                    ""negative_prompt_profile_revision"": 3, ""unity_import_profile_id"": ""i"" },
+                  ""outputs"": [");
+            var manifest = GenerationManifestDocument.Parse(json);
+            Assert.AreEqual("p", manifest.Profile.GenerationProfileId);
+            Assert.AreEqual("i", manifest.Profile.UnityImportProfileId);
+            Assert.AreEqual(1, manifest.SchemaVersionValue.Major);
+        }
     }
 }

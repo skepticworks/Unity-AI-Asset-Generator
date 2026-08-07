@@ -65,6 +65,18 @@ namespace UnityAiAssets.Editor.Api
         public long ByteSize;
     }
 
+    public sealed class ManifestProfileInfo
+    {
+        public string GenerationProfileId;
+        public int GenerationProfileRevision;
+        public string ProfileOrigin;
+        public string PromptTemplateId;
+        public int PromptTemplateRevision;
+        public string NegativePromptProfileId;
+        public int NegativePromptProfileRevision;
+        public string UnityImportProfileId;
+    }
+
     /// <summary>
     /// Typed, parsed form of a generation manifest document
     /// (GET /api/v1/generations/{id}/manifest, or the deprecated /metadata alias).
@@ -79,6 +91,7 @@ namespace UnityAiAssets.Editor.Api
         public ManifestModelInfo Model;
         public ManifestRuntimeInfo Runtime;
         public ManifestRequestInfo Request;
+        public ManifestProfileInfo Profile;
         public List<ManifestOutputInfo> Outputs = new List<ManifestOutputInfo>();
 
         public SchemaVersion SchemaVersionValue => SchemaVersion.Parse(Schema.Version);
@@ -130,6 +143,7 @@ namespace UnityAiAssets.Editor.Api
             var runtimeNode = root.Get("runtime");
             var requestNode = root.Get("request");
             var outputsNode = root.Get("outputs");
+            var profileNode = root.Get("profile");
 
             var document = new GenerationManifestDocument
             {
@@ -177,6 +191,17 @@ namespace UnityAiAssets.Editor.Api
                     Seed = requestNode.Get("seed").AsLong(),
                     OutputName = requestNode.Get("output_name").AsString(),
                 },
+                Profile = profileNode.IsObject ? new ManifestProfileInfo
+                {
+                    GenerationProfileId = profileNode.Get("generation_profile_id").AsString(),
+                    GenerationProfileRevision = profileNode.Get("generation_profile_revision").AsInt(),
+                    ProfileOrigin = profileNode.Get("profile_origin").AsString(),
+                    PromptTemplateId = profileNode.Get("prompt_template_id").AsString(),
+                    PromptTemplateRevision = profileNode.Get("prompt_template_revision").AsInt(),
+                    NegativePromptProfileId = profileNode.Get("negative_prompt_profile_id").AsString(),
+                    NegativePromptProfileRevision = profileNode.Get("negative_prompt_profile_revision").AsInt(),
+                    UnityImportProfileId = profileNode.Get("unity_import_profile_id").AsString()
+                } : null,
             };
 
             if (outputsNode.IsArray)

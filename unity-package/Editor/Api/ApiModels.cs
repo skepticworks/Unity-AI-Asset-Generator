@@ -31,6 +31,15 @@ namespace UnityAiAssets.Editor.Api
         public float guidance_scale = 7f;
         public long? seed;
         public string output_name = "texture";
+        public string generation_profile_id;
+        public int? generation_profile_revision;
+        public string profile_origin;
+        public string prompt_template_id;
+        public int? prompt_template_revision;
+        public string negative_prompt_profile_id;
+        public int? negative_prompt_profile_revision;
+        public string unity_import_profile_id;
+        public string asset_type;
 
         public string ToJson()
         {
@@ -48,6 +57,15 @@ namespace UnityAiAssets.Editor.Api
             }
 
             AppendString(sb, "output_name", output_name ?? "texture", first: false);
+            AppendOptionalString(sb, "generation_profile_id", generation_profile_id);
+            if (generation_profile_revision.HasValue) AppendNumber(sb, "generation_profile_revision", generation_profile_revision.Value);
+            AppendOptionalString(sb, "profile_origin", profile_origin);
+            AppendOptionalString(sb, "prompt_template_id", prompt_template_id);
+            if (prompt_template_revision.HasValue) AppendNumber(sb, "prompt_template_revision", prompt_template_revision.Value);
+            AppendOptionalString(sb, "negative_prompt_profile_id", negative_prompt_profile_id);
+            if (negative_prompt_profile_revision.HasValue) AppendNumber(sb, "negative_prompt_profile_revision", negative_prompt_profile_revision.Value);
+            AppendOptionalString(sb, "unity_import_profile_id", unity_import_profile_id);
+            AppendOptionalString(sb, "asset_type", asset_type);
             sb.Append('}');
             return sb.ToString();
         }
@@ -68,6 +86,11 @@ namespace UnityAiAssets.Editor.Api
             sb.Append(',');
             sb.Append('"').Append(key).Append("\":");
             sb.Append(value.ToString(CultureInfo.InvariantCulture));
+        }
+
+        static void AppendOptionalString(StringBuilder sb, string key, string value)
+        {
+            if (!string.IsNullOrWhiteSpace(value)) AppendString(sb, key, value, false);
         }
 
         static void AppendFloat(StringBuilder sb, string key, float value)

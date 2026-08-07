@@ -1,9 +1,9 @@
 {
   "name": "com.skepticworks.unity-ai-assets",
   "displayName": "Unity AI Asset Generator",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "unity": "2022.3",
-  "description": "Editor-only tools for generating textures via a local FastAPI backend and importing them with deterministic TextureImporter settings.",
+  "description": "Editor-only profile-driven asset generation via a local FastAPI backend with deterministic Unity imports.",
   "keywords": [
     "ai",
     "texture",

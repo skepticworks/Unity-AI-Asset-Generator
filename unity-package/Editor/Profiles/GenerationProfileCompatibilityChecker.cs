@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityAiAssets.Editor.Api;
+using UnityAiAssets.Editor.Capabilities;
 
 namespace UnityAiAssets.Editor.Profiles
 {
@@ -91,11 +92,12 @@ namespace UnityAiAssets.Editor.Profiles
                     CompatibilityReasonCodes.StepsOutOfRange, "Steps", result);
 
             if (operation.GuidanceScale != null &&
-                (guidanceScale < operation.GuidanceScale.Minimum || guidanceScale > operation.GuidanceScale.Maximum))
+                !CapabilityLimits.IsInRange(
+                    guidanceScale, operation.GuidanceScale.Minimum, operation.GuidanceScale.Maximum))
                 Add(result, CompatibilityReasonCodes.GuidanceOutOfRange, "Guidance is outside backend limits.");
 
             if (seed.HasValue && operation.Seed != null &&
-                (seed.Value < operation.Seed.Minimum || seed.Value > operation.Seed.Maximum))
+                !CapabilityLimits.IsInRange(seed.Value, operation.Seed.Minimum, operation.Seed.Maximum))
                 Add(result, CompatibilityReasonCodes.SeedOutOfRange, "Seed is outside backend limits.");
 
             result.State = result.ReasonCodes.Count == 0
@@ -106,12 +108,14 @@ namespace UnityAiAssets.Editor.Profiles
 
         static void Range(int value, int minimum, int maximum, string code, string label, ProfileCompatibility result)
         {
-            if (value < minimum || value > maximum) Add(result, code, label + " is outside backend limits.");
+            if (!CapabilityLimits.IsInRange(value, minimum, maximum))
+                Add(result, code, label + " is outside backend limits.");
         }
 
         static void Multiple(int value, int multiple, string code, string label, ProfileCompatibility result)
         {
-            if (multiple > 1 && value % multiple != 0) Add(result, code, label + " violates the backend multiple.");
+            if (!CapabilityLimits.IsMultiple(value, multiple))
+                Add(result, code, label + " violates the backend multiple.");
         }
 
         static void Add(ProfileCompatibility result, string code, string message)

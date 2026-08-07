@@ -9,7 +9,7 @@ namespace UnityAiAssets.Editor.Tests
         [Test] public void LoadsBuiltinProfile()
         {
             var path = Path.Combine(ProfilePaths.ResolveBuiltinRoot(), "generation", "ps1_environment_texture.json");
-            var result = GenerationProfileLoader.Load(path);
+            var result = GenerationProfileSchema.Load(path);
             Assert.IsTrue(result.IsValid, string.Join("\n", result.Issues));
             Assert.AreEqual("texture", result.Profile.AssetType);
         }

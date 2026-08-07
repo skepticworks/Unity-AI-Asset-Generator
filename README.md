@@ -2,7 +2,7 @@
 
 Local, AI-assisted generation of Unity-ready **2D game assets** using pretrained generative models (Hugging Face Diffusers) plus an **editor-only Unity package**. No ComfyUI.
 
-## Current milestone scope (Milestone 4)
+## Current milestone scope (Milestone 4.5 consolidation complete; product scope through Milestone 4)
 
 1. Versioned capability reporting (`GET /api/v1/capabilities`)
 2. Authoritative generation policy (single source of truth for limits)
@@ -13,6 +13,8 @@ Local, AI-assisted generation of Unity-ready **2D game assets** using pretrained
 7. Existing texture generation + Unity import workflows preserved
 8. Versioned built-in and user generation profiles, deterministic prompt resolution, migration,
    compatibility checks, and profile provenance in manifest schema 1.1
+9. Architecture consolidation: `ProfileCatalog`, `GenerationController`, `GeneratedAssetImporter`,
+   shared capability-limit checks, and unified request construction
 
 Automated Python tests use a **fake inference backend** and do **not** download models.
 
@@ -78,7 +80,7 @@ Bind defaults to **loopback**. Use a **single worker**.
 
 | Concern | Source | Notes |
 |---------|--------|-------|
-| Application semver | `pyproject.toml` / `core.version` | Currently `0.4.0` |
+| Application semver | `pyproject.toml` / `core.version` | Currently `0.4.1` |
 | API major/minor | `core.version` (`API_MAJOR_VERSION`, `API_MINOR_VERSION`) | Independent of app semver |
 | Capabilities schema | `capabilities_schema_version: "1.0"` | Independent of app semver |
 | Generation manifest schema | `generation_manifest_schema_version: "1.1"` | Profile provenance is additive |
@@ -182,7 +184,7 @@ Application codes include: `REQUEST_BODY_INVALID`, `GENERATION_REQUEST_INVALID`,
 
 ## Unity package
 
-Package path: [`unity-package/`](unity-package/) (version `0.4.0`)
+Package path: [`unity-package/`](unity-package/) (version `0.4.1`)
 
 ### Install from disk
 

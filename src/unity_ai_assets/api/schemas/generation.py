@@ -4,74 +4,11 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 from unity_ai_assets.core.version import GENERATION_MANIFEST_SCHEMA_VERSION
-from unity_ai_assets.domain.generation_policy import GenerationPolicy
 
 _PROFILE_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]*$"
-
-
-def build_texture_request_schema(policy: GenerationPolicy) -> type[BaseModel]:
-    """Build a request model whose Field constraints mirror the authoritative policy.
-
-    FastAPI route handlers typically use TextureGenerationRequest with deferred
-    authoritative validation in GenerationService; this helper exists for tests
-    that need policy-aligned Field metadata.
-    """
-
-    class DynamicTextureGenerationRequest(BaseModel):
-        prompt: str = Field(..., min_length=1, max_length=policy.maximum_prompt_length)
-        negative_prompt: str = Field(default="", max_length=policy.maximum_negative_prompt_length)
-        width: int = Field(
-            default=512,
-            ge=policy.minimum_width,
-            le=policy.maximum_width,
-        )
-        height: int = Field(
-            default=512,
-            ge=policy.minimum_height,
-            le=policy.maximum_height,
-        )
-        steps: int = Field(
-            default=policy.default_steps,
-            ge=policy.minimum_steps,
-            le=policy.maximum_steps,
-        )
-        guidance_scale: float = Field(
-            default=policy.default_guidance_scale,
-            ge=policy.minimum_guidance_scale,
-            le=policy.maximum_guidance_scale,
-        )
-        seed: int | None = Field(
-            default=None,
-            ge=policy.minimum_seed,
-            le=policy.maximum_seed,
-        )
-        output_name: str = Field(
-            default="texture",
-            min_length=1,
-            max_length=policy.maximum_output_name_length,
-        )
-        generation_profile_id: str | None = Field(
-            default=None, max_length=128, pattern=_PROFILE_ID_PATTERN
-        )
-        generation_profile_revision: int | None = Field(default=None, ge=1)
-        profile_origin: Literal["builtin", "user", "none"] | None = None
-        prompt_template_id: str | None = Field(
-            default=None, max_length=128, pattern=_PROFILE_ID_PATTERN
-        )
-        prompt_template_revision: int | None = Field(default=None, ge=1)
-        negative_prompt_profile_id: str | None = Field(
-            default=None, max_length=128, pattern=_PROFILE_ID_PATTERN
-        )
-        negative_prompt_profile_revision: int | None = Field(default=None, ge=1)
-        unity_import_profile_id: str | None = Field(
-            default=None, max_length=128, pattern=_PROFILE_ID_PATTERN
-        )
-        asset_type: Literal["texture"] = "texture"
-
-    return DynamicTextureGenerationRequest
 
 
 class TextureGenerationRequest(BaseModel):
@@ -147,8 +84,8 @@ class TextureGenerationResponse(BaseModel):
     schema_versions: GenerationSchemaVersions = Field(
         default_factory=GenerationSchemaVersions,
     )
-    # Deprecated: retained temporarily for local debugging / older clients.
-    # Unity package must not depend on these. Planned removal after Milestone 4.
+    # Deprecated wire-compatibility fields retained for older clients.
+    # The Unity package no longer consumes these aliases or filesystem paths.
     image_path: str | None = Field(
         default=None,
         description="Deprecated filesystem path for local debugging only",
@@ -181,17 +118,6 @@ class HealthResponse(BaseModel):
     request_id: str | None = None
 
 
-class ErrorFieldIssue(BaseModel):
-    """Field-level issue inside the stable error envelope."""
-
-    code: str
-    message: str
-    actual: Any | None = None
-    minimum: Any | None = None
-    maximum: Any | None = None
-    expected_multiple: int | None = None
-
-
 class ErrorBody(BaseModel):
     """Inner error object."""
 
@@ -205,7 +131,3 @@ class ErrorResponse(BaseModel):
     """Stable API error envelope."""
 
     error: ErrorBody
-
-
-# Prevent unused import warnings when validators are added later.
-_ = model_validator

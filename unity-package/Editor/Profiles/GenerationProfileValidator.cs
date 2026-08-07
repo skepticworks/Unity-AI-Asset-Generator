@@ -1,7 +1,5 @@
 using System.Collections.Generic;
 using UnityAiAssets.Editor.AssetTypes;
-using UnityAiAssets.Editor.Importing;
-using UnityAiAssets.Editor.Prompting;
 using System.Text.RegularExpressions;
 
 namespace UnityAiAssets.Editor.Profiles
@@ -36,19 +34,18 @@ namespace UnityAiAssets.Editor.Profiles
         }
 
         public static List<ValidationIssue> ValidateReferences(
-            GenerationProfile profile, PromptTemplateRegistry templates,
-            NegativePromptRegistry negatives, UnityImportProfileRegistry imports)
+            GenerationProfile profile, ProfileCatalog catalog)
         {
             var issues = new List<ValidationIssue>();
-            if (!templates.TryGet(profile.Prompt.TemplateId, out var template))
+            if (!catalog.TryGetPromptTemplate(profile.Prompt.TemplateId, out var template))
                 Missing("prompt.template_id", profile.Prompt.TemplateId, issues);
             else if (template.Revision != profile.Prompt.TemplateRevision)
                 Invalid("prompt.template_revision", "Referenced template revision is unavailable.", issues);
-            if (!negatives.TryGet(profile.NegativePrompt.ProfileId, out var negative))
+            if (!catalog.TryGetNegativeProfile(profile.NegativePrompt.ProfileId, out var negative))
                 Missing("negative_prompt.profile_id", profile.NegativePrompt.ProfileId, issues);
             else if (negative.Revision != profile.NegativePrompt.ProfileRevision)
                 Invalid("negative_prompt.profile_revision", "Referenced negative profile revision is unavailable.", issues);
-            if (!imports.TryGet(profile.Unity.ImportProfileId, out _))
+            if (!catalog.TryGetImportProfile(profile.Unity.ImportProfileId, out _))
                 Missing("unity.import_profile_id", profile.Unity.ImportProfileId, issues);
             return issues;
         }

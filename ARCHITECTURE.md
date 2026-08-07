@@ -6,7 +6,7 @@ Local FastAPI texture generation (Diffusers behind an inference protocol) plus a
 
 **ComfyUI is not used** in any form.
 
-Application/package version: **0.4.0** (Milestone 4 — profile-driven Unity generation).
+Application/package version: **0.4.1** (Milestone 4.5 — architecture consolidation).
 
 ## Backend component responsibilities
 
@@ -37,20 +37,22 @@ Application/package version: **0.4.0** (Milestone 4 — profile-driven Unity gen
 | `Editor/Capabilities/` | Cache, compatibility checker, preflight validator, state |
 | `Editor/Integrity/` | PNG byte-size + SHA-256 verification |
 | `Editor/Configuration/` | Project Settings |
-| `Editor/Generation/` | Request model, state, controller orchestration |
-| `Editor/Importing/` | Path utilities, import profiles, texture importer, materials |
+| `Editor/Generation/` | Request model/factory, state, `GenerationController` orchestration |
+| `Editor/Importing/` | Path utilities, import profiles, `GeneratedAssetImporter`, materials |
 | `Editor/Metadata/` | Manifest-aware ScriptableObject + importer |
 | `Editor/UI/` | `Tools > AI Asset Generator` window |
 | `Editor/Tests/` | Edit Mode tests (capabilities, errors, manifests, integrity) |
-| `Editor/AssetTypes/` | Asset type catalog and defaults |
-| `Editor/Prompting/` | Prompt/negative profile catalogs and deterministic resolution |
-| `Editor/Profiles/` | Generation schema, registry, compatibility, persistence, migration |
+| `Editor/AssetTypes/` | Asset type contracts |
+| `Editor/Prompting/` | Prompt/negative contracts and deterministic resolution |
+| `Editor/Profiles/` | `ProfileCatalog`, generation registry/schema, compatibility, persistence, migration |
 
 ## Milestone 4 profile loading and persistence
 
 ```mermaid
 flowchart LR
-  Builtin[Package Builtin JSON] --> Registry[GenerationProfileRegistry]
+  Builtin[Package Builtin JSON] --> Catalog[ProfileCatalog]
+  Builtin --> Registry[GenerationProfileRegistry]
+  Catalog --> Registry
   User[ProjectSettings user JSON] --> Registry
   Registry -->|one bad file| Errors[LoadErrors]
   Manager[Profile Manager] --> Repo[UserProfileRepository]
@@ -66,12 +68,14 @@ and `Copy of …`; renaming changes only `display_name`, preserving `<id>.json`.
 ```mermaid
 sequenceDiagram
   participant UI as Generator Window
-  participant Reg as Profile Registries
+  participant Cat as ProfileCatalog
+  participant Reg as GenerationProfileRegistry
   participant Res as Profile Resolver
   participant Caps as Backend Capabilities
-  UI->>Reg: asset type + profile id
+  UI->>Cat: asset type defaults
+  UI->>Reg: generation profile id
   UI->>Res: subject + explicit overrides
-  Res->>Reg: template + negative + import refs
+  Res->>Cat: template + negative + import refs
   Res->>Caps: check effective asset type/settings
   alt unsupported asset type or limits
     Res-->>UI: incompatible reasons (no clamp)
@@ -111,10 +115,10 @@ flowchart TD
 ```mermaid
 flowchart TB
   UI[Editor UI]
-  Ctrl[Generation Controller]
+  Ctrl[GenerationController]
   Caps[Capability Cache / Validator]
   ApiClient[Typed API Client]
-  Import[Importer / Integrity / Materials]
+  Import[GeneratedAssetImporter / Integrity / Materials]
   Meta[Metadata]
   Settings[Project Settings]
   FastAPI[FastAPI routes]
@@ -148,7 +152,7 @@ Unity never imports Diffusers types. Public schemas never expose Python class pa
 ```mermaid
 sequenceDiagram
     participant Win as EditorWindow
-    participant Ctrl as Controller
+    participant Ctrl as GenerationController
     participant Cache as CapabilityCache
     participant Client as ApiClient
     participant API as GET /capabilities
@@ -235,10 +239,10 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant Ctrl as Controller
+    participant Ctrl as GenerationController
     participant Client as ApiClient
     participant Ver as ImageIntegrityVerifier
-    participant Imp as TextureImporter
+    participant Imp as GeneratedAssetImporter
 
     Ctrl->>Client: GET resources.image
     Client-->>Ctrl: PNG bytes
@@ -278,3 +282,12 @@ sequenceDiagram
 5. Add policy constraints if the operation introduces new parameters
 6. Bump capability schema **minor** for additive fields; **major** for breaking changes
 7. Update fixtures, Unity models, validators, and docs together
+
+## Milestone 5 extension boundary
+
+Milestone 5 should retain the common path through `GenerationController`: resolve a generation
+profile, construct a wire DTO, validate capabilities, submit, download by `generation_id`, verify,
+and record metadata. Asset-specific behavior begins only after verification. Import dispatch can
+select texture, sprite, or other asset handling, and material creation remains an optional
+asset-specific step. New asset types extend catalog data and import behavior without duplicating
+transport, provenance, capability, or persistence orchestration.

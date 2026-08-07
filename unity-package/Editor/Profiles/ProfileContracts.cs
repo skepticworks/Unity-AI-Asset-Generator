@@ -1,5 +1,15 @@
 namespace UnityAiAssets.Editor.Profiles
 {
+    public static class ProfileSchemaVersions
+    {
+        public const string GenerationProfile = "1.0";
+        public const string PromptTemplate = "1.0";
+        public const string NegativePrompt = "1.0";
+        public const string GenerationProfileSchemaName = "generation-profile";
+        public const string PromptTemplateSchemaName = "prompt-template";
+        public const string NegativePromptSchemaName = "negative-prompt-profile";
+    }
+
     public static class ProfileErrorCodes
     {
         public const string InvalidJson = "PROFILE_INVALID_JSON";
@@ -32,5 +42,34 @@ namespace UnityAiAssets.Editor.Profiles
         public const string ImportFailed = "PROFILE_IMPORT_FAILED";
         public const string ExportFailed = "PROFILE_EXPORT_FAILED";
         public const string Conflict = "PROFILE_CONFLICT";
+    }
+
+    public enum ProfileCompatibilityState
+    {
+        Compatible,
+        Incompatible,
+        PartiallySupported,
+        Unknown
+    }
+
+    public static class CompatibilityReasonCodes
+    {
+        public const string CapabilitiesUnavailable = "CAPABILITIES_UNAVAILABLE";
+        public const string OperationUnsupported = "OPERATION_UNSUPPORTED";
+        public const string AssetTypeUnsupported = "ASSET_TYPE_UNSUPPORTED";
+        public const string WidthOutOfRange = "WIDTH_OUT_OF_RANGE";
+        public const string HeightOutOfRange = "HEIGHT_OUT_OF_RANGE";
+        public const string StepsOutOfRange = "STEPS_OUT_OF_RANGE";
+        public const string GuidanceOutOfRange = "GUIDANCE_OUT_OF_RANGE";
+        public const string NegativePromptUnsupported = "NEGATIVE_PROMPT_UNSUPPORTED";
+        public const string WidthMultipleInvalid = "WIDTH_MULTIPLE_INVALID";
+        public const string HeightMultipleInvalid = "HEIGHT_MULTIPLE_INVALID";
+        public const string ImportProfileUnknown = "IMPORT_PROFILE_UNKNOWN";
+        public const string TemplateUnknown = "TEMPLATE_UNKNOWN";
+        public const string NegativeProfileUnknown = "NEGATIVE_PROFILE_UNKNOWN";
+        public const string SchemaVersionUnsupported = "SCHEMA_VERSION_UNSUPPORTED";
+        public const string SeedOutOfRange = "SEED_OUT_OF_RANGE";
+        public const string PromptTooLong = "PROMPT_TOO_LONG";
+        public const string NegativePromptTooLong = "NEGATIVE_PROMPT_TOO_LONG";
     }
 }

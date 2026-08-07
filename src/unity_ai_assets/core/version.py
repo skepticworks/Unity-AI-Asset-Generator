@@ -31,7 +31,7 @@ UNITY_IMPORT_PROFILE_CATALOG_SCHEMA_VERSION: str = "1.0"
 
 # --- Application identity ---
 APPLICATION_NAME: str = "unity-ai-asset-generator"
-APPLICATION_VERSION_FALLBACK: str = "0.4.0"
+APPLICATION_VERSION_FALLBACK: str = "0.4.1"
 PACKAGE_DISTRIBUTION_NAME: str = "unity-ai-assets"
 
 

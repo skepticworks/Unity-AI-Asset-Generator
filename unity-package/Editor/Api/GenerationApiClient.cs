@@ -24,6 +24,15 @@ namespace UnityAiAssets.Editor.Api
         Task<byte[]> DownloadGenerationImageAsync(string generationId, CancellationToken cancellationToken);
 
         /// <summary>
+        /// Downloads the generation PNG, preferring an explicit resource path
+        /// (typically <c>resources.image</c>) and falling back to the conventional image endpoint.
+        /// </summary>
+        Task<byte[]> DownloadGenerationImageAsync(
+            string generationId,
+            string imageResourcePath,
+            CancellationToken cancellationToken);
+
+        /// <summary>
         /// Downloads the versioned generation manifest, preferring an explicit resource path
         /// (typically <c>resources.manifest</c> from the generation response) and falling back
         /// to the conventional <c>/manifest</c> endpoint when none is supplied.
@@ -75,31 +84,20 @@ namespace UnityAiAssets.Editor.Api
 
         public async Task<HealthResponseDto> GetHealthAsync(CancellationToken cancellationToken)
         {
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Min(30, _timeoutSeconds)));
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-            using var request = new HttpRequestMessage(HttpMethod.Get, Trim(ApiEndpoints.Health));
-            using var response = await SendAsync(request, linked.Token, cancellationToken).ConfigureAwait(true);
-            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
-            EnsureSuccess(response, body);
+            var body = await GetStringAsync(
+                ApiEndpoints.Health, Math.Min(30, _timeoutSeconds), cancellationToken).ConfigureAwait(true);
             return Deserialize<HealthResponseDto>(body);
         }
 
         public async Task<CapabilityDocument> GetCapabilitiesAsync(CancellationToken cancellationToken)
         {
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Min(30, _timeoutSeconds)));
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-            using var request = new HttpRequestMessage(HttpMethod.Get, Trim(ApiEndpoints.Capabilities));
-            using var response = await SendAsync(request, linked.Token, cancellationToken).ConfigureAwait(true);
-            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
-            EnsureSuccess(response, body);
+            var body = await GetStringAsync(
+                ApiEndpoints.Capabilities, Math.Min(30, _timeoutSeconds), cancellationToken).ConfigureAwait(true);
             if (!CapabilityDocument.TryParse(body, out var document))
             {
                 throw new ApiException(
                     "Failed to parse the capabilities document returned by the backend.",
                     ApiFailureKind.Deserialization,
-                    response.StatusCode,
                     requestId: LastRequestId);
             }
 
@@ -115,44 +113,34 @@ namespace UnityAiAssets.Editor.Api
                 throw new ArgumentNullException(nameof(requestDto));
             }
 
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_timeoutSeconds));
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-            using var request = new HttpRequestMessage(HttpMethod.Post, Trim(ApiEndpoints.GenerateTexture))
-            {
-                Content = new StringContent(requestDto.ToJson(), Encoding.UTF8, "application/json")
-            };
-            using var response = await SendAsync(request, linked.Token, cancellationToken).ConfigureAwait(true);
-            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
-            EnsureSuccess(response, body);
+            var body = await PostJsonAsync(
+                ApiEndpoints.GenerateTexture, requestDto.ToJson(), _timeoutSeconds, cancellationToken)
+                .ConfigureAwait(true);
             return Deserialize<TextureGenerationResponseDto>(body);
         }
 
         public async Task<byte[]> DownloadGenerationImageAsync(
             string generationId,
+            CancellationToken cancellationToken) =>
+            await DownloadGenerationImageAsync(generationId, null, cancellationToken).ConfigureAwait(true);
+
+        public async Task<byte[]> DownloadGenerationImageAsync(
+            string generationId,
+            string imageResourcePath,
             CancellationToken cancellationToken)
         {
             ValidateGenerationId(generationId);
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_timeoutSeconds));
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-            using var request = new HttpRequestMessage(
-                HttpMethod.Get,
-                Trim(ApiEndpoints.GenerationImage(generationId)));
-            using var response = await SendAsync(request, linked.Token, cancellationToken).ConfigureAwait(true);
-            if (!response.IsSuccessStatusCode)
-            {
-                var errorBody = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
-                EnsureSuccess(response, errorBody);
-            }
-
-            var bytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(true);
+            var path = string.IsNullOrWhiteSpace(imageResourcePath)
+                ? ApiEndpoints.GenerationImage(generationId)
+                : imageResourcePath;
+            var bytes = await GetBytesAsync(
+                path, _timeoutSeconds, cancellationToken)
+                .ConfigureAwait(true);
             if (bytes == null || bytes.Length == 0)
             {
                 throw new ApiException(
                     "Image download returned empty content.",
                     ApiFailureKind.Deserialization,
-                    response.StatusCode,
                     requestId: LastRequestId);
             }
 
@@ -162,7 +150,6 @@ namespace UnityAiAssets.Editor.Api
                 throw new ApiException(
                     "Image download did not contain a PNG payload.",
                     ApiFailureKind.Deserialization,
-                    response.StatusCode,
                     requestId: LastRequestId);
             }
 
@@ -175,23 +162,15 @@ namespace UnityAiAssets.Editor.Api
             CancellationToken cancellationToken)
         {
             ValidateGenerationId(generationId);
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_timeoutSeconds));
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
             var path = string.IsNullOrWhiteSpace(manifestResourcePath)
                 ? ApiEndpoints.GenerationManifest(generationId)
                 : manifestResourcePath;
-
-            using var request = new HttpRequestMessage(HttpMethod.Get, TrimOrAbsolute(path));
-            using var response = await SendAsync(request, linked.Token, cancellationToken).ConfigureAwait(true);
-            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
-            EnsureSuccess(response, body);
+            var body = await GetStringAsync(path, _timeoutSeconds, cancellationToken).ConfigureAwait(true);
             if (!GenerationManifestDocument.TryParse(body, out var document))
             {
                 throw new ApiException(
                     "Failed to parse the generation manifest returned by the backend.",
                     ApiFailureKind.Deserialization,
-                    response.StatusCode,
                     requestId: LastRequestId);
             }
 
@@ -203,22 +182,66 @@ namespace UnityAiAssets.Editor.Api
             CancellationToken cancellationToken)
         {
             ValidateGenerationId(generationId);
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_timeoutSeconds));
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+            var body = await GetStringAsync(
+                ApiEndpoints.GenerationMetadata(generationId), _timeoutSeconds, cancellationToken)
+                .ConfigureAwait(true);
+            return Deserialize<BackendMetadataDto>(body);
+        }
 
-            using var request = new HttpRequestMessage(
-                HttpMethod.Get,
-                Trim(ApiEndpoints.GenerationMetadata(generationId)));
-            using var response = await SendAsync(request, linked.Token, cancellationToken).ConfigureAwait(true);
+        async Task<string> GetStringAsync(
+            string path, int timeoutSeconds, CancellationToken cancellationToken)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, TrimOrAbsolute(path));
+            using var response = await SendWithTimeoutAsync(request, timeoutSeconds, cancellationToken)
+                .ConfigureAwait(true);
             var body = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
             EnsureSuccess(response, body);
-            return Deserialize<BackendMetadataDto>(body);
+            return body;
+        }
+
+        async Task<string> PostJsonAsync(
+            string path, string json, int timeoutSeconds, CancellationToken cancellationToken)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, TrimOrAbsolute(path))
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+            using var response = await SendWithTimeoutAsync(request, timeoutSeconds, cancellationToken)
+                .ConfigureAwait(true);
+            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
+            EnsureSuccess(response, body);
+            return body;
+        }
+
+        async Task<byte[]> GetBytesAsync(
+            string path, int timeoutSeconds, CancellationToken cancellationToken)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, TrimOrAbsolute(path));
+            using var response = await SendWithTimeoutAsync(request, timeoutSeconds, cancellationToken)
+                .ConfigureAwait(true);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
+                EnsureSuccess(response, body);
+            }
+            return await response.Content.ReadAsByteArrayAsync().ConfigureAwait(true);
+        }
+
+        async Task<HttpResponseMessage> SendWithTimeoutAsync(
+            HttpRequestMessage request, int timeoutSeconds, CancellationToken cancellationToken)
+        {
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken, timeoutCts.Token);
+            return await SendAsync(request, linked.Token, cancellationToken, timeoutSeconds)
+                .ConfigureAwait(true);
         }
 
         async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken linkedToken,
-            CancellationToken userToken)
+            CancellationToken userToken,
+            int timeoutSeconds)
         {
             try
             {
@@ -239,7 +262,7 @@ namespace UnityAiAssets.Editor.Api
             catch (OperationCanceledException)
             {
                 throw new ApiException(
-                    $"Request timed out after {_timeoutSeconds}s. " +
+                    $"Request timed out after {timeoutSeconds}s. " +
                     "Increase API Timeout in Project Settings, or lower width/height/steps. " +
                     "Check the Python backend console for activity.",
                     ApiFailureKind.Timeout);

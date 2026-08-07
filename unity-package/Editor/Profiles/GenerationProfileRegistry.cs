@@ -2,8 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using UnityAiAssets.Editor.Importing;
-using UnityAiAssets.Editor.Prompting;
 
 namespace UnityAiAssets.Editor.Profiles
 {
@@ -24,19 +22,20 @@ namespace UnityAiAssets.Editor.Profiles
         public string BuiltinRoot { get; }
         public string UserRoot { get; }
 
-        public GenerationProfileRegistry(string builtinRoot = null, string userRoot = null)
+        public GenerationProfileRegistry(
+            string builtinRoot = null,
+            string userRoot = null,
+            ProfileCatalog catalog = null)
         {
             BuiltinRoot = builtinRoot ?? ProfilePaths.ResolveBuiltinRoot();
             UserRoot = userRoot;
             LoadDirectory(Path.Combine(BuiltinRoot, "generation"), true);
             if (!string.IsNullOrWhiteSpace(UserRoot) && Directory.Exists(UserRoot))
                 LoadDirectory(UserRoot, false);
-            var templates = new PromptTemplateRegistry(BuiltinRoot);
-            var negatives = new NegativePromptRegistry(BuiltinRoot);
-            var imports = new UnityImportProfileRegistry(BuiltinRoot);
+            catalog = catalog ?? new ProfileCatalog(BuiltinRoot);
             foreach (var profile in _items.Values.ToArray())
             {
-                foreach (var issue in GenerationProfileValidator.ValidateReferences(profile, templates, negatives, imports))
+                foreach (var issue in GenerationProfileValidator.ValidateReferences(profile, catalog))
                     LoadErrors.Add(new ProfileLoadError
                     {
                         Path = profile.SourcePath, Code = issue.Code, Message = issue.ToString()
@@ -57,9 +56,9 @@ namespace UnityAiAssets.Editor.Profiles
         void LoadDirectory(string directory, bool builtin)
         {
             if (!Directory.Exists(directory)) return;
-            foreach (var path in Directory.GetFiles(directory).Where(GenerationProfileLoader.IsCandidate).OrderBy(x => x))
+            foreach (var path in Directory.GetFiles(directory).Where(GenerationProfileSchema.IsCandidate).OrderBy(x => x))
             {
-                var result = GenerationProfileLoader.Load(path);
+                var result = GenerationProfileSchema.Load(path);
                 if (!result.IsValid)
                 {
                     foreach (var issue in result.Issues)

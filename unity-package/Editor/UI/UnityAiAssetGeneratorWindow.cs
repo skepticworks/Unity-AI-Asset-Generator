@@ -1,12 +1,10 @@
 using System;
 using System.Linq;
-using UnityAiAssets.Editor.AssetTypes;
 using UnityAiAssets.Editor.Capabilities;
 using UnityAiAssets.Editor.Configuration;
 using UnityAiAssets.Editor.Generation;
 using UnityAiAssets.Editor.Importing;
 using UnityAiAssets.Editor.Profiles;
-using UnityAiAssets.Editor.Prompting;
 using UnityEditor;
 using UnityEngine;
 
@@ -17,10 +15,10 @@ namespace UnityAiAssets.Editor.UI
     /// </summary>
     public sealed class UnityAiAssetGeneratorWindow : EditorWindow
     {
-        TextureGenerationController _controller;
+        GenerationController _controller;
         TextureGenerationRequestModel _request;
         Vector2 _scroll;
-        AssetTypeRegistry _assetTypes;
+        ProfileCatalog _catalog;
         GenerationProfileRegistry _profiles;
         GenerationProfileResolver _resolver;
 
@@ -42,21 +40,23 @@ namespace UnityAiAssets.Editor.UI
         {
             // EditorWindow serializes fields across domain reloads; plain C# objects
             // become null while a stale "_initialized" flag can remain true.
-            if (_controller != null && _request != null && _assetTypes != null && _profiles != null && _resolver != null)
+            if (_controller != null && _request != null && _catalog != null && _profiles != null && _resolver != null)
             {
                 return;
             }
 
             var settings = UnityAiAssetSettings.instance;
-            _assetTypes = new AssetTypeRegistry();
-            _profiles = new GenerationProfileRegistry(userRoot: settings.UserProfileDirectoryAbsolute);
-            _resolver = new GenerationProfileResolver(new PromptTemplateRegistry(), new NegativePromptRegistry());
-            _controller = new TextureGenerationController();
+            _catalog = new ProfileCatalog();
+            _profiles = new GenerationProfileRegistry(
+                userRoot: settings.UserProfileDirectoryAbsolute, catalog: _catalog);
+            _resolver = new GenerationProfileResolver(_catalog);
+            _controller = new GenerationController(
+                profileRegistry: _profiles, profileResolver: _resolver, catalog: _catalog);
             _request = new TextureGenerationRequestModel
             {
                 DestinationFolder = settings.DefaultTextureDirectory,
                 AssetType = settings.DefaultAssetType,
-                SelectedProfileId = _assetTypes.Get(settings.DefaultAssetType).DefaultGenerationProfileId,
+                SelectedProfileId = _catalog.GetAssetType(settings.DefaultAssetType).DefaultGenerationProfileId,
                 ImportProfileId = settings.DefaultImportProfileId,
                 MaterialDestinationFolder = settings.DefaultMaterialDirectory,
                 ImportProfile = settings.DefaultTextureImportProfile,
@@ -105,7 +105,7 @@ namespace UnityAiAssets.Editor.UI
             EditorGUILayout.EndScrollView();
         }
 
-        void DrawCapabilitiesSection(TextureGenerationProgress progress, bool busy)
+        void DrawCapabilitiesSection(GenerationProgress progress, bool busy)
         {
             EditorGUILayout.LabelField("Backend Capabilities", EditorStyles.boldLabel);
 
@@ -165,12 +165,12 @@ namespace UnityAiAssets.Editor.UI
             }
         }
 
-        void DrawRequestFields(TextureGenerationProgress progress)
+        void DrawRequestFields(GenerationProgress progress)
         {
             var t2i = progress.Capabilities?.Operations?.TextToImage;
 
             EditorGUILayout.LabelField("Profile", EditorStyles.boldLabel);
-            var assetTypes = _assetTypes.GetAll().ToArray();
+            var assetTypes = _catalog.GetAssetTypes().ToArray();
             var assetIndex = Math.Max(0, Array.FindIndex(assetTypes, item => item.Id == _request.AssetType));
             var selectedAsset = EditorGUILayout.Popup("Asset Type", assetIndex, assetTypes.Select(x => x.DisplayName).ToArray());
             if (selectedAsset != assetIndex)
@@ -270,15 +270,16 @@ namespace UnityAiAssets.Editor.UI
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Unity Import", EditorStyles.boldLabel);
             _request.DestinationFolder = EditorGUILayout.TextField("Destination Folder", _request.DestinationFolder);
+            _request.ImportProfileId = EditorGUILayout.TextField(
+                "Import Profile ID (Primary)", _request.ImportProfileId);
             var previousKind = _request.ImportProfile;
             _request.ImportProfile = (TextureImportProfileKind)EditorGUILayout.EnumPopup(
-                "Legacy Import Kind",
+                "Legacy Import Kind (Secondary)",
                 _request.ImportProfile);
             if (_request.ImportProfile != previousKind)
             {
                 _request.ImportProfileId = TextureImportProfile.FromKind(_request.ImportProfile).Id;
             }
-            _request.ImportProfileId = EditorGUILayout.TextField("Import Profile ID", _request.ImportProfileId);
             _request.CreateMaterial = EditorGUILayout.Toggle("Create Material", _request.CreateMaterial);
             using (new EditorGUI.DisabledScope(!_request.CreateMaterial))
             {
@@ -333,7 +334,7 @@ namespace UnityAiAssets.Editor.UI
                    _request.CreateMaterial != profile.Unity.CreateMaterial;
         }
 
-        void UpdatePromptPreview(TextureGenerationProgress progress)
+        void UpdatePromptPreview(GenerationProgress progress)
         {
             try
             {
@@ -343,8 +344,9 @@ namespace UnityAiAssets.Editor.UI
                     AdditionalPrompt = _request.AdditionalPrompt,
                     AdditionalNegative = _request.AdditionalNegative
                 }, progress.Capabilities);
-                _request.PreviewPrompt = _request.Prompt = resolved.ConstructedPrompt;
-                _request.PreviewNegative = _request.NegativePrompt = resolved.ConstructedNegativePrompt;
+                var dto = GenerationRequestFactory.FromResolved(resolved, _request);
+                _request.PreviewPrompt = _request.Prompt = dto.prompt;
+                _request.PreviewNegative = _request.NegativePrompt = dto.negative_prompt;
             }
             catch (Exception exception)
             {
@@ -389,7 +391,7 @@ namespace UnityAiAssets.Editor.UI
             }
         }
 
-        void DrawActions(TextureGenerationProgress progress, bool busy)
+        void DrawActions(GenerationProgress progress, bool busy)
         {
             var profileCompatibility = _profiles.TryGet(_request.SelectedProfileId, out var profile)
                 ? GenerationProfileCompatibilityChecker.Check(profile, progress.Capabilities)
@@ -457,7 +459,7 @@ namespace UnityAiAssets.Editor.UI
             EditorGUILayout.EndHorizontal();
         }
 
-        static string GenerateUnavailableReason(TextureGenerationProgress progress)
+        static string GenerateUnavailableReason(GenerationProgress progress)
         {
             switch (progress.CapabilityState)
             {
@@ -476,7 +478,7 @@ namespace UnityAiAssets.Editor.UI
             }
         }
 
-        void DrawStatus(TextureGenerationProgress progress)
+        void DrawStatus(GenerationProgress progress)
         {
             EditorGUILayout.LabelField("Status", EditorStyles.boldLabel);
             EditorGUILayout.LabelField("State", progress.State.ToString());
@@ -538,7 +540,7 @@ namespace UnityAiAssets.Editor.UI
             RepaintIfBusy(progress);
         }
 
-        void RepaintIfBusy(TextureGenerationProgress progress)
+        void RepaintIfBusy(GenerationProgress progress)
         {
             if (progress.State == GenerationState.CheckingConnection ||
                 progress.State == GenerationState.Submitting ||

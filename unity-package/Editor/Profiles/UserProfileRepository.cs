@@ -50,7 +50,7 @@ namespace UnityAiAssets.Editor.Profiles
             if (File.Exists(path))
             {
                 if (!overwrite) throw new IOException(ProfileErrorCodes.OverwriteRefused);
-                var existing = GenerationProfileLoader.Load(path).Profile;
+                var existing = GenerationProfileSchema.Load(path).Profile;
                 if (existing != null)
                 {
                     profile.Revision = existing.Revision;
@@ -84,7 +84,7 @@ namespace UnityAiAssets.Editor.Profiles
             bool overwrite = false,
             System.Collections.Generic.ISet<string> builtinIds = null)
         {
-            var result = GenerationProfileLoader.Load(sourcePath);
+            var result = GenerationProfileSchema.Load(sourcePath);
             if (!result.IsValid) throw new FormatException(string.Join("\n", result.Issues));
             result.Profile.Builtin = false;
             if (builtinIds != null && builtinIds.Contains(result.Profile.Id))

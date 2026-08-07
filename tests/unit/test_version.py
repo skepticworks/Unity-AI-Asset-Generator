@@ -27,7 +27,7 @@ def test_schema_versions() -> None:
 
 def test_application_identity() -> None:
     assert APPLICATION_NAME == "unity-ai-asset-generator"
-    assert APPLICATION_VERSION_FALLBACK == "0.4.0"
+    assert APPLICATION_VERSION_FALLBACK == "0.4.1"
     assert APPLICATION_VERSION
     # Must match packaging metadata or the documented fallback.
     resolved = resolve_application_version()

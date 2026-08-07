@@ -167,7 +167,7 @@ namespace UnityAiAssets.Editor.Capabilities
             string fieldName, int value, int minimum, int maximum, int multiple,
             List<CapabilityValidationIssue> issues)
         {
-            if (value < minimum)
+            if (!CapabilityLimits.IsInRange(value, minimum, int.MaxValue))
             {
                 issues.Add(new CapabilityValidationIssue
                 {
@@ -177,7 +177,7 @@ namespace UnityAiAssets.Editor.Capabilities
                 });
             }
 
-            if (value > maximum)
+            if (!CapabilityLimits.IsInRange(value, int.MinValue, maximum))
             {
                 issues.Add(new CapabilityValidationIssue
                 {
@@ -187,7 +187,7 @@ namespace UnityAiAssets.Editor.Capabilities
                 });
             }
 
-            if (multiple > 0 && value % multiple != 0)
+            if (!CapabilityLimits.IsMultiple(value, multiple))
             {
                 issues.Add(new CapabilityValidationIssue
                 {
@@ -201,7 +201,7 @@ namespace UnityAiAssets.Editor.Capabilities
         static void ValidateIntRange(
             string fieldName, int value, int minimum, int maximum, List<CapabilityValidationIssue> issues)
         {
-            if (value < minimum)
+            if (!CapabilityLimits.IsInRange(value, minimum, int.MaxValue))
             {
                 issues.Add(new CapabilityValidationIssue
                 {
@@ -211,7 +211,7 @@ namespace UnityAiAssets.Editor.Capabilities
                 });
             }
 
-            if (value > maximum)
+            if (!CapabilityLimits.IsInRange(value, int.MinValue, maximum))
             {
                 issues.Add(new CapabilityValidationIssue
                 {
@@ -225,7 +225,7 @@ namespace UnityAiAssets.Editor.Capabilities
         static void ValidateFloatRange(
             string fieldName, float value, float minimum, float maximum, List<CapabilityValidationIssue> issues)
         {
-            if (value < minimum)
+            if (!CapabilityLimits.IsInRange(value, minimum, float.MaxValue))
             {
                 issues.Add(new CapabilityValidationIssue
                 {
@@ -235,7 +235,7 @@ namespace UnityAiAssets.Editor.Capabilities
                 });
             }
 
-            if (value > maximum)
+            if (!CapabilityLimits.IsInRange(value, float.MinValue, maximum))
             {
                 issues.Add(new CapabilityValidationIssue
                 {
@@ -249,7 +249,7 @@ namespace UnityAiAssets.Editor.Capabilities
         static void ValidateLongRange(
             string fieldName, long value, long minimum, long maximum, List<CapabilityValidationIssue> issues)
         {
-            if (value < minimum)
+            if (!CapabilityLimits.IsInRange(value, minimum, long.MaxValue))
             {
                 issues.Add(new CapabilityValidationIssue
                 {
@@ -259,7 +259,7 @@ namespace UnityAiAssets.Editor.Capabilities
                 });
             }
 
-            if (value > maximum)
+            if (!CapabilityLimits.IsInRange(value, long.MinValue, maximum))
             {
                 issues.Add(new CapabilityValidationIssue
                 {

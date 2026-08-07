@@ -10,20 +10,16 @@ using UnityAiAssets.Editor.Importing;
 using UnityAiAssets.Editor.Integrity;
 using UnityAiAssets.Editor.Metadata;
 using UnityAiAssets.Editor.Profiles;
-using UnityAiAssets.Editor.Prompting;
 using UnityEngine;
 
 namespace UnityAiAssets.Editor.Generation
 {
-    public sealed class TextureGenerationProgress
+    public sealed class GenerationProgress
     {
         public GenerationState State = GenerationState.Idle;
         public string StatusMessage = "Idle";
         public string ErrorMessage;
         public bool BackendReachable;
-
-        /// <summary>Deprecated: prefer <see cref="ResolvedDevice"/>.</summary>
-        public string BackendDevice;
 
         public bool ModelLoaded;
         public string GenerationId;
@@ -56,49 +52,48 @@ namespace UnityAiAssets.Editor.Generation
     /// Orchestrates capability discovery, health checks, generation, download, integrity
     /// verification, import, metadata/manifest, and materials.
     /// </summary>
-    public sealed class TextureGenerationController
+    public sealed class GenerationController
     {
         readonly Func<IGenerationApiClient> _clientFactory;
-        readonly GeneratedTextureImporter _textureImporter;
+        readonly GeneratedAssetImporter _assetImporter;
         readonly GenerationMetadataImporter _metadataImporter;
         readonly MaterialFactory _materialFactory;
         readonly CapabilityCache _capabilityCache;
         readonly GenerationProfileRegistry _profileRegistry;
         readonly GenerationProfileResolver _profileResolver;
-        readonly UnityImportProfileRegistry _importProfiles;
+        readonly ProfileCatalog _catalog;
 
         CancellationTokenSource _cts;
         string _lastKnownBackendBaseUrl;
 
-        public TextureGenerationController(
+        public GenerationController(
             Func<IGenerationApiClient> clientFactory = null,
-            GeneratedTextureImporter textureImporter = null,
+            GeneratedAssetImporter assetImporter = null,
             GenerationMetadataImporter metadataImporter = null,
             MaterialFactory materialFactory = null,
             CapabilityCache capabilityCache = null,
             GenerationProfileRegistry profileRegistry = null,
             GenerationProfileResolver profileResolver = null,
-            UnityImportProfileRegistry importProfiles = null)
+            ProfileCatalog catalog = null)
         {
             _clientFactory = clientFactory ?? (() =>
             {
                 var settings = UnityAiAssetSettings.instance;
                 return new GenerationApiClient(settings.BackendBaseUrl, settings.ApiTimeoutSeconds);
             });
-            _textureImporter = textureImporter ?? new GeneratedTextureImporter();
+            _assetImporter = assetImporter ?? new GeneratedAssetImporter();
             _metadataImporter = metadataImporter ?? new GenerationMetadataImporter();
             _materialFactory = materialFactory ?? new MaterialFactory();
             _capabilityCache = capabilityCache ?? CapabilityCache.Shared;
+            _catalog = catalog ?? new ProfileCatalog();
             _profileRegistry = profileRegistry ?? new GenerationProfileRegistry(
-                userRoot: UnityAiAssetSettings.instance.UserProfileDirectoryAbsolute);
-            _profileResolver = profileResolver ?? new GenerationProfileResolver(
-                new PromptTemplateRegistry(_profileRegistry.BuiltinRoot),
-                new NegativePromptRegistry(_profileRegistry.BuiltinRoot));
-            _importProfiles = importProfiles ?? new UnityImportProfileRegistry(_profileRegistry.BuiltinRoot);
-            Progress = new TextureGenerationProgress();
+                userRoot: UnityAiAssetSettings.instance.UserProfileDirectoryAbsolute,
+                catalog: _catalog);
+            _profileResolver = profileResolver ?? new GenerationProfileResolver(_catalog);
+            Progress = new GenerationProgress();
         }
 
-        public TextureGenerationProgress Progress { get; }
+        public GenerationProgress Progress { get; }
 
         public bool IsBusy =>
             Progress.State == GenerationState.CheckingConnection ||
@@ -184,7 +179,6 @@ namespace UnityAiAssets.Editor.Generation
                 using var client = CreateClient();
                 var health = await client.GetHealthAsync(_cts.Token).ConfigureAwait(true);
                 Progress.BackendReachable = string.Equals(health.status, "ok", StringComparison.OrdinalIgnoreCase);
-                Progress.BackendDevice = health.resolved_device;
                 Progress.ResolvedDevice = health.resolved_device;
                 Progress.ModelLoaded = health.model_loaded;
                 Progress.ApplicationVersion = health.application_version;
@@ -288,26 +282,7 @@ namespace UnityAiAssets.Editor.Generation
                 }
 
                 SetState(GenerationState.Submitting, "Submitting texture generation request…");
-                var dto = new TextureGenerationRequestDto
-                {
-                    prompt = request.Prompt.Trim(),
-                    negative_prompt = request.NegativePrompt ?? string.Empty,
-                    width = request.Width,
-                    height = request.Height,
-                    steps = request.Steps,
-                    guidance_scale = request.GuidanceScale,
-                    seed = request.UseExplicitSeed ? request.Seed : (long?)null,
-                    output_name = request.OutputName.Trim(),
-                    generation_profile_id = resolved.GenerationProfileId,
-                    generation_profile_revision = resolved.GenerationProfileRevision,
-                    profile_origin = resolved.ProfileOrigin,
-                    prompt_template_id = resolved.PromptTemplateId,
-                    prompt_template_revision = resolved.PromptTemplateRevision,
-                    negative_prompt_profile_id = resolved.NegativePromptProfileId,
-                    negative_prompt_profile_revision = resolved.NegativePromptProfileRevision,
-                    unity_import_profile_id = resolved.ImportProfileId,
-                    asset_type = resolved.AssetType
-                };
+                var dto = GenerationRequestFactory.FromResolved(resolved, request);
 
                 SetState(GenerationState.Generating, "Waiting for backend generation…");
                 var generateTask = client.GenerateTextureAsync(dto, token);
@@ -335,7 +310,8 @@ namespace UnityAiAssets.Editor.Generation
                 Progress.RequestId = client.LastRequestId ?? Progress.RequestId;
 
                 SetState(GenerationState.Downloading, "Downloading generated PNG and manifest…");
-                var png = await client.DownloadGenerationImageAsync(response.generation_id, token)
+                var png = await client
+                    .DownloadGenerationImageAsync(response.generation_id, response.resources?.image, token)
                     .ConfigureAwait(true);
 
                 GenerationManifestDocument manifest = null;
@@ -348,7 +324,7 @@ namespace UnityAiAssets.Editor.Generation
                 }
                 catch (ApiException)
                 {
-                    // Manifest download is best-effort against older backends; fall back below.
+                    // Compatibility-only fallback for older backends without manifests.
                     try
                     {
                         legacyMetadata = await client
@@ -367,19 +343,21 @@ namespace UnityAiAssets.Editor.Generation
 
                 SetState(GenerationState.Importing, "Importing texture into the Unity project…");
                 var profile = !string.IsNullOrWhiteSpace(request.ImportProfileId)
-                    ? _importProfiles.GetById(request.ImportProfileId)
-                    : _importProfiles.FromLegacyKind(request.ImportProfile);
-                var import = _textureImporter.ImportPng(
+                    ? _catalog.GetImportProfile(request.ImportProfileId)
+                    : _catalog.FromLegacyKind(request.ImportProfile);
+                var import = _assetImporter.ImportPng(
                     png,
                     request.DestinationFolder,
                     request.OutputName,
                     profile);
                 Progress.ImportedTexturePath = import.AssetPath;
 
-                var imageUrl = FirstNonEmpty(response.resources?.image, response.image_url) ??
-                               ApiEndpoints.GenerationImage(response.generation_id);
-                var manifestUrl = FirstNonEmpty(response.resources?.manifest, response.metadata_url) ??
-                               ApiEndpoints.GenerationManifest(response.generation_id);
+                var imageUrl = !string.IsNullOrWhiteSpace(response.resources?.image)
+                    ? response.resources.image
+                    : ApiEndpoints.GenerationImage(response.generation_id);
+                var manifestUrl = !string.IsNullOrWhiteSpace(response.resources?.manifest)
+                    ? response.resources.manifest
+                    : ApiEndpoints.GenerationManifest(response.generation_id);
 
                 var metadataAsset = _metadataImporter.Create(
                     import.Texture,
@@ -568,8 +546,6 @@ namespace UnityAiAssets.Editor.Generation
                 Progress.StatusMessage = "Failed: " + ex.Message;
             }
         }
-
-        static string FirstNonEmpty(string a, string b) => !string.IsNullOrWhiteSpace(a) ? a : b;
 
         static void ValidateRequestStructure(TextureGenerationRequestModel request)
         {

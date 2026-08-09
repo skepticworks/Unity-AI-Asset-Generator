@@ -31,8 +31,15 @@ namespace UnityAiAssets.Editor.Profiles
             var height = overrides.Height ?? profile.Defaults.Height;
             var steps = overrides.Steps ?? profile.Defaults.Steps;
             var guidance = overrides.Guidance ?? profile.Defaults.GuidanceScale;
+            var transparencyStrategy = string.IsNullOrWhiteSpace(overrides.TransparencyStrategy)
+                ? profile.Processing.TransparencyStrategy : overrides.TransparencyStrategy;
+            var pixelsPerUnit = overrides.PixelsPerUnit ?? profile.Unity.PixelsPerUnit;
+            var pivotMode = string.IsNullOrWhiteSpace(overrides.PivotMode) ? profile.Unity.PivotMode : overrides.PivotMode;
+            var customPivotX = overrides.CustomPivotX ?? profile.Unity.CustomPivotX;
+            var customPivotY = overrides.CustomPivotY ?? profile.Unity.CustomPivotY;
             var compatibility = GenerationProfileCompatibilityChecker.CheckEffective(
-                profile.AssetType, width, height, steps, guidance, seed, capabilities);
+                profile.AssetType, width, height, steps, guidance, seed, capabilities,
+                transparencyStrategy, pixelsPerUnit, pivotMode, customPivotX, customPivotY);
             if (!string.IsNullOrEmpty(constructedNegative) &&
                 capabilities?.Operations?.TextToImage?.NegativePrompt?.Supported == false)
             {
@@ -63,6 +70,16 @@ namespace UnityAiAssets.Editor.Profiles
                 ImportProfileId = string.IsNullOrWhiteSpace(overrides.ImportProfileId)
                     ? profile.Unity.ImportProfileId : overrides.ImportProfileId,
                 CreateMaterial = overrides.CreateMaterial ?? profile.Unity.CreateMaterial,
+                TransparencyStrategy = transparencyStrategy,
+                AlphaThreshold = overrides.AlphaThreshold ?? profile.Processing.AlphaThreshold,
+                AlphaFeather = overrides.AlphaFeather ?? profile.Processing.AlphaFeather,
+                RemoveNearTransparent = overrides.RemoveNearTransparent ?? profile.Processing.RemoveNearTransparent,
+                ZeroRgbWhenTransparent = overrides.ZeroRgbWhenTransparent ?? profile.Processing.ZeroRgbWhenTransparent,
+                PixelsPerUnit = pixelsPerUnit,
+                PivotMode = pivotMode,
+                CustomPivotX = customPivotX,
+                CustomPivotY = customPivotY,
+                AtlasHint = string.IsNullOrWhiteSpace(overrides.AtlasHint) ? profile.Unity.AtlasHint : overrides.AtlasHint,
                 Compatibility = compatibility,
                 GenerationProfileId = profile.Id,
                 GenerationProfileRevision = profile.Revision,

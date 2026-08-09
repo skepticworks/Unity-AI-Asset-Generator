@@ -13,7 +13,8 @@ def test_legacy_09_migrates_in_memory() -> None:
     migrated, result = migrate_profile_payload(source)
     profile = parse_generation_profile(migrated)
     assert result.migrated
-    assert result.steps == ("0.9->1.0",)
+    assert result.steps == ("0.9->1.0", "1.0->1.1")
+    assert migrated["schema"]["version"] == "1.1"
     assert profile.revision == 1
     assert profile.generation_defaults.seed_strategy == "random"
     assert source["schema"]["version"] == "0.9"

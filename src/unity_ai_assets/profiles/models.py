@@ -58,6 +58,16 @@ class GenerationDefaults:
     guidance_scale: float
     seed_strategy: str
     fixed_seed: int | None
+    transparency_strategy: str = "none"
+    alpha_threshold: int = 16
+    alpha_feather: int = 0
+    remove_near_transparent: bool = True
+    zero_rgb_when_transparent: bool = True
+    pixels_per_unit: float | None = None
+    pivot_mode: str | None = None
+    custom_pivot_x: float | None = None
+    custom_pivot_y: float | None = None
+    atlas_hint: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +75,11 @@ class GenerationProfileUnitySettings:
     import_profile_id: str
     suggested_output_directory: str
     create_material: bool
+    pixels_per_unit: float | None = None
+    pivot_mode: str | None = None
+    custom_pivot_x: float | None = None
+    custom_pivot_y: float | None = None
+    atlas_hint: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,6 +145,16 @@ class ResolvedGenerationSettings:
     suggested_output_directory: str
     create_material: bool
     provenance: ProfileProvenance
+    transparency_strategy: str = "none"
+    alpha_threshold: int = 16
+    alpha_feather: int = 0
+    remove_near_transparent: bool = True
+    zero_rgb_when_transparent: bool = True
+    pixels_per_unit: float | None = None
+    pivot_mode: str | None = None
+    custom_pivot_x: float | None = None
+    custom_pivot_y: float | None = None
+    atlas_hint: str | None = None
     compatibility: CompatibilityResult = field(
         default_factory=lambda: CompatibilityResult(CompatibilityState.COMPATIBLE)
     )

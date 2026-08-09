@@ -144,7 +144,10 @@ namespace UnityAiAssets.Editor.Profiles
                     IsReadable = settings.Get("is_readable").AsBool(),
                     SpriteMode = Parse(settings, "sprite_mode", SpriteImportMode.Single),
                     PixelsPerUnit = settings.Get("pixels_per_unit").AsFloat(100f),
-                    MeshType = Parse(settings, "mesh_type", SpriteMeshType.FullRect)
+                    MeshType = Parse(settings, "mesh_type", SpriteMeshType.FullRect),
+                    PivotMode = settings.Get("pivot_mode").AsString("center"),
+                    CustomPivotX = settings.Get("custom_pivot_x").AsFloat(.5f),
+                    CustomPivotY = settings.Get("custom_pivot_y").AsFloat(.5f)
                 };
                 Add(_imports, value.Id, value, path);
             }

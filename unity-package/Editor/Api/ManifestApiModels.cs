@@ -52,6 +52,31 @@ namespace UnityAiAssets.Editor.Api
         public float GuidanceScale;
         public long Seed;
         public string OutputName;
+        public string TransparencyStrategy;
+        public float PixelsPerUnit;
+        public string PivotMode;
+        public float CustomPivotX;
+        public float CustomPivotY;
+        public string AtlasHint;
+    }
+
+    public sealed class ManifestProcessingInfo
+    {
+        public string TransparencyStrategy;
+        public bool BackgroundRemovalApplied;
+        public string BackgroundRemovalImplementation;
+        public bool AlphaCleanupApplied;
+        public int AlphaThreshold;
+        public int AlphaFeather;
+        public bool RemoveNearTransparent;
+        public bool ZeroRgbWhenTransparent;
+        public float PixelsPerUnit;
+        public string PivotMode;
+        public float CustomPivotX;
+        public float CustomPivotY;
+        public string AtlasHint;
+        public string OriginalRelativePath;
+        public string FinalRelativePath;
     }
 
     public sealed class ManifestOutputInfo
@@ -92,6 +117,7 @@ namespace UnityAiAssets.Editor.Api
         public ManifestRuntimeInfo Runtime;
         public ManifestRequestInfo Request;
         public ManifestProfileInfo Profile;
+        public ManifestProcessingInfo Processing;
         public List<ManifestOutputInfo> Outputs = new List<ManifestOutputInfo>();
 
         public SchemaVersion SchemaVersionValue => SchemaVersion.Parse(Schema.Version);
@@ -144,6 +170,7 @@ namespace UnityAiAssets.Editor.Api
             var requestNode = root.Get("request");
             var outputsNode = root.Get("outputs");
             var profileNode = root.Get("profile");
+            var processingNode = root.Get("processing");
 
             var document = new GenerationManifestDocument
             {
@@ -190,7 +217,31 @@ namespace UnityAiAssets.Editor.Api
                     GuidanceScale = requestNode.Get("guidance_scale").AsFloat(),
                     Seed = requestNode.Get("seed").AsLong(),
                     OutputName = requestNode.Get("output_name").AsString(),
+                    TransparencyStrategy = requestNode.Get("transparency_strategy").AsString("none"),
+                    PixelsPerUnit = requestNode.Get("pixels_per_unit").AsFloat(100f),
+                    PivotMode = requestNode.Get("pivot_mode").AsString("center"),
+                    CustomPivotX = requestNode.Get("custom_pivot_x").AsFloat(.5f),
+                    CustomPivotY = requestNode.Get("custom_pivot_y").AsFloat(.5f),
+                    AtlasHint = requestNode.Get("atlas_hint").AsString()
                 },
+                Processing = processingNode.IsObject ? new ManifestProcessingInfo
+                {
+                    TransparencyStrategy = processingNode.Get("transparency_strategy").AsString("none"),
+                    BackgroundRemovalApplied = processingNode.Get("background_removal_applied").AsBool(),
+                    BackgroundRemovalImplementation = processingNode.Get("background_removal_implementation").AsString(),
+                    AlphaCleanupApplied = processingNode.Get("alpha_cleanup_applied").AsBool(),
+                    AlphaThreshold = processingNode.Get("alpha_threshold").AsInt(),
+                    AlphaFeather = processingNode.Get("alpha_feather").AsInt(),
+                    RemoveNearTransparent = processingNode.Get("remove_near_transparent").AsBool(),
+                    ZeroRgbWhenTransparent = processingNode.Get("zero_rgb_when_transparent").AsBool(),
+                    PixelsPerUnit = processingNode.Get("pixels_per_unit").AsFloat(),
+                    PivotMode = processingNode.Get("pivot_mode").AsString(),
+                    CustomPivotX = processingNode.Get("custom_pivot_x").AsFloat(.5f),
+                    CustomPivotY = processingNode.Get("custom_pivot_y").AsFloat(.5f),
+                    AtlasHint = processingNode.Get("atlas_hint").AsString(),
+                    OriginalRelativePath = processingNode.Get("original_relative_path").AsString(),
+                    FinalRelativePath = processingNode.Get("final_relative_path").AsString()
+                } : null,
                 Profile = profileNode.IsObject ? new ManifestProfileInfo
                 {
                     GenerationProfileId = profileNode.Get("generation_profile_id").AsString(),

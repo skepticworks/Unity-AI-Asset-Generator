@@ -73,6 +73,27 @@ namespace UnityAiAssets.Editor.Capabilities
                     Message = $"The backend does not currently support the '{assetType}' asset type.",
                 });
             }
+            if (request.TransparencyStrategy == "background_removal" &&
+                textToImage.Processing?.BackgroundRemoval?.Available != true)
+            {
+                issues.Add(new CapabilityValidationIssue
+                {
+                    FieldName = "transparency_strategy",
+                    Code = AppErrorCode.BackgroundRemovalUnavailable,
+                    Message = "The backend does not currently provide background removal.",
+                });
+            }
+            if (assetType == "sprite" || assetType == "icon")
+            {
+                if (request.PixelsPerUnit <= 0)
+                    Invalid("pixels_per_unit", "Pixels per unit must be greater than zero.", issues);
+                if (request.PivotMode != "center" && request.PivotMode != "bottom_center" && request.PivotMode != "custom")
+                    Invalid("pivot_mode", "Pivot mode must be center, bottom_center, or custom.", issues);
+                if (request.PivotMode == "custom" &&
+                    (request.CustomPivotX < 0f || request.CustomPivotX > 1f ||
+                     request.CustomPivotY < 0f || request.CustomPivotY > 1f))
+                    Invalid("custom_pivot", "Custom pivot coordinates must be between zero and one.", issues);
+            }
 
             ValidateDimension(
                 "width", request.Width,
@@ -278,6 +299,16 @@ namespace UnityAiAssets.Editor.Capabilities
             }
 
             return char.ToUpperInvariant(value[0]) + value.Substring(1);
+        }
+
+        static void Invalid(string fieldName, string message, List<CapabilityValidationIssue> issues)
+        {
+            issues.Add(new CapabilityValidationIssue
+            {
+                FieldName = fieldName,
+                Code = FieldIssueCode.ValueInvalid,
+                Message = message,
+            });
         }
     }
 }

@@ -1,7 +1,7 @@
 {
   "name": "com.skepticworks.unity-ai-assets",
   "displayName": "Unity AI Asset Generator",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "unity": "2022.3",
   "description": "Editor-only profile-driven asset generation via a local FastAPI backend with deterministic Unity imports.",
   "keywords": [

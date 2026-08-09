@@ -8,8 +8,8 @@
     "version": "0.3.0"
   },
   "schemas": {
-    "capabilities": "1.0",
-    "generation_manifest": "1.1"
+    "capabilities": "1.1",
+    "generation_manifest": "1.2"
   },
   "runtime": {
     "configured_device": "cpu",
@@ -28,7 +28,9 @@
     "text_to_image": {
       "supported": true,
       "asset_types": [
-        "texture"
+        "texture",
+        "sprite",
+        "icon"
       ],
       "dimensions": {
         "minimum_width": 8,
@@ -68,6 +70,42 @@
         "selection_supported": false,
         "default": "pndm",
         "available": []
+      },
+      "processing": {
+        "transparency_strategies": [
+          "none",
+          "background_removal"
+        ],
+        "background_removal": {
+          "available": true,
+          "backend": "fake",
+          "model": "u2net",
+          "produces_native_alpha": false
+        },
+        "alpha_cleanup": {
+          "available": true,
+          "alpha_threshold": {
+            "minimum": 0,
+            "maximum": 255,
+            "default": 16
+          },
+          "alpha_feather": {
+            "minimum": 0,
+            "maximum": 64,
+            "default": 0
+          },
+          "remove_near_transparent_default": true,
+          "zero_rgb_when_transparent_default": true
+        },
+        "sprite_import": {
+          "supported": true,
+          "single_sprite_only": true,
+          "pivot_modes": [
+            "center",
+            "bottom_center",
+            "custom"
+          ]
+        }
       }
     },
     "image_to_image": {

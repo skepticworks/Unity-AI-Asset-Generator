@@ -153,6 +153,8 @@ def evaluate_profile_compatibility(
     template_ids: Collection[str] = (),
     negative_ids: Collection[str] = (),
     operation_supported: bool = True,
+    supported_transparency_strategies: Collection[str] | None = None,
+    background_removal_available: bool = False,
 ) -> CompatibilityResult:
     """Evaluate profile defaults and references without coercing values."""
     defaults = profile.generation_defaults
@@ -188,6 +190,24 @@ def evaluate_profile_compatibility(
             CompatibilityReasonCode.OPERATION_UNSUPPORTED,
             "Text-to-image generation is not supported.",
             "operation",
+        )
+    strategy = defaults.transparency_strategy or "none"
+    if (
+        supported_transparency_strategies is not None
+        and strategy not in supported_transparency_strategies
+    ):
+        _issue(
+            issues,
+            CompatibilityReasonCode.TRANSPARENCY_STRATEGY_UNSUPPORTED,
+            f"Transparency strategy '{strategy}' is not supported.",
+            "transparency_strategy",
+        )
+    if strategy == "background_removal" and not background_removal_available:
+        _issue(
+            issues,
+            CompatibilityReasonCode.BACKGROUND_REMOVAL_UNAVAILABLE,
+            "Background removal is required by this profile but is unavailable.",
+            "transparency_strategy",
         )
     references = (
         (
@@ -235,6 +255,8 @@ def evaluate_resolved_settings(
     maximum_seed: int = 2**32 - 1,
     maximum_prompt_length: int = 2**31 - 1,
     maximum_negative_prompt_length: int = 2**31 - 1,
+    supported_transparency_strategies: Collection[str] | None = None,
+    background_removal_available: bool = False,
 ) -> CompatibilityResult:
     issues = _evaluate_values(
         asset_type=settings.asset_type,
@@ -262,5 +284,23 @@ def evaluate_resolved_settings(
         maximum_prompt_length=maximum_prompt_length,
         maximum_negative_prompt_length=maximum_negative_prompt_length,
     )
+    strategy = settings.transparency_strategy or "none"
+    if (
+        supported_transparency_strategies is not None
+        and strategy not in supported_transparency_strategies
+    ):
+        _issue(
+            issues,
+            CompatibilityReasonCode.TRANSPARENCY_STRATEGY_UNSUPPORTED,
+            f"Transparency strategy '{strategy}' is not supported.",
+            "transparency_strategy",
+        )
+    if strategy == "background_removal" and not background_removal_available:
+        _issue(
+            issues,
+            CompatibilityReasonCode.BACKGROUND_REMOVAL_UNAVAILABLE,
+            "Background removal is required but unavailable.",
+            "transparency_strategy",
+        )
     state = CompatibilityState.COMPATIBLE if not issues else CompatibilityState.INCOMPATIBLE
     return CompatibilityResult(state, tuple(issues))

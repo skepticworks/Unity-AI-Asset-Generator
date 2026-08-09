@@ -110,6 +110,42 @@ class SchedulerCapabilitiesSchema(BaseModel):
     available: list[str] = Field(default_factory=list)
 
 
+class BackgroundRemovalCapabilitiesSchema(BaseModel):
+    """Local background-removal availability (post-processing, not native alpha)."""
+
+    available: bool
+    backend: str | None = None
+    model: str | None = None
+    produces_native_alpha: bool = False
+
+
+class AlphaCleanupCapabilitiesSchema(BaseModel):
+    """Deterministic alpha cleanup ranges."""
+
+    available: bool
+    alpha_threshold: IntRangeSchema
+    alpha_feather: IntRangeSchema
+    remove_near_transparent_default: bool
+    zero_rgb_when_transparent_default: bool
+
+
+class SpriteImportCapabilitiesSchema(BaseModel):
+    """Sprite import support advertised for Unity clients."""
+
+    supported: bool
+    single_sprite_only: bool = True
+    pivot_modes: list[str] = Field(default_factory=list)
+
+
+class ProcessingCapabilitiesSchema(BaseModel):
+    """Post-inference processing capabilities."""
+
+    transparency_strategies: list[str]
+    background_removal: BackgroundRemovalCapabilitiesSchema
+    alpha_cleanup: AlphaCleanupCapabilitiesSchema
+    sprite_import: SpriteImportCapabilitiesSchema
+
+
 class TextToImageCapabilitiesSchema(BaseModel):
     """Text-to-image operation capabilities."""
 
@@ -123,6 +159,7 @@ class TextToImageCapabilitiesSchema(BaseModel):
     negative_prompt: NegativePromptConstraintsSchema
     output_name: OutputNameConstraintsSchema
     schedulers: SchedulerCapabilitiesSchema
+    processing: ProcessingCapabilitiesSchema | None = None
 
 
 class UnsupportedOperationSchema(BaseModel):
@@ -170,6 +207,44 @@ class CapabilitiesResponse(BaseModel):
     def from_domain(cls, document: CapabilityDocument) -> CapabilitiesResponse:
         """Map a domain capability document to the public response schema."""
         t2i = document.operations.text_to_image
+        processing_schema: ProcessingCapabilitiesSchema | None = None
+        if t2i.processing is not None:
+            proc = t2i.processing
+            processing_schema = ProcessingCapabilitiesSchema(
+                transparency_strategies=list(proc.transparency_strategies),
+                background_removal=BackgroundRemovalCapabilitiesSchema(
+                    available=proc.background_removal.available,
+                    backend=proc.background_removal.backend,
+                    model=proc.background_removal.model,
+                    produces_native_alpha=proc.background_removal.produces_native_alpha,
+                ),
+                alpha_cleanup=AlphaCleanupCapabilitiesSchema(
+                    available=proc.alpha_cleanup.available,
+                    alpha_threshold=IntRangeSchema(
+                        minimum=proc.alpha_cleanup.alpha_threshold.minimum,
+                        maximum=proc.alpha_cleanup.alpha_threshold.maximum,
+                        default=proc.alpha_cleanup.alpha_threshold.default
+                        or proc.alpha_cleanup.alpha_threshold.minimum,
+                    ),
+                    alpha_feather=IntRangeSchema(
+                        minimum=proc.alpha_cleanup.alpha_feather.minimum,
+                        maximum=proc.alpha_cleanup.alpha_feather.maximum,
+                        default=proc.alpha_cleanup.alpha_feather.default
+                        or proc.alpha_cleanup.alpha_feather.minimum,
+                    ),
+                    remove_near_transparent_default=(
+                        proc.alpha_cleanup.remove_near_transparent_default
+                    ),
+                    zero_rgb_when_transparent_default=(
+                        proc.alpha_cleanup.zero_rgb_when_transparent_default
+                    ),
+                ),
+                sprite_import=SpriteImportCapabilitiesSchema(
+                    supported=proc.sprite_import.supported,
+                    single_sprite_only=proc.sprite_import.single_sprite_only,
+                    pivot_modes=list(proc.sprite_import.pivot_modes),
+                ),
+            )
         return cls(
             api=ApiVersionSchema(major=document.api.major, minor=document.api.minor),
             application=ApplicationSchema(
@@ -238,6 +313,7 @@ class CapabilitiesResponse(BaseModel):
                         default=t2i.schedulers.default,
                         available=list(t2i.schedulers.available),
                     ),
+                    processing=processing_schema,
                 ),
                 image_to_image=UnsupportedOperationSchema(
                     supported=document.operations.image_to_image.supported,

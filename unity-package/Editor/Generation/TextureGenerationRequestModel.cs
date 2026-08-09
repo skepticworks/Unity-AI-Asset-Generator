@@ -31,6 +31,16 @@ namespace UnityAiAssets.Editor.Generation
         public TextureImportProfileKind ImportProfile = TextureImportProfileKind.Ps1Pixel;
         public string ImportProfileId = UnityImportProfileIds.Ps1EnvironmentTexture;
         public bool CreateMaterial;
+        public string TransparencyStrategy = "none";
+        public int AlphaThreshold = 16;
+        public int AlphaFeather;
+        public bool RemoveNearTransparent = true;
+        public bool ZeroRgbWhenTransparent = true;
+        public float PixelsPerUnit = 100f;
+        public string PivotMode = "center";
+        public float CustomPivotX = .5f;
+        public float CustomPivotY = .5f;
+        public string AtlasHint;
         public string MaterialDestinationFolder = "Assets/Generated/Materials";
         public string ShaderName = "Universal Render Pipeline/Lit";
     }

@@ -23,6 +23,10 @@ namespace UnityAiAssets.Editor.Tests
             Assert.AreEqual("negative", dto.negative_prompt_profile_id);
             Assert.AreEqual(4, dto.negative_prompt_profile_revision);
             Assert.AreEqual("ps1_environment_texture", dto.unity_import_profile_id);
+            Assert.AreEqual("background_removal", dto.transparency_strategy);
+            Assert.AreEqual(100f, dto.pixels_per_unit);
+            Assert.AreEqual("bottom_center", dto.pivot_mode);
+            Assert.AreEqual("items", dto.atlas_hint);
         }
 
         [Test]
@@ -52,7 +56,17 @@ namespace UnityAiAssets.Editor.Tests
             PromptTemplateRevision = 2,
             NegativePromptProfileId = "negative",
             NegativePromptProfileRevision = 4,
-            ImportProfileId = "ps1_environment_texture"
+            ImportProfileId = "ps1_environment_texture",
+            TransparencyStrategy = "background_removal",
+            AlphaThreshold = 16,
+            AlphaFeather = 0,
+            RemoveNearTransparent = true,
+            ZeroRgbWhenTransparent = true,
+            PixelsPerUnit = 100f,
+            PivotMode = "bottom_center",
+            CustomPivotX = .5f,
+            CustomPivotY = .5f,
+            AtlasHint = "items"
         };
     }
 }

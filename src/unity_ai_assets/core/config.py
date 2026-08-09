@@ -76,11 +76,55 @@ class Settings(BaseSettings):
         description="Stable public scheduler identifier used when selection is unsupported",
     )
 
+    # Optional local background-removal post-processing (sprites/icons)
+    background_removal_enabled: bool = Field(
+        default=False,
+        description="Enable local rembg-based background removal for sprite/icon workflows",
+    )
+    background_removal_backend: str = Field(
+        default="rembg",
+        description="Background-removal backend identifier (rembg | fake)",
+    )
+    background_removal_model: str = Field(
+        default="u2net",
+        description="rembg model name (default u2net); loaded lazily on first use",
+    )
+    preserve_original_image: bool = Field(
+        default=True,
+        description="When processing sprites/icons, also persist the pre-processed RGB PNG",
+    )
+
+    # Alpha cleanup defaults (authoritative ranges for capability reporting)
+    default_alpha_threshold: int = Field(default=16, ge=0, le=255)
+    min_alpha_threshold: int = Field(default=0, ge=0, le=255)
+    max_alpha_threshold: int = Field(default=255, ge=0, le=255)
+    default_alpha_feather: int = Field(default=0, ge=0, le=64)
+    min_alpha_feather: int = Field(default=0, ge=0, le=64)
+    max_alpha_feather: int = Field(default=64, ge=0, le=64)
+    default_remove_near_transparent: bool = Field(default=True)
+    default_zero_rgb_when_transparent: bool = Field(default=True)
+    default_pixels_per_unit: float = Field(default=100.0, gt=0)
+    default_pivot_mode: str = Field(default="center")
+
     @field_validator("model_revision", "model_variant", "model_display_name", mode="before")
     @classmethod
     def _empty_str_to_none(cls, value: object) -> object:
         if value == "":
             return None
+        return value
+
+    @field_validator("background_removal_backend", "background_removal_model", mode="before")
+    @classmethod
+    def _strip_bg_fields(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @field_validator("default_pivot_mode", mode="before")
+    @classmethod
+    def _normalize_pivot(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip().lower()
         return value
 
     @field_validator("model_family", mode="before")

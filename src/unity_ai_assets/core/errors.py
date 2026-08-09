@@ -161,6 +161,66 @@ class SchedulerUnsupportedError(AppError):
         super().__init__(message, code=AppErrorCode.SCHEDULER_UNSUPPORTED)
 
 
+class TransparencyStrategyUnsupportedError(AppError):
+    """Raised when a transparency strategy is not supported or unavailable."""
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, code=AppErrorCode.TRANSPARENCY_STRATEGY_UNSUPPORTED)
+
+
+class BackgroundRemovalUnavailableError(AppError):
+    """Raised when background removal is required but not available."""
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, code=AppErrorCode.BACKGROUND_REMOVAL_UNAVAILABLE)
+
+
+class BackgroundRemovalFailedError(AppError):
+    """Raised when background removal fails during processing."""
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, code=AppErrorCode.BACKGROUND_REMOVAL_FAILED)
+
+
+class AlphaProcessingFailedError(AppError):
+    """Raised when deterministic alpha cleanup fails."""
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, code=AppErrorCode.ALPHA_PROCESSING_FAILED)
+
+
+class PivotInvalidError(AppError):
+    """Raised when pivot mode or custom pivot coordinates are invalid."""
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        field_issues: dict[str, list[FieldIssue]] | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=AppErrorCode.PIVOT_INVALID,
+            field_issues=field_issues,
+        )
+
+
+class PixelsPerUnitInvalidError(AppError):
+    """Raised when pixels-per-unit is not a positive finite value."""
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        field_issues: dict[str, list[FieldIssue]] | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=AppErrorCode.PIXELS_PER_UNIT_INVALID,
+            field_issues=field_issues,
+        )
+
+
 @dataclass
 class ErrorEnvelope:
     """Public API error envelope builder helpers."""

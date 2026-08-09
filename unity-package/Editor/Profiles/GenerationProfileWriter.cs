@@ -59,11 +59,24 @@ namespace UnityAiAssets.Editor.Profiles
                     ["steps"] = profile.Defaults.Steps, ["guidance_scale"] = profile.Defaults.GuidanceScale,
                     ["seed_strategy"] = profile.Defaults.SeedStrategy, ["fixed_seed"] = profile.Defaults.FixedSeed
                 },
+                ["processing"] = new Dictionary<string, object>
+                {
+                    ["transparency_strategy"] = profile.Processing.TransparencyStrategy,
+                    ["alpha_threshold"] = profile.Processing.AlphaThreshold,
+                    ["alpha_feather"] = profile.Processing.AlphaFeather,
+                    ["remove_near_transparent"] = profile.Processing.RemoveNearTransparent,
+                    ["zero_rgb_when_transparent"] = profile.Processing.ZeroRgbWhenTransparent
+                },
                 ["unity"] = new Dictionary<string, object>
                 {
                     ["import_profile_id"] = profile.Unity.ImportProfileId,
                     ["suggested_output_directory"] = profile.Unity.SuggestedOutputDirectory,
-                    ["create_material"] = profile.Unity.CreateMaterial
+                    ["create_material"] = profile.Unity.CreateMaterial,
+                    ["pixels_per_unit"] = profile.Unity.PixelsPerUnit,
+                    ["pivot_mode"] = profile.Unity.PivotMode,
+                    ["custom_pivot_x"] = profile.Unity.CustomPivotX,
+                    ["custom_pivot_y"] = profile.Unity.CustomPivotY,
+                    ["atlas_hint"] = profile.Unity.AtlasHint
                 }
             };
         }

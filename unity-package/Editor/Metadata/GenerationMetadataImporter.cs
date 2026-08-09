@@ -90,6 +90,20 @@ namespace UnityAiAssets.Editor.Metadata
             asset.NegativePromptProfileId = manifest?.Profile?.NegativePromptProfileId;
             asset.NegativePromptProfileRevision = manifest?.Profile?.NegativePromptProfileRevision ?? 0;
             asset.UnityImportProfileId = manifest?.Profile?.UnityImportProfileId;
+            asset.TransparencyStrategy = manifest?.Request?.TransparencyStrategy;
+            asset.AlphaThreshold = manifest?.Processing?.AlphaThreshold ?? 0;
+            asset.AlphaFeather = manifest?.Processing?.AlphaFeather ?? 0;
+            asset.RemoveNearTransparent = manifest?.Processing?.RemoveNearTransparent ?? false;
+            asset.ZeroRgbWhenTransparent = manifest?.Processing?.ZeroRgbWhenTransparent ?? false;
+            asset.PixelsPerUnit = manifest?.Request?.PixelsPerUnit ?? 0f;
+            asset.PivotMode = manifest?.Request?.PivotMode;
+            asset.CustomPivotX = manifest?.Request?.CustomPivotX ?? 0f;
+            asset.CustomPivotY = manifest?.Request?.CustomPivotY ?? 0f;
+            asset.AtlasHint = manifest?.Request?.AtlasHint;
+            asset.BackgroundRemovalBackend = manifest?.Processing?.BackgroundRemovalBackend;
+            asset.BackgroundRemovalImplementation = manifest?.Processing?.BackgroundRemovalImplementation;
+            asset.BackgroundRemovalModel = manifest?.Processing?.BackgroundRemovalModel;
+            asset.ProducesNativeAlpha = manifest?.Processing?.ProducesNativeAlpha ?? false;
 
             AssetDatabase.CreateAsset(asset, uniquePath);
             AssetDatabase.SaveAssets();

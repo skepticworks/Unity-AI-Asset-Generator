@@ -46,7 +46,11 @@ class DiffusersBackend:
             text_to_image_supported=True,
             image_to_image_supported=False,
             inpainting_supported=False,
-            supported_asset_types=[AssetType.TEXTURE.value],
+            supported_asset_types=[
+                AssetType.TEXTURE.value,
+                AssetType.SPRITE.value,
+                AssetType.ICON.value,
+            ],
             scheduler_selection_supported=False,
             default_scheduler=DEFAULT_PUBLIC_SCHEDULER,
             available_schedulers=[],

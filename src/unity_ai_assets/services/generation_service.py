@@ -1,7 +1,8 @@
-"""Orchestrates validation, inference, and persistence for texture generation."""
+"""Orchestrates validation, inference, post-processing, and persistence."""
 
 from __future__ import annotations
 
+import math
 import re
 import secrets
 import threading
@@ -10,11 +11,28 @@ from typing import TYPE_CHECKING
 
 from unity_ai_assets.core.config import Settings
 from unity_ai_assets.core.error_codes import FieldIssueCode
-from unity_ai_assets.core.errors import FieldIssue, GenerationRequestInvalidError
+from unity_ai_assets.core.errors import (
+    AssetTypeUnsupportedError,
+    BackgroundRemovalUnavailableError,
+    FieldIssue,
+    GenerationRequestInvalidError,
+    PivotInvalidError,
+    PixelsPerUnitInvalidError,
+    TransparencyStrategyUnsupportedError,
+)
 from unity_ai_assets.core.logging import get_logger
 from unity_ai_assets.core.request_context import get_request_id
-from unity_ai_assets.domain.generation import GenerationRequest, GenerationResult
+from unity_ai_assets.domain.enums import (
+    AssetType,
+    PivotMode,
+    TransparencyStrategy,
+    is_known_pivot_mode,
+    is_known_transparency_strategy,
+)
+from unity_ai_assets.domain.generation import GeneratedImage, GenerationRequest, GenerationResult
 from unity_ai_assets.domain.generation_policy import GenerationPolicy
+from unity_ai_assets.processing.alpha_cleanup import AlphaCleanupParams
+from unity_ai_assets.processing.pipeline import ImageProcessingPipeline, ProcessingResult
 from unity_ai_assets.services.output_service import OutputService, sanitize_output_name
 
 if TYPE_CHECKING:
@@ -22,6 +40,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _PROFILE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
+_ATLAS_HINT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+_SPRITE_ICON_TYPES = frozenset({AssetType.SPRITE.value, AssetType.ICON.value})
 
 
 def _validate_provenance(
@@ -73,11 +93,13 @@ class GenerationService:
         output_service: OutputService,
         settings: Settings,
         policy: GenerationPolicy | None = None,
+        processing_pipeline: ImageProcessingPipeline | None = None,
     ) -> None:
         self._backend = backend
         self._output_service = output_service
         self._settings = settings
         self._policy = policy or GenerationPolicy.from_settings(settings)
+        self._processing = processing_pipeline
         self._generation_lock = threading.Lock()
 
     @property
@@ -108,9 +130,20 @@ class GenerationService:
         negative_prompt_profile_revision: int | None = None,
         unity_import_profile_id: str | None = None,
         asset_type: str = "texture",
+        transparency_strategy: str | None = None,
+        alpha_threshold: int | None = None,
+        alpha_feather: int | None = None,
+        remove_near_transparent: bool | None = None,
+        zero_rgb_when_transparent: bool | None = None,
+        pixels_per_unit: float | None = None,
+        pivot_mode: str | None = None,
+        custom_pivot_x: float | None = None,
+        custom_pivot_y: float | None = None,
+        atlas_hint: str | None = None,
     ) -> GenerationResult:
         """Validate inputs against policy, run inference under a lock, and persist."""
         policy = self._policy
+        settings = self._settings
         resolved_steps = policy.default_steps if steps is None else steps
         resolved_guidance = (
             policy.default_guidance_scale if guidance_scale is None else guidance_scale
@@ -137,6 +170,192 @@ class GenerationService:
             },
             profile_origin=profile_origin,
         )
+
+        supported_types = set(self._backend.describe_capabilities().supported_asset_types)
+        if asset_type not in supported_types:
+            raise AssetTypeUnsupportedError(
+                f"Asset type '{asset_type}' is not supported by the current inference backend."
+            )
+
+        strategy = (transparency_strategy or TransparencyStrategy.NONE.value).strip().lower()
+        if not is_known_transparency_strategy(strategy):
+            raise TransparencyStrategyUnsupportedError(
+                f"Transparency strategy '{strategy}' is not supported."
+            )
+
+        if asset_type == AssetType.TEXTURE.value and strategy != TransparencyStrategy.NONE.value:
+            raise TransparencyStrategyUnsupportedError(
+                "Transparency processing is not applied to texture assets; "
+                "use transparency_strategy 'none'."
+            )
+
+        if strategy == TransparencyStrategy.BACKGROUND_REMOVAL.value and (
+            self._processing is None or not self._processing.background_remover.available
+        ):
+            raise BackgroundRemovalUnavailableError(
+                "Background removal is required but unavailable. "
+                "Enable BACKGROUND_REMOVAL_ENABLED and install the optional "
+                "background-removal extra, or select transparency_strategy 'none'."
+            )
+
+        resolved_alpha_threshold = (
+            settings.default_alpha_threshold if alpha_threshold is None else alpha_threshold
+        )
+        resolved_alpha_feather = (
+            settings.default_alpha_feather if alpha_feather is None else alpha_feather
+        )
+        resolved_remove_near = (
+            settings.default_remove_near_transparent
+            if remove_near_transparent is None
+            else remove_near_transparent
+        )
+        resolved_zero_rgb = (
+            settings.default_zero_rgb_when_transparent
+            if zero_rgb_when_transparent is None
+            else zero_rgb_when_transparent
+        )
+
+        if (
+            not settings.min_alpha_threshold
+            <= resolved_alpha_threshold
+            <= settings.max_alpha_threshold
+        ):
+            raise GenerationRequestInvalidError(
+                "alpha_threshold is outside the supported range.",
+                field_issues={
+                    "alpha_threshold": [
+                        FieldIssue(
+                            code=FieldIssueCode.VALUE_INVALID,
+                            message="alpha_threshold is outside the supported range.",
+                            actual=resolved_alpha_threshold,
+                            minimum=settings.min_alpha_threshold,
+                            maximum=settings.max_alpha_threshold,
+                        )
+                    ]
+                },
+            )
+        if not settings.min_alpha_feather <= resolved_alpha_feather <= settings.max_alpha_feather:
+            raise GenerationRequestInvalidError(
+                "alpha_feather is outside the supported range.",
+                field_issues={
+                    "alpha_feather": [
+                        FieldIssue(
+                            code=FieldIssueCode.VALUE_INVALID,
+                            message="alpha_feather is outside the supported range.",
+                            actual=resolved_alpha_feather,
+                            minimum=settings.min_alpha_feather,
+                            maximum=settings.max_alpha_feather,
+                        )
+                    ]
+                },
+            )
+
+        resolved_ppu: float | None = None
+        resolved_pivot: str | None = None
+        resolved_pivot_x: float | None = None
+        resolved_pivot_y: float | None = None
+        resolved_atlas: str | None = None
+
+        if asset_type in _SPRITE_ICON_TYPES:
+            resolved_ppu = (
+                settings.default_pixels_per_unit if pixels_per_unit is None else pixels_per_unit
+            )
+            if not math.isfinite(resolved_ppu) or resolved_ppu <= 0:
+                raise PixelsPerUnitInvalidError(
+                    "pixels_per_unit must be a positive finite number.",
+                    field_issues={
+                        "pixels_per_unit": [
+                            FieldIssue(
+                                code=FieldIssueCode.VALUE_INVALID,
+                                message="pixels_per_unit must be a positive finite number.",
+                                actual=resolved_ppu,
+                            )
+                        ]
+                    },
+                )
+            resolved_pivot = (pivot_mode or settings.default_pivot_mode).strip().lower()
+            if not is_known_pivot_mode(resolved_pivot):
+                raise PivotInvalidError(
+                    f"pivot_mode '{resolved_pivot}' is not supported.",
+                    field_issues={
+                        "pivot_mode": [
+                            FieldIssue(
+                                code=FieldIssueCode.VALUE_INVALID,
+                                message="pivot_mode must be center, bottom_center, or custom.",
+                                actual=resolved_pivot,
+                            )
+                        ]
+                    },
+                )
+            if resolved_pivot == PivotMode.CUSTOM.value:
+                if custom_pivot_x is None or custom_pivot_y is None:
+                    raise PivotInvalidError(
+                        "custom_pivot_x and custom_pivot_y are required for custom pivot.",
+                        field_issues={
+                            "custom_pivot": [
+                                FieldIssue(
+                                    code=FieldIssueCode.FIELD_REQUIRED,
+                                    message=(
+                                        "custom_pivot_x and custom_pivot_y are required "
+                                        "when pivot_mode is custom."
+                                    ),
+                                )
+                            ]
+                        },
+                    )
+                if not (0.0 <= custom_pivot_x <= 1.0 and 0.0 <= custom_pivot_y <= 1.0):
+                    raise PivotInvalidError(
+                        "custom pivot coordinates must be between 0 and 1.",
+                        field_issues={
+                            "custom_pivot": [
+                                FieldIssue(
+                                    code=FieldIssueCode.VALUE_INVALID,
+                                    message="custom_pivot_x/y must be in the range 0 to 1.",
+                                    actual={"x": custom_pivot_x, "y": custom_pivot_y},
+                                )
+                            ]
+                        },
+                    )
+                resolved_pivot_x = float(custom_pivot_x)
+                resolved_pivot_y = float(custom_pivot_y)
+            if atlas_hint is not None:
+                hint = atlas_hint.strip()
+                if hint and _ATLAS_HINT_PATTERN.fullmatch(hint) is None:
+                    raise GenerationRequestInvalidError(
+                        "atlas_hint has an invalid format.",
+                        field_issues={
+                            "atlas_hint": [
+                                FieldIssue(
+                                    code=FieldIssueCode.FORMAT_INVALID,
+                                    message=(
+                                        "atlas_hint must be at most 64 characters and contain "
+                                        "only letters, digits, underscores, or hyphens."
+                                    ),
+                                    actual=hint,
+                                )
+                            ]
+                        },
+                    )
+                resolved_atlas = hint or None
+        else:
+            # Ignore sprite-only fields for textures (do not store misleading provenance).
+            if pixels_per_unit is not None or pivot_mode is not None or atlas_hint:
+                # Soft-ignore: Unity may omit them; if present for textures, reject clearly.
+                raise GenerationRequestInvalidError(
+                    "pixels_per_unit, pivot_mode, and atlas_hint apply only to sprite/icon assets.",
+                    field_issues={
+                        "asset_type": [
+                            FieldIssue(
+                                code=FieldIssueCode.VALUE_INVALID,
+                                message=(
+                                    "Sprite import fields are not valid for texture asset types."
+                                ),
+                                actual=asset_type,
+                            )
+                        ]
+                    },
+                )
+
         safe_name = sanitize_output_name(
             output_name,
             max_length=policy.maximum_output_name_length,
@@ -167,12 +386,25 @@ class GenerationService:
             negative_prompt_profile_revision=negative_prompt_profile_revision,
             unity_import_profile_id=unity_import_profile_id,
             asset_type=asset_type,
+            transparency_strategy=strategy,
+            alpha_threshold=resolved_alpha_threshold,
+            alpha_feather=resolved_alpha_feather,
+            remove_near_transparent=resolved_remove_near,
+            zero_rgb_when_transparent=resolved_zero_rgb,
+            pixels_per_unit=resolved_ppu,
+            pivot_mode=resolved_pivot,
+            custom_pivot_x=resolved_pivot_x,
+            custom_pivot_y=resolved_pivot_y,
+            atlas_hint=resolved_atlas,
         )
 
         logger.info(
-            "Starting generation_id=%s request_id=%s seed=%s size=%sx%s steps=%s",
+            "Starting generation_id=%s request_id=%s asset_type=%s strategy=%s "
+            "seed=%s size=%sx%s steps=%s",
             request.generation_id,
             get_request_id(),
+            request.asset_type,
+            request.transparency_strategy,
             request.seed,
             request.width,
             request.height,
@@ -181,4 +413,54 @@ class GenerationService:
 
         with self._generation_lock:
             generated = self._backend.generate(request)
-            return self._output_service.persist(request, generated)
+            processing_result = self._apply_processing(generated, request)
+            processed_image = GeneratedImage(
+                image=processing_result.image,
+                seed=generated.seed,
+                width=processing_result.image.width,
+                height=processing_result.image.height,
+                elapsed_seconds=generated.elapsed_seconds,
+                device=generated.device,
+                torch_dtype=generated.torch_dtype,
+                model_id=generated.model_id,
+                model_revision=generated.model_revision,
+            )
+            return self._output_service.persist(
+                request,
+                processed_image,
+                processing=processing_result,
+            )
+
+    def _apply_processing(
+        self,
+        generated: GeneratedImage,
+        request: GenerationRequest,
+    ) -> ProcessingResult:
+        alpha_params = AlphaCleanupParams(
+            alpha_threshold=request.alpha_threshold,
+            alpha_feather=request.alpha_feather,
+            remove_near_transparent=request.remove_near_transparent,
+            zero_rgb_when_transparent=request.zero_rgb_when_transparent,
+        )
+        if (
+            self._processing is None
+            or request.transparency_strategy == TransparencyStrategy.NONE.value
+        ):
+            return ProcessingResult(
+                image=generated.image,
+                original_image=None,
+                transparency_strategy=TransparencyStrategy.NONE.value,
+                background_removal_applied=False,
+                background_removal_implementation=None,
+                alpha_cleanup_applied=False,
+                alpha_threshold=alpha_params.alpha_threshold,
+                alpha_feather=alpha_params.alpha_feather,
+                remove_near_transparent=alpha_params.remove_near_transparent,
+                zero_rgb_when_transparent=alpha_params.zero_rgb_when_transparent,
+            )
+        return self._processing.process(
+            generated.image,
+            transparency_strategy=request.transparency_strategy,
+            alpha_params=alpha_params,
+            preserve_original=self._settings.preserve_original_image,
+        )

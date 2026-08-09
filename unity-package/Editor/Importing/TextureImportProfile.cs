@@ -36,6 +36,9 @@ namespace UnityAiAssets.Editor.Importing
         public SpriteImportMode SpriteMode = SpriteImportMode.Single;
         public float PixelsPerUnit = 100f;
         public SpriteMeshType MeshType = SpriteMeshType.FullRect;
+        public string PivotMode = "center";
+        public float CustomPivotX = .5f;
+        public float CustomPivotY = .5f;
 
         public static TextureImportProfile CreatePs1Pixel()
         {
@@ -76,15 +79,16 @@ namespace UnityAiAssets.Editor.Importing
         }
 
         public static TextureImportProfile CreatePs1Sprite() => CreateSprite(
-            UnityImportProfileIds.Ps1Sprite, "PS1 Sprite", FilterMode.Point);
+            UnityImportProfileIds.Ps1Sprite, "PS1 Sprite", FilterMode.Point, "bottom_center");
 
         public static TextureImportProfile CreatePs1Icon() => CreateSprite(
-            UnityImportProfileIds.Ps1Icon, "PS1 Icon", FilterMode.Point);
+            UnityImportProfileIds.Ps1Icon, "PS1 Icon", FilterMode.Point, "center");
 
         public static TextureImportProfile CreatePs1Ui() => CreateSprite(
             UnityImportProfileIds.Ps1Ui, "PS1 UI", FilterMode.Bilinear);
 
-        static TextureImportProfile CreateSprite(string id, string displayName, FilterMode filterMode)
+        static TextureImportProfile CreateSprite(
+            string id, string displayName, FilterMode filterMode, string pivotMode = "center", float pixelsPerUnit = 100f)
         {
             return new TextureImportProfile
             {
@@ -101,8 +105,9 @@ namespace UnityAiAssets.Editor.Importing
                 NpotScale = TextureImporterNPOTScale.None,
                 IsReadable = false,
                 SpriteMode = SpriteImportMode.Single,
-                PixelsPerUnit = 100f,
-                MeshType = SpriteMeshType.FullRect
+                PixelsPerUnit = pixelsPerUnit,
+                MeshType = SpriteMeshType.FullRect,
+                PivotMode = pivotMode
             };
         }
 
@@ -117,6 +122,11 @@ namespace UnityAiAssets.Editor.Importing
                 default:
                     return CreatePs1Pixel();
             }
+        }
+
+        public TextureImportProfile Copy()
+        {
+            return (TextureImportProfile)MemberwiseClone();
         }
 
         public void Apply(TextureImporter importer)
@@ -138,11 +148,24 @@ namespace UnityAiAssets.Editor.Importing
             importer.isReadable = IsReadable;
             if (TextureType == TextureImporterType.Sprite)
             {
-                importer.spriteImportMode = SpriteMode;
+                importer.spriteImportMode = SpriteImportMode.Single;
                 importer.spritePixelsPerUnit = PixelsPerUnit;
                 var settings = new TextureImporterSettings();
                 importer.ReadTextureSettings(settings);
                 settings.spriteMeshType = MeshType;
+                switch (PivotMode)
+                {
+                    case "bottom_center":
+                        importer.spriteAlignment = (int)SpriteAlignment.BottomCenter;
+                        break;
+                    case "custom":
+                        importer.spriteAlignment = (int)SpriteAlignment.Custom;
+                        importer.spritePivot = new Vector2(CustomPivotX, CustomPivotY);
+                        break;
+                    default:
+                        importer.spriteAlignment = (int)SpriteAlignment.Center;
+                        break;
+                }
                 importer.SetTextureSettings(settings);
             }
         }

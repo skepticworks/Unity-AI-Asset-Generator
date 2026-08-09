@@ -14,8 +14,10 @@ Built-ins are read from `Editor/Profiles/Builtin`; user profiles are atomically 
 
 Use **Tools → AI Asset Generator → Profiles** to create, duplicate, edit, import, export,
 validate, and reveal profiles. Built-ins are immutable and must be duplicated before editing.
-Sprite, icon, and UI catalogs are available for authoring/import settings, but generation is
-disabled unless the backend explicitly advertises the selected asset type.
+Sprite and icon profiles support explicit transparency strategies (local background-removal
+post-processing, not native diffusion alpha), alpha cleanup, PPU, and center, bottom-center,
+or custom pivots. Generation is disabled unless the backend advertises the selected asset type;
+background-removal profiles also require processing availability in capabilities.
 
 ## Install from disk
 
@@ -108,7 +110,9 @@ written into `Assets/`. A mismatch is rejected outright rather than imported.
 | PS1 Pixel Texture | Point | Off | Uncompressed | NPOT scale None |
 | Standard Environment Texture | Bilinear | On | Compressed | Typical environment maps |
 
-Sprite/icon/UI import profiles are available. Their generation profiles remain capability-gated.
+Sprite and icon imports are explicitly `Single` sprites with native input alpha, clamp wrap,
+uncompressed point filtering, and profile-controlled PPU/pivot. Atlas hints are provenance only:
+this package does not create sprite sheets or atlases.
 
 ## Material creation
 

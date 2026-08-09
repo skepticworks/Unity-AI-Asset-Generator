@@ -29,6 +29,16 @@ class GenerationRequest:
     negative_prompt_profile_revision: int | None = None
     unity_import_profile_id: str | None = None
     asset_type: str = "texture"
+    transparency_strategy: str = "none"
+    alpha_threshold: int = 16
+    alpha_feather: int = 0
+    remove_near_transparent: bool = True
+    zero_rgb_when_transparent: bool = True
+    pixels_per_unit: float | None = None
+    pivot_mode: str | None = None
+    custom_pivot_x: float | None = None
+    custom_pivot_y: float | None = None
+    atlas_hint: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

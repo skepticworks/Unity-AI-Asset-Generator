@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from unity_ai_assets.core.version import GENERATION_MANIFEST_SCHEMA_VERSION
+from unity_ai_assets.domain.enums import PivotMode, TransparencyStrategy
 
 _PROFILE_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]*$"
+_ATLAS_HINT_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
 
 
 class TextureGenerationRequest(BaseModel):
@@ -17,6 +19,9 @@ class TextureGenerationRequest(BaseModel):
     Soft bounds here catch obviously invalid shapes early; authoritative
     validation against GenerationPolicy happens in GenerationService and must
     reject rather than coerce.
+
+    Sprite/icon processing fields are optional and ignored for textures when
+    transparency_strategy remains ``none``.
     """
 
     prompt: str = Field(..., min_length=1, description="Text prompt for texture generation")
@@ -43,7 +48,17 @@ class TextureGenerationRequest(BaseModel):
     unity_import_profile_id: str | None = Field(
         default=None, max_length=128, pattern=_PROFILE_ID_PATTERN
     )
-    asset_type: Literal["texture"] = "texture"
+    asset_type: Literal["texture", "sprite", "icon"] = "texture"
+    transparency_strategy: Literal["none", "background_removal"] = TransparencyStrategy.NONE.value
+    alpha_threshold: int | None = Field(default=None, ge=0, le=255)
+    alpha_feather: int | None = Field(default=None, ge=0, le=64)
+    remove_near_transparent: bool | None = None
+    zero_rgb_when_transparent: bool | None = None
+    pixels_per_unit: float | None = Field(default=None, gt=0)
+    pivot_mode: Literal["center", "bottom_center", "custom"] | None = None
+    custom_pivot_x: float | None = Field(default=None, ge=0.0, le=1.0)
+    custom_pivot_y: float | None = Field(default=None, ge=0.0, le=1.0)
+    atlas_hint: str | None = Field(default=None, max_length=64, pattern=_ATLAS_HINT_PATTERN)
 
     @field_validator("prompt")
     @classmethod
@@ -51,6 +66,23 @@ class TextureGenerationRequest(BaseModel):
         if not value.strip():
             raise ValueError("prompt must not be blank")
         return value
+
+    @field_validator("atlas_hint", mode="before")
+    @classmethod
+    def _empty_atlas_to_none(cls, value: object) -> object:
+        if value == "":
+            return None
+        return value
+
+    @model_validator(mode="after")
+    def _validate_custom_pivot(self) -> TextureGenerationRequest:
+        if self.pivot_mode == PivotMode.CUSTOM.value and (
+            self.custom_pivot_x is None or self.custom_pivot_y is None
+        ):
+            raise ValueError(
+                "custom_pivot_x and custom_pivot_y are required when pivot_mode is custom"
+            )
+        return self
 
 
 class GenerationResources(BaseModel):

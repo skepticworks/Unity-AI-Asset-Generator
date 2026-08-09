@@ -39,7 +39,37 @@ class Legacy09To10Migration:
         return migrated
 
 
-_MIGRATIONS: tuple[MigrationStep, ...] = (Legacy09To10Migration(),)
+class Profile10To11Migration:
+    """Additive Milestone 5 fields for sprite/icon processing defaults."""
+
+    source_version = "1.0"
+    target_version = "1.1"
+
+    def migrate(self, payload: dict[str, Any]) -> dict[str, Any]:
+        migrated = deepcopy(payload)
+        schema = cast(dict[str, Any], migrated["schema"])
+        schema["version"] = self.target_version
+        defaults = cast(dict[str, Any], migrated["generation_defaults"])
+        defaults.setdefault("transparency_strategy", "none")
+        defaults.setdefault("alpha_threshold", 16)
+        defaults.setdefault("alpha_feather", 0)
+        defaults.setdefault("remove_near_transparent", True)
+        defaults.setdefault("zero_rgb_when_transparent", True)
+        defaults.setdefault("pixels_per_unit", None)
+        defaults.setdefault("pivot_mode", None)
+        defaults.setdefault("custom_pivot_x", None)
+        defaults.setdefault("custom_pivot_y", None)
+        defaults.setdefault("atlas_hint", None)
+        unity = cast(dict[str, Any], migrated["unity"])
+        unity.setdefault("pixels_per_unit", None)
+        unity.setdefault("pivot_mode", None)
+        unity.setdefault("custom_pivot_x", None)
+        unity.setdefault("custom_pivot_y", None)
+        unity.setdefault("atlas_hint", None)
+        return migrated
+
+
+_MIGRATIONS: tuple[MigrationStep, ...] = (Legacy09To10Migration(), Profile10To11Migration())
 
 
 def migrate_profile_payload(

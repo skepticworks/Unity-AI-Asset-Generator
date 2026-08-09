@@ -208,5 +208,18 @@ namespace UnityAiAssets.Editor.Tests
             var issues = GenerationCapabilityValidator.Validate(request, BuildCapabilities());
             Assert.IsTrue(issues.Exists(issue => issue.FieldName == "asset_type"));
         }
+
+        [Test]
+        public void Validate_RejectsInvalidCustomSpritePivot()
+        {
+            var capabilities = BuildCapabilities();
+            capabilities.Operations.TextToImage.AssetTypes.Add("sprite");
+            var request = ValidRequest();
+            request.AssetType = "sprite";
+            request.PivotMode = "custom";
+            request.CustomPivotX = 1.1f;
+            var issues = GenerationCapabilityValidator.Validate(request, capabilities);
+            Assert.IsTrue(issues.Exists(issue => issue.FieldName == "custom_pivot"));
+        }
     }
 }

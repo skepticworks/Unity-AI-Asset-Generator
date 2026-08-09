@@ -15,11 +15,11 @@ API_MAJOR_VERSION: int = 1
 API_MINOR_VERSION: int = 0
 
 # --- Schema versions (explicit; do not infer from application version) ---
-CAPABILITIES_SCHEMA_VERSION: str = "1.0"
-GENERATION_MANIFEST_SCHEMA_VERSION: str = "1.1"
+CAPABILITIES_SCHEMA_VERSION: str = "1.1"
+GENERATION_MANIFEST_SCHEMA_VERSION: str = "1.2"
 GENERATION_MANIFEST_SCHEMA_NAME: str = "generation-manifest"
 GENERATION_PROFILE_SCHEMA_NAME: str = "generation-profile"
-GENERATION_PROFILE_SCHEMA_VERSION: str = "1.0"
+GENERATION_PROFILE_SCHEMA_VERSION: str = "1.1"
 PROMPT_TEMPLATE_SCHEMA_NAME: str = "prompt-template"
 PROMPT_TEMPLATE_SCHEMA_VERSION: str = "1.0"
 NEGATIVE_PROMPT_PROFILE_SCHEMA_NAME: str = "negative-prompt-profile"
@@ -31,7 +31,7 @@ UNITY_IMPORT_PROFILE_CATALOG_SCHEMA_VERSION: str = "1.0"
 
 # --- Application identity ---
 APPLICATION_NAME: str = "unity-ai-asset-generator"
-APPLICATION_VERSION_FALLBACK: str = "0.4.1"
+APPLICATION_VERSION_FALLBACK: str = "0.5.0"
 PACKAGE_DISTRIBUTION_NAME: str = "unity-ai-assets"
 
 

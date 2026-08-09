@@ -266,6 +266,37 @@ namespace UnityAiAssets.Editor.UI
             }
 
             _request.OutputName = EditorGUILayout.TextField("Output Name", _request.OutputName);
+            if (_request.AssetType == "sprite" || _request.AssetType == "icon")
+            {
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Sprite Processing", EditorStyles.boldLabel);
+                _request.TransparencyStrategy = EditorGUILayout.Popup(
+                    "Transparency Strategy",
+                    _request.TransparencyStrategy == "background_removal" ? 1 : 0,
+                    new[] { "none", "background_removal" }) == 1 ? "background_removal" : "none";
+                _request.AlphaThreshold = EditorGUILayout.IntSlider("Alpha Threshold", _request.AlphaThreshold, 0, 255);
+                _request.AlphaFeather = EditorGUILayout.IntSlider("Alpha Feather", _request.AlphaFeather, 0, 64);
+                _request.RemoveNearTransparent = EditorGUILayout.Toggle(
+                    "Remove Near Transparent", _request.RemoveNearTransparent);
+                _request.ZeroRgbWhenTransparent = EditorGUILayout.Toggle(
+                    "Zero RGB When Transparent", _request.ZeroRgbWhenTransparent);
+                _request.PixelsPerUnit = EditorGUILayout.FloatField("Pixels Per Unit", _request.PixelsPerUnit);
+                var pivotChoices = new[] { "center", "bottom_center", "custom" };
+                _request.PivotMode = pivotChoices[EditorGUILayout.Popup(
+                    "Pivot Mode", System.Array.IndexOf(pivotChoices, _request.PivotMode) < 0 ? 0 :
+                    System.Array.IndexOf(pivotChoices, _request.PivotMode), pivotChoices)];
+                if (_request.PivotMode == "custom")
+                {
+                    _request.CustomPivotX = EditorGUILayout.FloatField("Custom Pivot X", _request.CustomPivotX);
+                    _request.CustomPivotY = EditorGUILayout.FloatField("Custom Pivot Y", _request.CustomPivotY);
+                }
+                _request.AtlasHint = EditorGUILayout.TextField("Atlas Hint", _request.AtlasHint);
+                if (_request.TransparencyStrategy == "background_removal" &&
+                    t2i?.Processing?.BackgroundRemoval?.Available != true)
+                    EditorGUILayout.HelpBox(
+                        "Background removal is unavailable on the current backend; generation is disabled.",
+                        MessageType.Error);
+            }
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Unity Import", EditorStyles.boldLabel);
@@ -320,6 +351,16 @@ namespace UnityAiAssets.Editor.UI
             _request.DestinationFolder = profile.Unity.SuggestedOutputDirectory;
             _request.ImportProfileId = profile.Unity.ImportProfileId;
             _request.CreateMaterial = profile.Unity.CreateMaterial;
+            _request.TransparencyStrategy = profile.Processing.TransparencyStrategy;
+            _request.AlphaThreshold = profile.Processing.AlphaThreshold;
+            _request.AlphaFeather = profile.Processing.AlphaFeather;
+            _request.RemoveNearTransparent = profile.Processing.RemoveNearTransparent;
+            _request.ZeroRgbWhenTransparent = profile.Processing.ZeroRgbWhenTransparent;
+            _request.PixelsPerUnit = profile.Unity.PixelsPerUnit;
+            _request.PivotMode = profile.Unity.PivotMode;
+            _request.CustomPivotX = profile.Unity.CustomPivotX;
+            _request.CustomPivotY = profile.Unity.CustomPivotY;
+            _request.AtlasHint = profile.Unity.AtlasHint;
         }
 
         bool HasDirtyOverrides()
@@ -331,7 +372,11 @@ namespace UnityAiAssets.Editor.UI
                    Math.Abs(_request.GuidanceScale - profile.Defaults.GuidanceScale) > 0.0001f ||
                    _request.DestinationFolder != profile.Unity.SuggestedOutputDirectory ||
                    _request.ImportProfileId != profile.Unity.ImportProfileId ||
-                   _request.CreateMaterial != profile.Unity.CreateMaterial;
+                   _request.CreateMaterial != profile.Unity.CreateMaterial ||
+                   _request.TransparencyStrategy != profile.Processing.TransparencyStrategy ||
+                   _request.PixelsPerUnit != profile.Unity.PixelsPerUnit ||
+                   _request.PivotMode != profile.Unity.PivotMode ||
+                   _request.AtlasHint != profile.Unity.AtlasHint;
         }
 
         void UpdatePromptPreview(GenerationProgress progress)
@@ -342,7 +387,17 @@ namespace UnityAiAssets.Editor.UI
                 {
                     Subject = _request.Subject,
                     AdditionalPrompt = _request.AdditionalPrompt,
-                    AdditionalNegative = _request.AdditionalNegative
+                    AdditionalNegative = _request.AdditionalNegative,
+                    TransparencyStrategy = _request.TransparencyStrategy,
+                    AlphaThreshold = _request.AlphaThreshold,
+                    AlphaFeather = _request.AlphaFeather,
+                    RemoveNearTransparent = _request.RemoveNearTransparent,
+                    ZeroRgbWhenTransparent = _request.ZeroRgbWhenTransparent,
+                    PixelsPerUnit = _request.PixelsPerUnit,
+                    PivotMode = _request.PivotMode,
+                    CustomPivotX = _request.CustomPivotX,
+                    CustomPivotY = _request.CustomPivotY,
+                    AtlasHint = _request.AtlasHint
                 }, progress.Capabilities);
                 var dto = GenerationRequestFactory.FromResolved(resolved, _request);
                 _request.PreviewPrompt = _request.Prompt = dto.prompt;

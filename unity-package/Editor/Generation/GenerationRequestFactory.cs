@@ -31,7 +31,17 @@ namespace UnityAiAssets.Editor.Generation
                 negative_prompt_profile_id = resolved.NegativePromptProfileId,
                 negative_prompt_profile_revision = resolved.NegativePromptProfileRevision,
                 unity_import_profile_id = resolved.ImportProfileId,
-                asset_type = resolved.AssetType
+                asset_type = resolved.AssetType,
+                transparency_strategy = resolved.TransparencyStrategy,
+                alpha_threshold = resolved.AlphaThreshold,
+                alpha_feather = resolved.AlphaFeather,
+                remove_near_transparent = resolved.RemoveNearTransparent,
+                zero_rgb_when_transparent = resolved.ZeroRgbWhenTransparent,
+                pixels_per_unit = resolved.PixelsPerUnit,
+                pivot_mode = resolved.PivotMode,
+                custom_pivot_x = resolved.CustomPivotX,
+                custom_pivot_y = resolved.CustomPivotY,
+                atlas_hint = resolved.AtlasHint
             };
         }
     }

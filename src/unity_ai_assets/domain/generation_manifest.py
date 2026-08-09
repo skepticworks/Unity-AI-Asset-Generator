@@ -80,6 +80,16 @@ class ManifestRequestInfo:
     guidance_scale: float
     seed: int
     output_name: str
+    transparency_strategy: str = "none"
+    alpha_threshold: int | None = None
+    alpha_feather: int | None = None
+    remove_near_transparent: bool | None = None
+    zero_rgb_when_transparent: bool | None = None
+    pixels_per_unit: float | None = None
+    pivot_mode: str | None = None
+    custom_pivot_x: float | None = None
+    custom_pivot_y: float | None = None
+    atlas_hint: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +104,27 @@ class ManifestProfileInfo:
     negative_prompt_profile_id: str | None = None
     negative_prompt_profile_revision: int | None = None
     unity_import_profile_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ManifestProcessingInfo:
+    """Post-inference processing provenance for sprites/icons."""
+
+    transparency_strategy: str
+    background_removal_applied: bool
+    background_removal_implementation: str | None
+    alpha_cleanup_applied: bool
+    alpha_threshold: int | None
+    alpha_feather: int | None
+    remove_near_transparent: bool | None
+    zero_rgb_when_transparent: bool | None
+    pixels_per_unit: float | None = None
+    pivot_mode: str | None = None
+    custom_pivot_x: float | None = None
+    custom_pivot_y: float | None = None
+    atlas_hint: str | None = None
+    original_relative_path: str | None = None
+    final_relative_path: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,11 +152,38 @@ class GenerationManifest:
     request: ManifestRequestInfo
     outputs: list[ManifestOutputInfo]
     profile: ManifestProfileInfo | None = None
+    processing: ManifestProcessingInfo | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to the public JSON shape."""
         profile = self.profile or ManifestProfileInfo()
-        return {
+        request_payload: dict[str, Any] = {
+            "prompt": self.request.prompt,
+            "negative_prompt": self.request.negative_prompt,
+            "width": self.request.width,
+            "height": self.request.height,
+            "steps": self.request.steps,
+            "guidance_scale": self.request.guidance_scale,
+            "seed": self.request.seed,
+            "output_name": self.request.output_name,
+            "transparency_strategy": self.request.transparency_strategy,
+        }
+        optional_request = {
+            "alpha_threshold": self.request.alpha_threshold,
+            "alpha_feather": self.request.alpha_feather,
+            "remove_near_transparent": self.request.remove_near_transparent,
+            "zero_rgb_when_transparent": self.request.zero_rgb_when_transparent,
+            "pixels_per_unit": self.request.pixels_per_unit,
+            "pivot_mode": self.request.pivot_mode,
+            "custom_pivot_x": self.request.custom_pivot_x,
+            "custom_pivot_y": self.request.custom_pivot_y,
+            "atlas_hint": self.request.atlas_hint,
+        }
+        for key, value in optional_request.items():
+            if value is not None:
+                request_payload[key] = value
+
+        payload: dict[str, Any] = {
             "schema": {
                 "name": self.schema.name,
                 "version": self.schema.version,
@@ -154,16 +212,7 @@ class GenerationManifest:
                 "precision": self.runtime.precision,
                 "scheduler": self.runtime.scheduler,
             },
-            "request": {
-                "prompt": self.request.prompt,
-                "negative_prompt": self.request.negative_prompt,
-                "width": self.request.width,
-                "height": self.request.height,
-                "steps": self.request.steps,
-                "guidance_scale": self.request.guidance_scale,
-                "seed": self.request.seed,
-                "output_name": self.request.output_name,
-            },
+            "request": request_payload,
             "profile": {
                 "generation_profile_id": profile.generation_profile_id,
                 "generation_profile_revision": profile.generation_profile_revision,
@@ -187,6 +236,26 @@ class GenerationManifest:
                 for output in self.outputs
             ],
         }
+        if self.processing is not None:
+            proc = self.processing
+            payload["processing"] = {
+                "transparency_strategy": proc.transparency_strategy,
+                "background_removal_applied": proc.background_removal_applied,
+                "background_removal_implementation": proc.background_removal_implementation,
+                "alpha_cleanup_applied": proc.alpha_cleanup_applied,
+                "alpha_threshold": proc.alpha_threshold,
+                "alpha_feather": proc.alpha_feather,
+                "remove_near_transparent": proc.remove_near_transparent,
+                "zero_rgb_when_transparent": proc.zero_rgb_when_transparent,
+                "pixels_per_unit": proc.pixels_per_unit,
+                "pivot_mode": proc.pivot_mode,
+                "custom_pivot_x": proc.custom_pivot_x,
+                "custom_pivot_y": proc.custom_pivot_y,
+                "atlas_hint": proc.atlas_hint,
+                "original_relative_path": proc.original_relative_path,
+                "final_relative_path": proc.final_relative_path,
+            }
+        return payload
 
 
 def _format_utc(value: datetime) -> str:
@@ -221,6 +290,7 @@ def parse_manifest_payload(payload: dict[str, Any]) -> GenerationManifest:
     """Parse a versioned manifest or convert known legacy metadata.
 
     Unknown versioned formats are rejected. Malformed payloads raise ValueError.
+    Older 1.x manifests without processing blocks remain readable.
     """
     if is_legacy_metadata(payload):
         return _legacy_to_manifest(payload)
@@ -245,6 +315,46 @@ def parse_manifest_payload(payload: dict[str, Any]) -> GenerationManifest:
         raise ValueError(f"Malformed generation manifest: {exc}") from exc
 
 
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    return float(value)
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    return int(value)
+
+
+def _optional_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    return bool(value)
+
+
+def _parse_processing(raw: Any) -> ManifestProcessingInfo | None:
+    if not isinstance(raw, dict):
+        return None
+    return ManifestProcessingInfo(
+        transparency_strategy=str(raw.get("transparency_strategy") or "none"),
+        background_removal_applied=bool(raw.get("background_removal_applied") or False),
+        background_removal_implementation=raw.get("background_removal_implementation"),
+        alpha_cleanup_applied=bool(raw.get("alpha_cleanup_applied") or False),
+        alpha_threshold=_optional_int(raw.get("alpha_threshold")),
+        alpha_feather=_optional_int(raw.get("alpha_feather")),
+        remove_near_transparent=_optional_bool(raw.get("remove_near_transparent")),
+        zero_rgb_when_transparent=_optional_bool(raw.get("zero_rgb_when_transparent")),
+        pixels_per_unit=_optional_float(raw.get("pixels_per_unit")),
+        pivot_mode=raw.get("pivot_mode"),
+        custom_pivot_x=_optional_float(raw.get("custom_pivot_x")),
+        custom_pivot_y=_optional_float(raw.get("custom_pivot_y")),
+        atlas_hint=raw.get("atlas_hint"),
+        original_relative_path=raw.get("original_relative_path"),
+        final_relative_path=raw.get("final_relative_path"),
+    )
+
+
 def _parse_versioned(payload: dict[str, Any], *, schema_version: str) -> GenerationManifest:
     generation = payload["generation"]
     application = payload["application"]
@@ -253,6 +363,7 @@ def _parse_versioned(payload: dict[str, Any], *, schema_version: str) -> Generat
     request = payload["request"]
     outputs_raw = payload["outputs"]
     profile_raw = payload.get("profile")
+    processing = _parse_processing(payload.get("processing"))
 
     created = _parse_utc(generation["created_at_utc"])
     completed = _parse_utc(generation["completed_at_utc"])
@@ -310,6 +421,16 @@ def _parse_versioned(payload: dict[str, Any], *, schema_version: str) -> Generat
             guidance_scale=float(request["guidance_scale"]),
             seed=int(request["seed"]),
             output_name=str(request["output_name"]),
+            transparency_strategy=str(request.get("transparency_strategy") or "none"),
+            alpha_threshold=_optional_int(request.get("alpha_threshold")),
+            alpha_feather=_optional_int(request.get("alpha_feather")),
+            remove_near_transparent=_optional_bool(request.get("remove_near_transparent")),
+            zero_rgb_when_transparent=_optional_bool(request.get("zero_rgb_when_transparent")),
+            pixels_per_unit=_optional_float(request.get("pixels_per_unit")),
+            pivot_mode=request.get("pivot_mode"),
+            custom_pivot_x=_optional_float(request.get("custom_pivot_x")),
+            custom_pivot_y=_optional_float(request.get("custom_pivot_y")),
+            atlas_hint=request.get("atlas_hint"),
         ),
         outputs=outputs,
         profile=(
@@ -328,26 +449,12 @@ def _parse_versioned(payload: dict[str, Any], *, schema_version: str) -> Generat
                 unity_import_profile_id=profile_raw.get("unity_import_profile_id"),
             )
         ),
+        processing=processing,
     )
 
 
 def _legacy_to_manifest(payload: dict[str, Any]) -> GenerationManifest:
-    """Convert known unversioned flat metadata into the current representation.
-
-    Fields that cannot be reconstructed from legacy metadata are set to null
-    (revision already nullable) or documented defaults:
-    - schema is synthesized as generation-manifest 1.0
-    - operation defaults to text_to_image
-    - asset_type defaults to texture
-    - status defaults to completed
-    - completed_at_utc mirrors created_at_utc when absent
-    - application.name defaults to unity-ai-asset-generator
-    - application.api_major defaults to 1
-    - model.family defaults to unknown
-    - runtime.scheduler defaults to unknown
-    - outputs[].sha256 and byte_size are null-equivalent empty/0 when absent
-    - output relative_path uses output_filename when present
-    """
+    """Convert known unversioned flat metadata into the current representation."""
     created = _parse_utc(payload.get("created_at_utc")) or datetime.now(UTC)
     output_filename = str(payload.get("output_filename") or "texture.png")
     output_name = output_filename.rsplit(".", maxsplit=1)[0]
@@ -405,4 +512,5 @@ def _legacy_to_manifest(payload: dict[str, Any]) -> GenerationManifest:
             )
         ],
         profile=ManifestProfileInfo(),
+        processing=None,
     )

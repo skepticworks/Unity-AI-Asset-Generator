@@ -11,8 +11,10 @@ from unity_ai_assets.core.version import (
     GENERATION_MANIFEST_SCHEMA_VERSION,
 )
 from unity_ai_assets.domain.capabilities import (
+    AlphaCleanupCapabilities,
     ApiVersionInfo,
     ApplicationIdentity,
+    BackgroundRemovalCapabilities,
     CapabilityDocument,
     ConcurrencyLimits,
     DimensionConstraints,
@@ -24,17 +26,20 @@ from unity_ai_assets.domain.capabilities import (
     OperationsCapabilities,
     OutputNameConstraints,
     PrecisionCapabilities,
+    ProcessingCapabilities,
     PromptConstraints,
     RuntimeState,
     SchedulerCapabilities,
     SchemaVersions,
     SeedConstraints,
+    SpriteImportCapabilities,
     TextToImageCapabilities,
     UnsupportedOperation,
 )
-from unity_ai_assets.domain.enums import AssetType
+from unity_ai_assets.domain.enums import AssetType, PivotMode, TransparencyStrategy
 from unity_ai_assets.domain.generation_policy import GenerationPolicy
 from unity_ai_assets.inference.backend import ImageGenerationBackend
+from unity_ai_assets.processing.background_removal import ImageBackgroundRemover
 
 
 class CapabilityService:
@@ -45,27 +50,101 @@ class CapabilityService:
         settings: Settings,
         policy: GenerationPolicy,
         backend: ImageGenerationBackend,
+        background_remover: ImageBackgroundRemover | None = None,
     ) -> None:
         self._settings = settings
         self._policy = policy
         self._backend = backend
+        self._background_remover = background_remover
 
     def get_capabilities(self) -> CapabilityDocument:
         """Assemble the versioned capability document."""
         inference = self._backend.describe_capabilities()
         return self._assemble(inference)
 
+    def _background_removal_available(self) -> bool:
+        if self._background_remover is None:
+            return False
+        # Do not force-load rembg weights during capability probes.
+        # Report configured enablement; Unavailable/Fake advertise accurately.
+        from unity_ai_assets.processing.background_removal import (  # noqa: PLC0415
+            FakeBackgroundRemover,
+            UnavailableBackgroundRemover,
+        )
+
+        if isinstance(self._background_remover, UnavailableBackgroundRemover):
+            return False
+        if isinstance(self._background_remover, FakeBackgroundRemover):
+            return True
+        return bool(self._settings.background_removal_enabled)
+
     def _assemble(self, inference: InferenceCapabilities) -> CapabilityDocument:
         policy = self._policy
         settings = self._settings
 
-        # Prefer backend-reported scheduler default when selection is unsupported;
-        # policy/settings remain the configured public identifier.
         default_scheduler = (
             inference.default_scheduler if inference.default_scheduler else policy.default_scheduler
         )
         available_schedulers = (
             list(inference.available_schedulers) if inference.scheduler_selection_supported else []
+        )
+
+        bg_available = self._background_removal_available()
+        strategies = [TransparencyStrategy.NONE.value]
+        if bg_available or settings.background_removal_enabled:
+            # Advertise background_removal when enabled in config even if the
+            # optional dependency is missing, so Unity can show a clear reason
+            # once generation is attempted / availability is probed.
+            strategies.append(TransparencyStrategy.BACKGROUND_REMOVAL.value)
+
+        # When enabled but dependency missing, still list the strategy but mark
+        # background_removal.available=false so compatibility can gate.
+        if settings.background_removal_enabled and not bg_available:
+            # Probe without downloading if already known unavailable.
+            bg_available = False
+
+        remover_id = None
+        remover_model = None
+        if self._background_remover is not None and not isinstance(
+            self._background_remover,
+            type(None),
+        ):
+            from unity_ai_assets.processing.background_removal import (  # noqa: PLC0415
+                UnavailableBackgroundRemover,
+            )
+
+            if not isinstance(self._background_remover, UnavailableBackgroundRemover):
+                remover_id = settings.background_removal_backend
+                remover_model = settings.background_removal_model
+
+        processing = ProcessingCapabilities(
+            transparency_strategies=strategies,
+            background_removal=BackgroundRemovalCapabilities(
+                available=bg_available,
+                backend=remover_id if settings.background_removal_enabled else None,
+                model=remover_model if settings.background_removal_enabled else None,
+                produces_native_alpha=False,
+            ),
+            alpha_cleanup=AlphaCleanupCapabilities(
+                available=True,
+                alpha_threshold=NumericRangeInt(
+                    minimum=settings.min_alpha_threshold,
+                    maximum=settings.max_alpha_threshold,
+                    default=settings.default_alpha_threshold,
+                ),
+                alpha_feather=NumericRangeInt(
+                    minimum=settings.min_alpha_feather,
+                    maximum=settings.max_alpha_feather,
+                    default=settings.default_alpha_feather,
+                ),
+                remove_near_transparent_default=settings.default_remove_near_transparent,
+                zero_rgb_when_transparent_default=settings.default_zero_rgb_when_transparent,
+            ),
+            sprite_import=SpriteImportCapabilities(
+                supported=True,
+                single_sprite_only=True,
+                pivot_modes=[mode.value for mode in PivotMode],
+            ),
         )
 
         text_to_image = TextToImageCapabilities(
@@ -108,6 +187,7 @@ class CapabilityService:
                 default=default_scheduler,
                 available=available_schedulers,
             ),
+            processing=processing,
         )
 
         return CapabilityDocument(

@@ -6,7 +6,7 @@ Local FastAPI texture generation (Diffusers behind an inference protocol) plus a
 
 **ComfyUI is not used** in any form.
 
-Application/package version: **0.4.1** (Milestone 4.5 — architecture consolidation).
+Application/package version: **0.5.0** (Milestone 5 — sprite/icon workflow).
 
 ## Backend component responsibilities
 
@@ -15,18 +15,19 @@ Application/package version: **0.4.1** (Milestone 4.5 — architecture consolida
 | `api/routes` | HTTP transport: health, capabilities, generation, image/manifest retrieval |
 | `api/schemas` | Versioned public Pydantic models (capabilities, generation, errors) |
 | `domain/generation_policy.py` | **Authoritative** generation limits and validation |
-| `domain/capabilities.py` | Capability domain models |
+| `domain/capabilities.py` | Capability domain models including processing support |
 | `domain/generation_manifest.py` | Manifest domain model + legacy metadata compatibility |
 | `domain/generation.py` | Generation request/result dataclasses |
-| `services/capability_service.py` | Assemble capability document from policy + inference |
-| `services/generation_service.py` | Policy validation, seed, lock, orchestration |
+| `services/capability_service.py` | Assemble capability document from policy + inference + processing |
+| `services/generation_service.py` | Policy validation, seed, lock, orchestration, post-processing |
 | `services/output_service.py` | Atomic PNG + manifest persistence, SHA-256, resolve-by-UUID |
+| `processing/*` | Background removal + alpha cleanup (isolated from diffusion backends) |
 | `inference/*` | Backend protocol (`describe_capabilities` + `generate`), Diffusers, fake, model manager |
 | `core/version.py` | Central API / schema / application version constants |
 | `core/error_codes.py` | Stable application + field issue codes |
 | `core/exception_handlers.py` | Translate AppError / Pydantic errors into the public envelope |
 | `core/middleware.py` | `X-Request-ID` validation, generation, propagation |
-| `core/config.py` | Settings including policy env vars; startup validation |
+| `core/config.py` | Settings including policy and background-removal env vars |
 
 ## Unity package components
 
@@ -283,11 +284,28 @@ sequenceDiagram
 6. Bump capability schema **minor** for additive fields; **major** for breaking changes
 7. Update fixtures, Unity models, validators, and docs together
 
+## Milestone 5 sprite/icon processing flow
+
+```mermaid
+flowchart LR
+  Resolve[Profile resolution] --> Caps[Capability validation]
+  Caps --> Gen[Text-to-image RGB]
+  Gen --> Strat{transparency_strategy}
+  Strat -->|none| Persist[Persist PNG + manifest]
+  Strat -->|background_removal| BR[ImageBackgroundRemover]
+  BR --> Alpha[Deterministic alpha cleanup]
+  Alpha --> Persist
+  Persist --> Import[Unity single-sprite import]
+```
+
+Diffusion models produce RGB. Transparent backgrounds are an explicit post-processing
+strategy (`background_removal` via rembg/U2-Net), not native model alpha. Background
+removal is optional, lazily loaded, reused across requests, and isolated behind
+`ImageBackgroundRemover` so it never enters the diffusion backend protocol.
+
 ## Milestone 5 extension boundary
 
-Milestone 5 should retain the common path through `GenerationController`: resolve a generation
-profile, construct a wire DTO, validate capabilities, submit, download by `generation_id`, verify,
-and record metadata. Asset-specific behavior begins only after verification. Import dispatch can
-select texture, sprite, or other asset handling, and material creation remains an optional
-asset-specific step. New asset types extend catalog data and import behavior without duplicating
-transport, provenance, capability, or persistence orchestration.
+Milestone 5 retains the common path through `GenerationController`: resolve a generation
+profile, construct a wire DTO, validate capabilities, submit, download by `generation_id`,
+verify, and record metadata. Asset-specific behavior begins after verification for Unity
+import (sprite PPU/pivot/alpha settings). Icons reuse the sprite pipeline via profiles.

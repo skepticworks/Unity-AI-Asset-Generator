@@ -20,6 +20,7 @@ namespace UnityAiAssets.Editor.Api
         public const string ManifestNotFound = "MANIFEST_NOT_FOUND";
         public const string CapabilitySchemaUnsupported = "CAPABILITY_SCHEMA_UNSUPPORTED";
         public const string ManifestSchemaUnsupported = "MANIFEST_SCHEMA_UNSUPPORTED";
+        public const string BackgroundRemovalUnavailable = "BACKGROUND_REMOVAL_UNAVAILABLE";
         public const string InternalServerError = "INTERNAL_SERVER_ERROR";
     }
 

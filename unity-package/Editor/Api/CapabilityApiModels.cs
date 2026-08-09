@@ -94,6 +94,38 @@ namespace UnityAiAssets.Editor.Api
         public List<string> Available = new List<string>();
     }
 
+    public sealed class BackgroundRemovalCapabilities
+    {
+        public bool Available;
+        public string Backend;
+        public string Model;
+        public bool ProducesNativeAlpha;
+    }
+
+    public sealed class AlphaCleanupCapabilities
+    {
+        public bool Available;
+        public FloatRange AlphaThreshold;
+        public FloatRange AlphaFeather;
+        public bool RemoveNearTransparentDefault;
+        public bool ZeroRgbWhenTransparentDefault;
+    }
+
+    public sealed class SpriteImportCapabilities
+    {
+        public bool Supported;
+        public bool SingleSpriteOnly;
+        public List<string> PivotModes = new List<string>();
+    }
+
+    public sealed class ProcessingCapabilities
+    {
+        public List<string> TransparencyStrategies = new List<string>();
+        public BackgroundRemovalCapabilities BackgroundRemoval;
+        public AlphaCleanupCapabilities AlphaCleanup;
+        public SpriteImportCapabilities SpriteImport;
+    }
+
     public sealed class TextToImageCapabilities
     {
         public bool Supported;
@@ -106,6 +138,7 @@ namespace UnityAiAssets.Editor.Api
         public NegativePromptConstraints NegativePrompt;
         public OutputNameConstraints OutputName;
         public SchedulerCapabilities Schedulers;
+        public ProcessingCapabilities Processing;
     }
 
     public sealed class UnsupportedOperationInfo
@@ -247,6 +280,7 @@ namespace UnityAiAssets.Editor.Api
             var negativePromptNode = textToImageNode.Get("negative_prompt");
             var outputNameNode = textToImageNode.Get("output_name");
             var schedulersNode = textToImageNode.Get("schedulers");
+            var processingNode = textToImageNode.Get("processing");
 
             var textToImage = new TextToImageCapabilities
             {
@@ -299,6 +333,31 @@ namespace UnityAiAssets.Editor.Api
                     Default = schedulersNode.Get("default").AsString(),
                     Available = schedulersNode.Get("available").AsStringList(),
                 },
+                Processing = processingNode.IsObject ? new ProcessingCapabilities
+                {
+                    TransparencyStrategies = processingNode.Get("transparency_strategies").AsStringList(),
+                    BackgroundRemoval = new BackgroundRemovalCapabilities
+                    {
+                        Available = processingNode.Get("background_removal").Get("available").AsBool(),
+                        Backend = processingNode.Get("background_removal").Get("backend").AsString(),
+                        Model = processingNode.Get("background_removal").Get("model").AsString(),
+                        ProducesNativeAlpha = processingNode.Get("background_removal").Get("produces_native_alpha").AsBool()
+                    },
+                    AlphaCleanup = new AlphaCleanupCapabilities
+                    {
+                        Available = processingNode.Get("alpha_cleanup").Get("available").AsBool(),
+                        AlphaThreshold = ParseFloatRange(processingNode.Get("alpha_cleanup").Get("alpha_threshold")),
+                        AlphaFeather = ParseFloatRange(processingNode.Get("alpha_cleanup").Get("alpha_feather")),
+                        RemoveNearTransparentDefault = processingNode.Get("alpha_cleanup").Get("remove_near_transparent_default").AsBool(),
+                        ZeroRgbWhenTransparentDefault = processingNode.Get("alpha_cleanup").Get("zero_rgb_when_transparent_default").AsBool()
+                    },
+                    SpriteImport = new SpriteImportCapabilities
+                    {
+                        Supported = processingNode.Get("sprite_import").Get("supported").AsBool(),
+                        SingleSpriteOnly = processingNode.Get("sprite_import").Get("single_sprite_only").AsBool(),
+                        PivotModes = processingNode.Get("sprite_import").Get("pivot_modes").AsStringList()
+                    }
+                } : null,
             };
 
             return new OperationsInfo
@@ -314,5 +373,12 @@ namespace UnityAiAssets.Editor.Api
                 },
             };
         }
+
+        static FloatRange ParseFloatRange(JsonNode node) => new FloatRange
+        {
+            Minimum = node.Get("minimum").IsNull ? node.Get("min").AsFloat() : node.Get("minimum").AsFloat(),
+            Maximum = node.Get("maximum").IsNull ? node.Get("max").AsFloat() : node.Get("maximum").AsFloat(),
+            Default = node.Get("default").AsFloat()
+        };
     }
 }

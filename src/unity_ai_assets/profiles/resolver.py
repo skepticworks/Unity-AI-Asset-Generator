@@ -27,6 +27,16 @@ def resolve_generation_profile(
     steps: int | None = None,
     guidance_scale: float | None = None,
     seed: int | None = None,
+    transparency_strategy: str | None = None,
+    alpha_threshold: int | None = None,
+    alpha_feather: int | None = None,
+    remove_near_transparent: bool | None = None,
+    zero_rgb_when_transparent: bool | None = None,
+    pixels_per_unit: float | None = None,
+    pivot_mode: str | None = None,
+    custom_pivot_x: float | None = None,
+    custom_pivot_y: float | None = None,
+    atlas_hint: str | None = None,
     max_prompt_length: int = 2**31 - 1,
     max_negative_prompt_length: int = 2**31 - 1,
 ) -> ResolvedGenerationSettings:
@@ -54,6 +64,53 @@ def resolve_generation_profile(
         negative_prompt_profile_revision=negative_profile.revision,
         unity_import_profile_id=profile.unity.import_profile_id,
     )
+
+    resolved_ppu = (
+        pixels_per_unit
+        if pixels_per_unit is not None
+        else (
+            profile.unity.pixels_per_unit
+            if profile.unity.pixels_per_unit is not None
+            else defaults.pixels_per_unit
+        )
+    )
+    resolved_pivot = (
+        pivot_mode
+        if pivot_mode is not None
+        else (
+            profile.unity.pivot_mode
+            if profile.unity.pivot_mode is not None
+            else defaults.pivot_mode
+        )
+    )
+    resolved_pivot_x = (
+        custom_pivot_x
+        if custom_pivot_x is not None
+        else (
+            profile.unity.custom_pivot_x
+            if profile.unity.custom_pivot_x is not None
+            else defaults.custom_pivot_x
+        )
+    )
+    resolved_pivot_y = (
+        custom_pivot_y
+        if custom_pivot_y is not None
+        else (
+            profile.unity.custom_pivot_y
+            if profile.unity.custom_pivot_y is not None
+            else defaults.custom_pivot_y
+        )
+    )
+    resolved_atlas = (
+        atlas_hint
+        if atlas_hint is not None
+        else (
+            profile.unity.atlas_hint
+            if profile.unity.atlas_hint is not None
+            else defaults.atlas_hint
+        )
+    )
+
     resolved = ResolvedGenerationSettings(
         prompt=prompt,
         negative_prompt=negative,
@@ -67,6 +124,28 @@ def resolve_generation_profile(
         suggested_output_directory=profile.unity.suggested_output_directory,
         create_material=profile.unity.create_material,
         provenance=provenance,
+        transparency_strategy=(
+            defaults.transparency_strategy
+            if transparency_strategy is None
+            else transparency_strategy
+        ),
+        alpha_threshold=defaults.alpha_threshold if alpha_threshold is None else alpha_threshold,
+        alpha_feather=defaults.alpha_feather if alpha_feather is None else alpha_feather,
+        remove_near_transparent=(
+            defaults.remove_near_transparent
+            if remove_near_transparent is None
+            else remove_near_transparent
+        ),
+        zero_rgb_when_transparent=(
+            defaults.zero_rgb_when_transparent
+            if zero_rgb_when_transparent is None
+            else zero_rgb_when_transparent
+        ),
+        pixels_per_unit=resolved_ppu,
+        pivot_mode=resolved_pivot,
+        custom_pivot_x=resolved_pivot_x,
+        custom_pivot_y=resolved_pivot_y,
+        atlas_hint=resolved_atlas,
     )
     compatibility = evaluate_resolved_settings(
         resolved,
@@ -88,5 +167,15 @@ def resolve_generation_profile(
         suggested_output_directory=resolved.suggested_output_directory,
         create_material=resolved.create_material,
         provenance=resolved.provenance,
+        transparency_strategy=resolved.transparency_strategy,
+        alpha_threshold=resolved.alpha_threshold,
+        alpha_feather=resolved.alpha_feather,
+        remove_near_transparent=resolved.remove_near_transparent,
+        zero_rgb_when_transparent=resolved.zero_rgb_when_transparent,
+        pixels_per_unit=resolved.pixels_per_unit,
+        pivot_mode=resolved.pivot_mode,
+        custom_pivot_x=resolved.custom_pivot_x,
+        custom_pivot_y=resolved.custom_pivot_y,
+        atlas_hint=resolved.atlas_hint,
         compatibility=compatibility,
     )

@@ -31,6 +31,20 @@ namespace UnityAiAssets.Editor.Profiles
         public string ImportProfileId;
         public string SuggestedOutputDirectory;
         public bool CreateMaterial;
+        public float PixelsPerUnit = 100f;
+        public string PivotMode = "center";
+        public float CustomPivotX = .5f;
+        public float CustomPivotY = .5f;
+        public string AtlasHint;
+    }
+
+    public sealed class GenerationProcessingSettings
+    {
+        public string TransparencyStrategy = "none";
+        public int AlphaThreshold = 16;
+        public int AlphaFeather;
+        public bool RemoveNearTransparent = true;
+        public bool ZeroRgbWhenTransparent = true;
     }
 
     public sealed class GenerationProfile
@@ -47,6 +61,7 @@ namespace UnityAiAssets.Editor.Profiles
         public GenerationPromptReference Prompt = new GenerationPromptReference();
         public GenerationNegativePromptReference NegativePrompt = new GenerationNegativePromptReference();
         public GenerationDefaults Defaults = new GenerationDefaults();
+        public GenerationProcessingSettings Processing = new GenerationProcessingSettings();
         public GenerationUnitySettings Unity = new GenerationUnitySettings();
         public string SourcePath;
         public string Origin => Builtin ? "builtin" : "user";

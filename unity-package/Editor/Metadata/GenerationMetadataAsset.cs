@@ -51,5 +51,19 @@ namespace UnityAiAssets.Editor.Metadata
         public string NegativePromptProfileId;
         public int NegativePromptProfileRevision;
         public string UnityImportProfileId;
+        public string TransparencyStrategy;
+        public int AlphaThreshold;
+        public int AlphaFeather;
+        public bool RemoveNearTransparent;
+        public bool ZeroRgbWhenTransparent;
+        public float PixelsPerUnit;
+        public string PivotMode;
+        public float CustomPivotX;
+        public float CustomPivotY;
+        public string AtlasHint;
+        public string BackgroundRemovalBackend;
+        public string BackgroundRemovalImplementation;
+        public string BackgroundRemovalModel;
+        public bool ProducesNativeAlpha;
     }
 }

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0 — Milestone 5 sprite and icon workflow
+
+- Added sprite/icon generation through the shared text-to-image pipeline with explicit
+  transparency strategies (`none`, `background_removal`). Transparency is produced by
+  local post-processing (rembg), not native diffusion alpha.
+- Added deterministic alpha cleanup, pixels-per-unit, center/bottom-center/custom pivots,
+  atlas-hint metadata, and single-sprite Unity import settings.
+- Extended capabilities schema 1.1 and generation manifest schema 1.2 with processing
+  provenance. Added PS1 weapon-icon profile alongside character sprite and item icon.
+
 ## 0.4.1 — Milestone 4.5 architecture consolidation
 
 - Consolidated built-in asset types, prompt templates, negative prompts, and Unity import

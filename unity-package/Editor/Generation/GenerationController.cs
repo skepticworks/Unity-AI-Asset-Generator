@@ -251,7 +251,17 @@ namespace UnityAiAssets.Editor.Generation
                     DestinationFolder = request.DestinationFolder,
                     ImportProfileId = request.ImportProfileId,
                     CreateMaterial = request.CreateMaterial,
-                    OutputName = request.OutputName
+                    OutputName = request.OutputName,
+                    TransparencyStrategy = request.TransparencyStrategy,
+                    AlphaThreshold = request.AlphaThreshold,
+                    AlphaFeather = request.AlphaFeather,
+                    RemoveNearTransparent = request.RemoveNearTransparent,
+                    ZeroRgbWhenTransparent = request.ZeroRgbWhenTransparent,
+                    PixelsPerUnit = request.PixelsPerUnit,
+                    PivotMode = request.PivotMode,
+                    CustomPivotX = request.CustomPivotX,
+                    CustomPivotY = request.CustomPivotY,
+                    AtlasHint = request.AtlasHint
                 }, capabilities);
                 if (!resolved.Compatibility.CanGenerate)
                     throw new InvalidOperationException(string.Join("\n", resolved.Compatibility.Messages));
@@ -268,6 +278,16 @@ namespace UnityAiAssets.Editor.Generation
                 request.OutputName = resolved.OutputName;
                 request.DestinationFolder = resolved.DestinationFolder;
                 request.CreateMaterial = resolved.CreateMaterial;
+                request.TransparencyStrategy = resolved.TransparencyStrategy;
+                request.AlphaThreshold = resolved.AlphaThreshold;
+                request.AlphaFeather = resolved.AlphaFeather;
+                request.RemoveNearTransparent = resolved.RemoveNearTransparent;
+                request.ZeroRgbWhenTransparent = resolved.ZeroRgbWhenTransparent;
+                request.PixelsPerUnit = resolved.PixelsPerUnit;
+                request.PivotMode = resolved.PivotMode;
+                request.CustomPivotX = resolved.CustomPivotX;
+                request.CustomPivotY = resolved.CustomPivotY;
+                request.AtlasHint = resolved.AtlasHint;
 
                 var issues = GenerationCapabilityValidator.Validate(request, capabilities);
                 if (issues.Count > 0)
@@ -345,6 +365,14 @@ namespace UnityAiAssets.Editor.Generation
                 var profile = !string.IsNullOrWhiteSpace(request.ImportProfileId)
                     ? _catalog.GetImportProfile(request.ImportProfileId)
                     : _catalog.FromLegacyKind(request.ImportProfile);
+                profile = profile.Copy();
+                if (request.AssetType == "sprite" || request.AssetType == "icon")
+                {
+                    profile.PixelsPerUnit = resolved.PixelsPerUnit;
+                    profile.PivotMode = resolved.PivotMode;
+                    profile.CustomPivotX = resolved.CustomPivotX;
+                    profile.CustomPivotY = resolved.CustomPivotY;
+                }
                 var import = _assetImporter.ImportPng(
                     png,
                     request.DestinationFolder,

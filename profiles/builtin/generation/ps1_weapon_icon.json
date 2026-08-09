@@ -4,20 +4,20 @@
     "version": "1.1"
   },
   "profile": {
-    "id": "ps1_item_icon",
+    "id": "ps1_weapon_icon",
     "revision": 1,
-    "display_name": "PS1 Item Icon",
-    "description": "Centered item icon with PS1-inspired styling. Transparent backgrounds use local background-removal post-processing. Single-sprite import only.",
+    "display_name": "PS1 Weapon Icon",
+    "description": "Centered weapon icon with PS1-inspired styling. Transparent backgrounds use local background-removal post-processing. Single-sprite import only.",
     "asset_type": "icon",
     "builtin": true,
-    "tags": ["ps1", "item", "icon"]
+    "tags": ["ps1", "weapon", "icon"]
   },
   "prompt": {
-    "template_id": "ps1_item_icon",
+    "template_id": "ps1_weapon_icon",
     "template_revision": 1,
     "default_modifiers": [
       "centered composition",
-      "inventory readability"
+      "clear weapon silhouette"
     ]
   },
   "negative_prompt": {

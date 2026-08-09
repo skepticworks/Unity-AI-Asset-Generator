@@ -9,6 +9,6 @@ namespace UnityAiAssets.Editor.Versioning
         public const int SupportedApiMajor = 1;
         public const int SupportedCapabilitiesSchemaMajor = 1;
         public const int SupportedManifestSchemaMajor = 1;
-        public const string PackageVersion = "0.4.1";
+        public const string PackageVersion = "0.5.0";
     }
 }

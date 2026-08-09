@@ -44,5 +44,27 @@ namespace UnityAiAssets.Editor.Tests
                 "Standard Environment Texture",
                 TextureImportProfile.FromKind(TextureImportProfileKind.StandardEnvironment).DisplayName);
         }
+
+        [Test]
+        public void Ps1Sprite_HasSingleSpriteAlphaAndBottomCenterDefaults()
+        {
+            var profile = TextureImportProfile.CreatePs1Sprite();
+            Assert.AreEqual(TextureImporterType.Sprite, profile.TextureType);
+            Assert.AreEqual(SpriteImportMode.Single, profile.SpriteMode);
+            Assert.IsTrue(profile.AlphaIsTransparency);
+            Assert.AreEqual(TextureWrapMode.Clamp, profile.WrapMode);
+            Assert.AreEqual(FilterMode.Point, profile.FilterMode);
+            Assert.AreEqual(100f, profile.PixelsPerUnit);
+            Assert.AreEqual("bottom_center", profile.PivotMode);
+        }
+
+        [Test]
+        public void Ps1Icon_HasCenterPivotDefaults()
+        {
+            var profile = TextureImportProfile.CreatePs1Icon();
+            Assert.AreEqual(TextureImporterType.Sprite, profile.TextureType);
+            Assert.AreEqual(SpriteImportMode.Single, profile.SpriteMode);
+            Assert.AreEqual("center", profile.PivotMode);
+        }
     }
 }

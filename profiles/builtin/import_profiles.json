@@ -67,7 +67,10 @@
         "is_readable": false,
         "sprite_mode": "Single",
         "pixels_per_unit": 100,
-        "mesh_type": "FullRect"
+        "mesh_type": "FullRect",
+        "pivot_mode": "bottom_center",
+        "custom_pivot_x": 0.5,
+        "custom_pivot_y": 0.5
       }
     },
     {
@@ -89,7 +92,10 @@
         "is_readable": false,
         "sprite_mode": "Single",
         "pixels_per_unit": 100,
-        "mesh_type": "FullRect"
+        "mesh_type": "FullRect",
+        "pivot_mode": "center",
+        "custom_pivot_x": 0.5,
+        "custom_pivot_y": 0.5
       }
     },
     {

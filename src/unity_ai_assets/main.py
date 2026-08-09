@@ -18,6 +18,8 @@ from unity_ai_assets.domain.generation_policy import GenerationPolicy
 from unity_ai_assets.inference.backend import ImageGenerationBackend
 from unity_ai_assets.inference.diffusers_backend import DiffusersBackend
 from unity_ai_assets.inference.model_manager import ModelManager
+from unity_ai_assets.processing.background_removal import create_background_remover
+from unity_ai_assets.processing.pipeline import ImageProcessingPipeline
 from unity_ai_assets.services.capability_service import CapabilityService
 from unity_ai_assets.services.generation_service import GenerationService
 from unity_ai_assets.services.output_service import OutputService
@@ -35,6 +37,7 @@ def create_app(
     *,
     settings: Settings | None = None,
     backend: ImageGenerationBackend | None = None,
+    force_fake_background_removal: bool = False,
 ) -> FastAPI:
     """Application factory supporting dependency injection for tests."""
     resolved_settings = settings or get_settings()
@@ -53,17 +56,32 @@ def create_app(
             "Concurrency: generation requests are serialized with an in-process lock; "
             "run a single Uvicorn worker for this milestone."
         )
+        logger.info(
+            "Background removal enabled=%s backend=%s model=%s",
+            resolved_settings.background_removal_enabled,
+            resolved_settings.background_removal_backend,
+            resolved_settings.background_removal_model,
+        )
         yield
         logger.info("Shutting down unity-ai-assets")
 
     app = FastAPI(
         title="Unity AI Asset Generator",
         version=resolved_settings.app_version or APPLICATION_VERSION,
-        description="Local text-to-image texture generation for Unity-ready 2D assets.",
+        description=(
+            "Local text-to-image generation for Unity-ready 2D textures, sprites, and icons."
+        ),
         lifespan=lifespan,
     )
 
     resolved_backend = backend or create_backend(resolved_settings)
+    background_remover = create_background_remover(
+        enabled=resolved_settings.background_removal_enabled,
+        backend=resolved_settings.background_removal_backend,
+        model=resolved_settings.background_removal_model,
+        force_fake=force_fake_background_removal,
+    )
+    processing_pipeline = ImageProcessingPipeline(background_remover)
     output_service = OutputService(
         resolved_settings.output_directory,
         app_version=resolved_settings.app_version or APPLICATION_VERSION,
@@ -76,11 +94,13 @@ def create_app(
         output_service=output_service,
         settings=resolved_settings,
         policy=policy,
+        processing_pipeline=processing_pipeline,
     )
     capability_service = CapabilityService(
         settings=resolved_settings,
         policy=policy,
         backend=resolved_backend,
+        background_remover=background_remover,
     )
 
     app.state.settings = resolved_settings
@@ -88,6 +108,8 @@ def create_app(
     app.state.generation_service = generation_service
     app.state.output_service = output_service
     app.state.capability_service = capability_service
+    app.state.background_remover = background_remover
+    app.state.processing_pipeline = processing_pipeline
 
     app.add_middleware(RequestIdMiddleware)
     register_exception_handlers(app)

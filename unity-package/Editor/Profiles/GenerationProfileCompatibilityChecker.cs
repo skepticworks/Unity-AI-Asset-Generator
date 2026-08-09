@@ -33,7 +33,12 @@ namespace UnityAiAssets.Editor.Profiles
                 profile.Defaults.Steps,
                 profile.Defaults.GuidanceScale,
                 profile.Defaults.FixedSeed,
-                capabilities);
+                capabilities,
+                profile.Processing.TransparencyStrategy,
+                profile.Unity.PixelsPerUnit,
+                profile.Unity.PivotMode,
+                profile.Unity.CustomPivotX,
+                profile.Unity.CustomPivotY);
         }
 
         /// <summary>
@@ -47,9 +52,15 @@ namespace UnityAiAssets.Editor.Profiles
             int steps,
             float guidanceScale,
             long? seed,
-            CapabilityDocument capabilities)
+            CapabilityDocument capabilities,
+            string transparencyStrategy = "none",
+            float pixelsPerUnit = 100f,
+            string pivotMode = "center",
+            float customPivotX = .5f,
+            float customPivotY = .5f)
         {
-            return CheckValues(assetType, width, height, steps, guidanceScale, seed, capabilities);
+            return CheckValues(assetType, width, height, steps, guidanceScale, seed, capabilities,
+                transparencyStrategy, pixelsPerUnit, pivotMode, customPivotX, customPivotY);
         }
 
         static ProfileCompatibility CheckValues(
@@ -59,7 +70,12 @@ namespace UnityAiAssets.Editor.Profiles
             int steps,
             float guidanceScale,
             long? seed,
-            CapabilityDocument capabilities)
+            CapabilityDocument capabilities,
+            string transparencyStrategy,
+            float pixelsPerUnit,
+            string pivotMode,
+            float customPivotX,
+            float customPivotY)
         {
             var result = new ProfileCompatibility();
             if (capabilities?.Operations?.TextToImage == null)
@@ -99,6 +115,21 @@ namespace UnityAiAssets.Editor.Profiles
             if (seed.HasValue && operation.Seed != null &&
                 !CapabilityLimits.IsInRange(seed.Value, operation.Seed.Minimum, operation.Seed.Maximum))
                 Add(result, CompatibilityReasonCodes.SeedOutOfRange, "Seed is outside backend limits.");
+            if (transparencyStrategy == "background_removal" &&
+                operation.Processing?.BackgroundRemoval?.Available != true)
+                Add(result, CompatibilityReasonCodes.BackgroundRemovalUnavailable,
+                    "The backend does not provide background removal.");
+            if (assetType == "sprite" || assetType == "icon")
+            {
+                if (pixelsPerUnit <= 0)
+                    Add(result, CompatibilityReasonCodes.PixelsPerUnitInvalid, "Pixels per unit must be greater than zero.");
+                if (pivotMode != "center" && pivotMode != "bottom_center" && pivotMode != "custom")
+                    Add(result, CompatibilityReasonCodes.PivotModeInvalid, "Pivot mode must be center, bottom_center, or custom.");
+                if (pivotMode == "custom" &&
+                    (!CapabilityLimits.IsInRange(customPivotX, 0f, 1f) ||
+                     !CapabilityLimits.IsInRange(customPivotY, 0f, 1f)))
+                    Add(result, CompatibilityReasonCodes.CustomPivotInvalid, "Custom pivot coordinates must be between zero and one.");
+            }
 
             result.State = result.ReasonCodes.Count == 0
                 ? ProfileCompatibilityState.Compatible

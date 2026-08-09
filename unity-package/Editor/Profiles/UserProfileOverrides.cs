@@ -14,5 +14,15 @@ namespace UnityAiAssets.Editor.Profiles
         public string ImportProfileId;
         public bool? CreateMaterial;
         public string OutputName;
+        public string TransparencyStrategy;
+        public int? AlphaThreshold;
+        public int? AlphaFeather;
+        public bool? RemoveNearTransparent;
+        public bool? ZeroRgbWhenTransparent;
+        public float? PixelsPerUnit;
+        public string PivotMode;
+        public float? CustomPivotX;
+        public float? CustomPivotY;
+        public string AtlasHint;
     }
 }

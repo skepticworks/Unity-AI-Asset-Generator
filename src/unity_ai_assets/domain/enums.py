@@ -67,9 +67,47 @@ class OutputKind(StrEnum):
     """Kinds of persisted generation outputs."""
 
     IMAGE = "image"
+    ORIGINAL_IMAGE = "original_image"
 
 
 class OutputFormat(StrEnum):
     """Persisted image formats."""
 
     PNG = "png"
+
+
+class TransparencyStrategy(StrEnum):
+    """How transparent backgrounds are produced for sprites/icons.
+
+    Diffusion models do not natively emit alpha; ``background_removal`` applies
+    local post-processing after RGB generation.
+    """
+
+    NONE = "none"
+    BACKGROUND_REMOVAL = "background_removal"
+
+
+KNOWN_TRANSPARENCY_STRATEGIES: frozenset[str] = frozenset(
+    item.value for item in TransparencyStrategy
+)
+
+
+def is_known_transparency_strategy(value: str) -> bool:
+    """Return whether value is a canonical transparency strategy identifier."""
+    return value in KNOWN_TRANSPARENCY_STRATEGIES
+
+
+class PivotMode(StrEnum):
+    """Unity sprite pivot modes with stable serialized identifiers."""
+
+    CENTER = "center"
+    BOTTOM_CENTER = "bottom_center"
+    CUSTOM = "custom"
+
+
+KNOWN_PIVOT_MODES: frozenset[str] = frozenset(item.value for item in PivotMode)
+
+
+def is_known_pivot_mode(value: str) -> bool:
+    """Return whether value is a canonical pivot mode identifier."""
+    return value in KNOWN_PIVOT_MODES

@@ -51,6 +51,16 @@ async def generate_texture(
         negative_prompt_profile_revision=payload.negative_prompt_profile_revision,
         unity_import_profile_id=payload.unity_import_profile_id,
         asset_type=payload.asset_type,
+        transparency_strategy=payload.transparency_strategy,
+        alpha_threshold=payload.alpha_threshold,
+        alpha_feather=payload.alpha_feather,
+        remove_near_transparent=payload.remove_near_transparent,
+        zero_rgb_when_transparent=payload.zero_rgb_when_transparent,
+        pixels_per_unit=payload.pixels_per_unit,
+        pivot_mode=payload.pivot_mode,
+        custom_pivot_x=payload.custom_pivot_x,
+        custom_pivot_y=payload.custom_pivot_y,
+        atlas_hint=payload.atlas_hint,
     )
     resources = _resources(result.generation_id)
     return TextureGenerationResponse(

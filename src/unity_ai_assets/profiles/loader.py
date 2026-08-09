@@ -189,11 +189,50 @@ def parse_generation_profile(
                 fixed_seed=(
                     None if defaults.get("fixed_seed") is None else int(defaults["fixed_seed"])
                 ),
+                transparency_strategy=str(defaults.get("transparency_strategy") or "none"),
+                alpha_threshold=int(defaults.get("alpha_threshold", 16)),
+                alpha_feather=int(defaults.get("alpha_feather", 0)),
+                remove_near_transparent=bool(defaults.get("remove_near_transparent", True)),
+                zero_rgb_when_transparent=bool(defaults.get("zero_rgb_when_transparent", True)),
+                pixels_per_unit=(
+                    None
+                    if defaults.get("pixels_per_unit") is None
+                    else float(defaults["pixels_per_unit"])
+                ),
+                pivot_mode=(
+                    None if defaults.get("pivot_mode") is None else str(defaults["pivot_mode"])
+                ),
+                custom_pivot_x=(
+                    None
+                    if defaults.get("custom_pivot_x") is None
+                    else float(defaults["custom_pivot_x"])
+                ),
+                custom_pivot_y=(
+                    None
+                    if defaults.get("custom_pivot_y") is None
+                    else float(defaults["custom_pivot_y"])
+                ),
+                atlas_hint=(
+                    None if defaults.get("atlas_hint") is None else str(defaults["atlas_hint"])
+                ),
             ),
             unity=GenerationProfileUnitySettings(
                 import_profile_id=validate_profile_id(str(unity["import_profile_id"])),
                 suggested_output_directory=str(unity["suggested_output_directory"]),
                 create_material=bool(unity["create_material"]),
+                pixels_per_unit=(
+                    None
+                    if unity.get("pixels_per_unit") is None
+                    else float(unity["pixels_per_unit"])
+                ),
+                pivot_mode=None if unity.get("pivot_mode") is None else str(unity["pivot_mode"]),
+                custom_pivot_x=(
+                    None if unity.get("custom_pivot_x") is None else float(unity["custom_pivot_x"])
+                ),
+                custom_pivot_y=(
+                    None if unity.get("custom_pivot_y") is None else float(unity["custom_pivot_y"])
+                ),
+                atlas_hint=None if unity.get("atlas_hint") is None else str(unity["atlas_hint"]),
             ),
             schema_version=schema_version,
         )

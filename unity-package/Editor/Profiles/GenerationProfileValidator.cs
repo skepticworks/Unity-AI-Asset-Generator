@@ -30,6 +30,18 @@ namespace UnityAiAssets.Editor.Profiles
                 Invalid("generation_defaults.seed_strategy", "Expected random or fixed.", issues);
             if (profile.Defaults.SeedStrategy == "fixed" && !profile.Defaults.FixedSeed.HasValue)
                 Invalid("generation_defaults.fixed_seed", "A fixed seed is required for fixed strategy.", issues);
+            if (profile.AssetType == "sprite" || profile.AssetType == "icon")
+            {
+                if (profile.Unity.PixelsPerUnit <= 0)
+                    Invalid("unity.pixels_per_unit", "Pixels per unit must be positive.", issues);
+                if (profile.Unity.PivotMode != "center" && profile.Unity.PivotMode != "bottom_center" &&
+                    profile.Unity.PivotMode != "custom")
+                    Invalid("unity.pivot_mode", "Expected center, bottom_center, or custom.", issues);
+                if (profile.Unity.PivotMode == "custom" &&
+                    (profile.Unity.CustomPivotX < 0 || profile.Unity.CustomPivotX > 1 ||
+                     profile.Unity.CustomPivotY < 0 || profile.Unity.CustomPivotY > 1))
+                    Invalid("unity.custom_pivot", "Custom pivot coordinates must be between zero and one.", issues);
+            }
             return issues;
         }
 

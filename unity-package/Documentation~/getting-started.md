@@ -12,9 +12,10 @@ duplicate one to customize it. User JSON is stored at
 `ProjectSettings/AIAssetGenerator/Profiles/<uuid>.json`, outside `Assets/`. Saves increment the
 revision only when material profile fields change.
 
-Texture generation remains supported. Sprite, icon, and UI generation choices are disabled
-unless the connected backend includes the selected type in `text_to_image.asset_types`.
-
+Texture generation remains supported. Sprite and icon generation use the same pipeline with
+explicit transparency strategies. Profiles that require `background_removal` stay disabled until
+capabilities report background removal as available. Single-sprite import only — sprite sheets
+and automatic atlases are out of scope.
 **Generate And Import** is disabled (with an explanation) if capabilities have not loaded yet or
 are incompatible with this package version. See the package [README](../README.md) for
 capability discovery, version compatibility, the generation manifest, integrity verification,

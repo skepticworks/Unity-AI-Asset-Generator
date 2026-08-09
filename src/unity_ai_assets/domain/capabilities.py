@@ -122,6 +122,50 @@ class SchedulerCapabilities:
 
 
 @dataclass(frozen=True, slots=True)
+class BackgroundRemovalCapabilities:
+    """Whether local background-removal post-processing is available."""
+
+    available: bool
+    backend: str | None = None
+    model: str | None = None
+    produces_native_alpha: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class AlphaCleanupCapabilities:
+    """Deterministic alpha cleanup support and parameter ranges."""
+
+    available: bool
+    alpha_threshold: NumericRangeInt
+    alpha_feather: NumericRangeInt
+    remove_near_transparent_default: bool
+    zero_rgb_when_transparent_default: bool
+
+
+@dataclass(frozen=True, slots=True)
+class SpriteImportCapabilities:
+    """Whether Unity-oriented sprite import settings are supported in-product."""
+
+    supported: bool
+    single_sprite_only: bool = True
+    pivot_modes: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class ProcessingCapabilities:
+    """Post-inference processing capabilities (transparency, alpha cleanup).
+
+    Transparency produced via post-processing is reported separately from
+    image generation so clients do not assume the diffusion model emits alpha.
+    """
+
+    transparency_strategies: list[str]
+    background_removal: BackgroundRemovalCapabilities
+    alpha_cleanup: AlphaCleanupCapabilities
+    sprite_import: SpriteImportCapabilities
+
+
+@dataclass(frozen=True, slots=True)
 class TextToImageCapabilities:
     """Constraints for the text-to-image operation."""
 
@@ -135,6 +179,7 @@ class TextToImageCapabilities:
     negative_prompt: NegativePromptConstraints
     output_name: OutputNameConstraints
     schedulers: SchedulerCapabilities
+    processing: ProcessingCapabilities | None = None
 
 
 @dataclass(frozen=True, slots=True)

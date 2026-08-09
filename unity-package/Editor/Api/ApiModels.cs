@@ -40,6 +40,16 @@ namespace UnityAiAssets.Editor.Api
         public int? negative_prompt_profile_revision;
         public string unity_import_profile_id;
         public string asset_type;
+        public string transparency_strategy;
+        public int? alpha_threshold;
+        public int? alpha_feather;
+        public bool? remove_near_transparent;
+        public bool? zero_rgb_when_transparent;
+        public float? pixels_per_unit;
+        public string pivot_mode;
+        public float? custom_pivot_x;
+        public float? custom_pivot_y;
+        public string atlas_hint;
 
         public string ToJson()
         {
@@ -66,6 +76,16 @@ namespace UnityAiAssets.Editor.Api
             if (negative_prompt_profile_revision.HasValue) AppendNumber(sb, "negative_prompt_profile_revision", negative_prompt_profile_revision.Value);
             AppendOptionalString(sb, "unity_import_profile_id", unity_import_profile_id);
             AppendOptionalString(sb, "asset_type", asset_type);
+            AppendOptionalString(sb, "transparency_strategy", transparency_strategy);
+            if (alpha_threshold.HasValue) AppendNumber(sb, "alpha_threshold", alpha_threshold.Value);
+            if (alpha_feather.HasValue) AppendNumber(sb, "alpha_feather", alpha_feather.Value);
+            if (remove_near_transparent.HasValue) AppendBool(sb, "remove_near_transparent", remove_near_transparent.Value);
+            if (zero_rgb_when_transparent.HasValue) AppendBool(sb, "zero_rgb_when_transparent", zero_rgb_when_transparent.Value);
+            if (pixels_per_unit.HasValue) AppendFloat(sb, "pixels_per_unit", pixels_per_unit.Value);
+            AppendOptionalString(sb, "pivot_mode", pivot_mode);
+            if (custom_pivot_x.HasValue) AppendFloat(sb, "custom_pivot_x", custom_pivot_x.Value);
+            if (custom_pivot_y.HasValue) AppendFloat(sb, "custom_pivot_y", custom_pivot_y.Value);
+            AppendOptionalString(sb, "atlas_hint", atlas_hint);
             sb.Append('}');
             return sb.ToString();
         }
@@ -98,6 +118,11 @@ namespace UnityAiAssets.Editor.Api
             sb.Append(',');
             sb.Append('"').Append(key).Append("\":");
             sb.Append(value.ToString("0.###", CultureInfo.InvariantCulture));
+        }
+
+        static void AppendBool(StringBuilder sb, string key, bool value)
+        {
+            sb.Append(',').Append('"').Append(key).Append("\":").Append(value ? "true" : "false");
         }
 
         static string Escape(string value)

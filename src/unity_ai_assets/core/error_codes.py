@@ -25,6 +25,13 @@ class AppErrorCode(StrEnum):
     MANIFEST_NOT_FOUND = "MANIFEST_NOT_FOUND"
     CAPABILITY_SCHEMA_UNSUPPORTED = "CAPABILITY_SCHEMA_UNSUPPORTED"
     MANIFEST_SCHEMA_UNSUPPORTED = "MANIFEST_SCHEMA_UNSUPPORTED"
+    TRANSPARENCY_STRATEGY_UNSUPPORTED = "TRANSPARENCY_STRATEGY_UNSUPPORTED"
+    BACKGROUND_REMOVAL_UNAVAILABLE = "BACKGROUND_REMOVAL_UNAVAILABLE"
+    BACKGROUND_REMOVAL_FAILED = "BACKGROUND_REMOVAL_FAILED"
+    ALPHA_PROCESSING_FAILED = "ALPHA_PROCESSING_FAILED"
+    SPRITE_IMPORT_FAILED = "SPRITE_IMPORT_FAILED"
+    PIVOT_INVALID = "PIVOT_INVALID"
+    PIXELS_PER_UNIT_INVALID = "PIXELS_PER_UNIT_INVALID"
     INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
 
 
@@ -58,6 +65,17 @@ DEFAULT_MESSAGES: dict[AppErrorCode, str] = {
     AppErrorCode.MANIFEST_SCHEMA_UNSUPPORTED: (
         "The generation manifest schema version is unsupported."
     ),
+    AppErrorCode.TRANSPARENCY_STRATEGY_UNSUPPORTED: (
+        "The requested transparency strategy is not supported."
+    ),
+    AppErrorCode.BACKGROUND_REMOVAL_UNAVAILABLE: (
+        "Background removal is unavailable on this backend."
+    ),
+    AppErrorCode.BACKGROUND_REMOVAL_FAILED: "Background removal failed.",
+    AppErrorCode.ALPHA_PROCESSING_FAILED: "Alpha cleanup processing failed.",
+    AppErrorCode.SPRITE_IMPORT_FAILED: "Sprite import failed.",
+    AppErrorCode.PIVOT_INVALID: "The requested sprite pivot is invalid.",
+    AppErrorCode.PIXELS_PER_UNIT_INVALID: "The requested pixels-per-unit value is invalid.",
     AppErrorCode.INTERNAL_SERVER_ERROR: "An unexpected server error occurred.",
 }
 
@@ -77,5 +95,12 @@ HTTP_STATUS_BY_CODE: dict[AppErrorCode, int] = {
     AppErrorCode.MANIFEST_NOT_FOUND: 404,
     AppErrorCode.CAPABILITY_SCHEMA_UNSUPPORTED: 409,
     AppErrorCode.MANIFEST_SCHEMA_UNSUPPORTED: 409,
+    AppErrorCode.TRANSPARENCY_STRATEGY_UNSUPPORTED: 422,
+    AppErrorCode.BACKGROUND_REMOVAL_UNAVAILABLE: 422,
+    AppErrorCode.BACKGROUND_REMOVAL_FAILED: 500,
+    AppErrorCode.ALPHA_PROCESSING_FAILED: 500,
+    AppErrorCode.SPRITE_IMPORT_FAILED: 500,
+    AppErrorCode.PIVOT_INVALID: 422,
+    AppErrorCode.PIXELS_PER_UNIT_INVALID: 422,
     AppErrorCode.INTERNAL_SERVER_ERROR: 500,
 }

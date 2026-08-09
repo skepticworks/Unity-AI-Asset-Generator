@@ -71,6 +71,7 @@ namespace UnityAiAssets.Editor.Profiles
             var prompt = root.Get("prompt");
             var negative = root.Get("negative_prompt");
             var defaults = root.Get("generation_defaults");
+            var processing = root.Get("processing");
             var unity = root.Get("unity");
             result.Profile = new GenerationProfile
             {
@@ -104,16 +105,54 @@ namespace UnityAiAssets.Editor.Profiles
                     SeedStrategy = defaults.Get("seed_strategy").AsString(),
                     FixedSeed = defaults.Get("fixed_seed").IsNull ? (long?)null : defaults.Get("fixed_seed").AsLong()
                 },
+                Processing = ParseProcessing(defaults, processing),
                 Unity = new GenerationUnitySettings
                 {
                     ImportProfileId = unity.Get("import_profile_id").AsString(),
                     SuggestedOutputDirectory = unity.Get("suggested_output_directory").AsString(),
-                    CreateMaterial = unity.Get("create_material").AsBool()
+                    CreateMaterial = unity.Get("create_material").AsBool(),
+                    PixelsPerUnit = unity.Get("pixels_per_unit").AsFloat(100f),
+                    PivotMode = unity.Get("pivot_mode").AsString("center"),
+                    CustomPivotX = unity.Get("custom_pivot_x").AsFloat(.5f),
+                    CustomPivotY = unity.Get("custom_pivot_y").AsFloat(.5f),
+                    AtlasHint = unity.Get("atlas_hint").AsString()
                 },
                 SourcePath = sourcePath
             };
             result.Issues.AddRange(GenerationProfileValidator.ValidateStructure(result.Profile));
             return result;
+        }
+
+        static GenerationProcessingSettings ParseProcessing(JsonNode defaults, JsonNode processing)
+        {
+            // Prefer generation_defaults fields (backend profile shape), fall back to processing block.
+            var source = defaults != null && !defaults.Get("transparency_strategy").IsNull
+                ? defaults
+                : processing;
+            if (source == null || source.IsNull)
+            {
+                return new GenerationProcessingSettings();
+            }
+
+            return new GenerationProcessingSettings
+            {
+                TransparencyStrategy = source.Get("transparency_strategy").AsString("none"),
+                AlphaThreshold = ReadAlphaByte(source.Get("alpha_threshold"), 16),
+                AlphaFeather = ReadAlphaByte(source.Get("alpha_feather"), 0),
+                RemoveNearTransparent = source.Get("remove_near_transparent").AsBool(true),
+                ZeroRgbWhenTransparent = source.Get("zero_rgb_when_transparent").AsBool(true)
+            };
+        }
+
+        static int ReadAlphaByte(JsonNode node, int fallback)
+        {
+            if (node == null || node.IsNull) return fallback;
+            var value = node.AsFloat(fallback);
+            // Accept legacy normalized floats (0-1] by scaling to 0-255.
+            if (value > 0f && value <= 1f) return (int)Math.Round(value * 255f);
+            if (value < 0f) return 0;
+            if (value > 255f) return 255;
+            return (int)Math.Round(value);
         }
 
         static int Major(string value)

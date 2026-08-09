@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
+from PIL import Image
+
 from unity_ai_assets.core.error_codes import FieldIssueCode
 from unity_ai_assets.core.errors import (
     FieldIssue,
@@ -42,12 +44,14 @@ from unity_ai_assets.domain.generation_manifest import (
     ManifestGenerationInfo,
     ManifestModelInfo,
     ManifestOutputInfo,
+    ManifestProcessingInfo,
     ManifestProfileInfo,
     ManifestRequestInfo,
     ManifestRuntimeInfo,
     ManifestSchemaInfo,
     parse_manifest_payload,
 )
+from unity_ai_assets.processing.pipeline import ProcessingResult
 
 logger = get_logger(__name__)
 
@@ -203,7 +207,7 @@ class OutputService:
         return self._output_directory
 
     def resolve_artifacts(self, generation_id: str) -> GenerationArtifacts:
-        """Resolve PNG + JSON for a generation ID without accepting filesystem paths."""
+        """Resolve final PNG + JSON for a generation ID without accepting filesystem paths."""
         safe_id = validate_generation_id(generation_id)
         root = self._output_directory.resolve()
         generation_dir = (self._output_directory / safe_id).resolve()
@@ -223,19 +227,13 @@ class OutputService:
         if not generation_dir.is_dir():
             raise GenerationNotFoundError(f"No generation found for id '{safe_id}'")
 
-        png_files = sorted(generation_dir.glob("*.png"))
-        if len(png_files) != 1:
-            raise GenerationNotFoundError(
-                f"Generation '{safe_id}' does not contain exactly one image file"
-            )
-
         metadata_path = self._find_metadata_path(generation_dir)
         if metadata_path is None:
             raise ManifestNotFoundError(
                 f"Generation '{safe_id}' does not contain a manifest or legacy metadata file"
             )
 
-        image_path = png_files[0].resolve()
+        image_path = self._resolve_final_image(generation_dir, metadata_path)
         metadata_resolved = metadata_path.resolve()
         if not str(image_path).startswith(str(generation_dir)) or not str(
             metadata_resolved
@@ -249,6 +247,48 @@ class OutputService:
             image_path=image_path,
             metadata_path=metadata_resolved,
         )
+
+    def _resolve_final_image(self, generation_dir: Path, metadata_path: Path) -> Path:
+        """Prefer the final processed image identified by the manifest."""
+        try:
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                processing = payload.get("processing")
+                if isinstance(processing, dict):
+                    final_rel = processing.get("final_relative_path")
+                    if isinstance(final_rel, str) and final_rel:
+                        candidate = (generation_dir / final_rel).resolve()
+                        if candidate.is_file() and str(candidate).startswith(str(generation_dir)):
+                            return candidate
+                outputs = payload.get("outputs")
+                if isinstance(outputs, list):
+                    for item in outputs:
+                        if (
+                            isinstance(item, dict)
+                            and item.get("kind") == OutputKind.IMAGE.value
+                            and isinstance(item.get("relative_path"), str)
+                        ):
+                            candidate = (generation_dir / str(item["relative_path"])).resolve()
+                            if candidate.is_file() and str(candidate).startswith(
+                                str(generation_dir)
+                            ):
+                                return candidate
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            pass
+
+        png_files = sorted(
+            p
+            for p in generation_dir.glob("*.png")
+            if p.is_file() and not p.name.endswith(".original.png")
+        )
+        if len(png_files) == 1:
+            return png_files[0].resolve()
+        if not png_files:
+            raise GenerationNotFoundError(
+                f"Generation '{generation_dir.name}' does not contain a final image file"
+            )
+        # Prefer the shortest non-original name as a last resort.
+        return min(png_files, key=lambda p: len(p.name)).resolve()
 
     def load_manifest(self, generation_id: str) -> GenerationManifest:
         """Load and parse the generation manifest (with legacy compatibility)."""
@@ -282,6 +322,8 @@ class OutputService:
         self,
         request: GenerationRequest,
         generated: GeneratedImage,
+        *,
+        processing: ProcessingResult | None = None,
     ) -> GenerationResult:
         """Save PNG + versioned manifest; never overwrite an existing generation directory."""
         safe_name = sanitize_output_name(
@@ -313,13 +355,74 @@ class OutputService:
         image_filename = f"{safe_name}.png"
         image_path = generation_dir / image_filename
         manifest_path = generation_dir / MANIFEST_FILENAME
+        original_filename: str | None = None
+        original_path: Path | None = None
 
         created_at = datetime.now(UTC)
         try:
+            if (
+                processing is not None
+                and processing.original_image is not None
+                and processing.background_removal_applied
+            ):
+                original_filename = f"{safe_name}.original.png"
+                original_path = generation_dir / original_filename
+                self._write_pil_atomic(processing.original_image, original_path)
+
             self._write_image_atomic(generated, image_path)
             byte_size = image_path.stat().st_size
             digest = sha256_file(image_path)
             completed_at = datetime.now(UTC)
+
+            outputs: list[ManifestOutputInfo] = [
+                ManifestOutputInfo(
+                    kind=OutputKind.IMAGE.value,
+                    format=OutputFormat.PNG.value,
+                    relative_path=image_filename,
+                    width=generated.width,
+                    height=generated.height,
+                    sha256=digest,
+                    byte_size=byte_size,
+                )
+            ]
+            if (
+                original_path is not None
+                and original_filename is not None
+                and processing is not None
+            ):
+                original_image = processing.original_image
+                assert original_image is not None
+                outputs.append(
+                    ManifestOutputInfo(
+                        kind=OutputKind.ORIGINAL_IMAGE.value,
+                        format=OutputFormat.PNG.value,
+                        relative_path=original_filename,
+                        width=original_image.width,
+                        height=original_image.height,
+                        sha256=sha256_file(original_path),
+                        byte_size=original_path.stat().st_size,
+                    )
+                )
+
+            processing_info: ManifestProcessingInfo | None = None
+            if processing is not None:
+                processing_info = ManifestProcessingInfo(
+                    transparency_strategy=processing.transparency_strategy,
+                    background_removal_applied=processing.background_removal_applied,
+                    background_removal_implementation=processing.background_removal_implementation,
+                    alpha_cleanup_applied=processing.alpha_cleanup_applied,
+                    alpha_threshold=processing.alpha_threshold,
+                    alpha_feather=processing.alpha_feather,
+                    remove_near_transparent=processing.remove_near_transparent,
+                    zero_rgb_when_transparent=processing.zero_rgb_when_transparent,
+                    pixels_per_unit=request.pixels_per_unit,
+                    pivot_mode=request.pivot_mode,
+                    custom_pivot_x=request.custom_pivot_x,
+                    custom_pivot_y=request.custom_pivot_y,
+                    atlas_hint=request.atlas_hint,
+                    original_relative_path=original_filename,
+                    final_relative_path=image_filename,
+                )
 
             manifest = GenerationManifest(
                 schema=ManifestSchemaInfo(
@@ -359,6 +462,16 @@ class OutputService:
                     guidance_scale=request.guidance_scale,
                     seed=generated.seed,
                     output_name=safe_name,
+                    transparency_strategy=request.transparency_strategy,
+                    alpha_threshold=request.alpha_threshold,
+                    alpha_feather=request.alpha_feather,
+                    remove_near_transparent=request.remove_near_transparent,
+                    zero_rgb_when_transparent=request.zero_rgb_when_transparent,
+                    pixels_per_unit=request.pixels_per_unit,
+                    pivot_mode=request.pivot_mode,
+                    custom_pivot_x=request.custom_pivot_x,
+                    custom_pivot_y=request.custom_pivot_y,
+                    atlas_hint=request.atlas_hint,
                 ),
                 profile=ManifestProfileInfo(
                     generation_profile_id=request.generation_profile_id,
@@ -370,17 +483,8 @@ class OutputService:
                     negative_prompt_profile_revision=request.negative_prompt_profile_revision,
                     unity_import_profile_id=request.unity_import_profile_id,
                 ),
-                outputs=[
-                    ManifestOutputInfo(
-                        kind=OutputKind.IMAGE.value,
-                        format=OutputFormat.PNG.value,
-                        relative_path=image_filename,
-                        width=generated.width,
-                        height=generated.height,
-                        sha256=digest,
-                        byte_size=byte_size,
-                    )
-                ],
+                outputs=outputs,
+                processing=processing_info,
             )
             self._write_json_atomic(manifest.to_dict(), manifest_path)
         except OSError as exc:
@@ -427,17 +531,21 @@ class OutputService:
             return str(resolved).replace("\\", "/")
 
     @staticmethod
-    def _write_image_atomic(generated: GeneratedImage, destination: Path) -> None:
+    def _write_pil_atomic(image: Image.Image, destination: Path) -> None:
         directory = destination.parent
         fd, temp_name = tempfile.mkstemp(suffix=".png", dir=directory)
         os.close(fd)
         temp_path = Path(temp_name)
         try:
-            generated.image.save(temp_path, format="PNG")
+            image.save(temp_path, format="PNG")
             os.replace(temp_path, destination)
         finally:
             if temp_path.exists():
                 temp_path.unlink(missing_ok=True)
+
+    @classmethod
+    def _write_image_atomic(cls, generated: GeneratedImage, destination: Path) -> None:
+        cls._write_pil_atomic(generated.image, destination)
 
     @staticmethod
     def _write_json_atomic(payload: dict[str, object], destination: Path) -> None:

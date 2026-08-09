@@ -1,0 +1,13 @@
+{
+  "schema": { "name": "prompt-template", "version": "1.0" },
+  "template": {
+    "id": "ps1_weapon_icon",
+    "revision": 1,
+    "display_name": "PS1 Weapon Icon",
+    "description": "Centered compact inventory weapon icon.",
+    "asset_type": "icon",
+    "pattern": "PS1-era game weapon icon, {subject}, single centered weapon, clear silhouette, inventory icon composition, minimal background, {style_modifiers}",
+    "placeholders": ["subject", "style_modifiers", "asset_type"],
+    "required_placeholders": ["subject"]
+  }
+}

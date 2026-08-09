@@ -2,7 +2,7 @@ namespace UnityAiAssets.Editor.Profiles
 {
     public static class ProfileSchemaVersions
     {
-        public const string GenerationProfile = "1.0";
+        public const string GenerationProfile = "1.1";
         public const string PromptTemplate = "1.0";
         public const string NegativePrompt = "1.0";
         public const string GenerationProfileSchemaName = "generation-profile";
@@ -71,5 +71,9 @@ namespace UnityAiAssets.Editor.Profiles
         public const string SeedOutOfRange = "SEED_OUT_OF_RANGE";
         public const string PromptTooLong = "PROMPT_TOO_LONG";
         public const string NegativePromptTooLong = "NEGATIVE_PROMPT_TOO_LONG";
+        public const string BackgroundRemovalUnavailable = "BACKGROUND_REMOVAL_UNAVAILABLE";
+        public const string PixelsPerUnitInvalid = "PIXELS_PER_UNIT_INVALID";
+        public const string PivotModeInvalid = "PIVOT_MODE_INVALID";
+        public const string CustomPivotInvalid = "CUSTOM_PIVOT_INVALID";
     }
 }

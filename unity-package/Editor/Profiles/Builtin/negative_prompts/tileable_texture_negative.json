@@ -1,0 +1,41 @@
+{
+  "schema": {
+    "name": "negative-prompt-profile",
+    "version": "1.0"
+  },
+  "profile": {
+    "id": "tileable_texture_negative",
+    "revision": 2,
+    "display_name": "Tileable Texture Negative",
+    "description": "Suppresses literal grids, panel sheets, borders, and other wrap-breaking artifacts.",
+    "tags": ["texture", "tileable", "ps1"],
+    "terms": [
+      "grid",
+      "tiled panels",
+      "mosaic",
+      "checkerboard",
+      "collage",
+      "multiple panels",
+      "divided into squares",
+      "sheet of tiles",
+      "ceramic tiles",
+      "floor tiles",
+      "bathroom tiles",
+      "repeating stamps",
+      "panel lines dividing the image",
+      "visible seam",
+      "border",
+      "frame",
+      "vignette",
+      "letterbox",
+      "centered object",
+      "isolated prop",
+      "watermark",
+      "text",
+      "logo",
+      "photorealistic scene",
+      "perspective vanishing point",
+      "3d render of a wall in a room"
+    ]
+  }
+}

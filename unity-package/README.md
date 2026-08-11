@@ -19,6 +19,11 @@ post-processing, not native diffusion alpha), alpha cleanup, PPU, and center, bo
 or custom pivots. Generation is disabled unless the backend advertises the selected asset type;
 background-removal profiles also require processing availability in capabilities.
 
+Tileable texture profiles (`ps1_tileable_texture`) use seamless prompt guidance and Repeat wrap
+import settings. After import, the generator window supports offset seam inspection, seam
+diagnostics, nondestructive correction, 3×3 tile preview, optional palette reduction, and a
+Unity repeat/material tiling swatch. Correction does not guarantee perfectly seamless results.
+
 ## Install from disk
 
 1. Open your Unity project (2022.3 LTS or newer recommended).

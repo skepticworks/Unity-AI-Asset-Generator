@@ -7,9 +7,9 @@
     "name": "unity-ai-asset-generator",
     "version": "0.3.0"
   },
-  "schemas": {
-    "capabilities": "1.1",
-    "generation_manifest": "1.2"
+    "schemas": {
+    "capabilities": "1.2",
+    "generation_manifest": "1.3"
   },
   "runtime": {
     "configured_device": "cpu",
@@ -105,6 +105,26 @@
             "bottom_center",
             "custom"
           ]
+        },
+        "tileable": {
+          "available": true,
+          "seam_analysis": true,
+          "seam_correction": true,
+          "palette_reduction": true,
+          "ai_inpaint_available": true,
+          "seam_blend_width": {
+            "minimum": 8,
+            "maximum": 128,
+            "default": 64
+          },
+          "palette_color_count": {
+            "minimum": 2,
+            "maximum": 256,
+            "default": 16
+          },
+          "target_size": 512,
+          "circular_offset_px": 256,
+          "protected_border_px": 4
         }
       }
     },

@@ -49,6 +49,28 @@
       }
     },
     {
+      "id": "ps1_tileable_texture",
+      "display_name": "PS1 Tileable Texture",
+      "description": "Point-filtered repeating texture for seamless UV tiling without mipmaps.",
+      "asset_types": ["texture"],
+      "legacy_kind": null,
+      "settings": {
+        "texture_type": "Default",
+        "srgb": true,
+        "alpha_source": "FromInput",
+        "alpha_is_transparency": false,
+        "mipmaps": false,
+        "filter_mode": "Point",
+        "wrap_mode": "Repeat",
+        "compression": "Uncompressed",
+        "npot_scale": "None",
+        "is_readable": false,
+        "sprite_mode": null,
+        "pixels_per_unit": null,
+        "mesh_type": null
+      }
+    },
+    {
       "id": "ps1_sprite",
       "display_name": "PS1 Sprite",
       "description": "Single sprite import with point filtering and clamp wrap.",

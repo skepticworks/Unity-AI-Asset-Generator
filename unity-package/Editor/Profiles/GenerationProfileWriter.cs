@@ -57,7 +57,17 @@ namespace UnityAiAssets.Editor.Profiles
                 {
                     ["width"] = profile.Defaults.Width, ["height"] = profile.Defaults.Height,
                     ["steps"] = profile.Defaults.Steps, ["guidance_scale"] = profile.Defaults.GuidanceScale,
-                    ["seed_strategy"] = profile.Defaults.SeedStrategy, ["fixed_seed"] = profile.Defaults.FixedSeed
+                    ["seed_strategy"] = profile.Defaults.SeedStrategy, ["fixed_seed"] = profile.Defaults.FixedSeed,
+                    ["transparency_strategy"] = profile.Processing.TransparencyStrategy,
+                    ["alpha_threshold"] = profile.Processing.AlphaThreshold,
+                    ["alpha_feather"] = profile.Processing.AlphaFeather,
+                    ["remove_near_transparent"] = profile.Processing.RemoveNearTransparent,
+                    ["zero_rgb_when_transparent"] = profile.Processing.ZeroRgbWhenTransparent,
+                    ["tileable"] = profile.Processing.Tileable,
+                    ["apply_seam_correction"] = profile.Processing.ApplySeamCorrection,
+                    ["seam_blend_width"] = profile.Processing.SeamBlendWidth,
+                    ["palette_reduction_enabled"] = profile.Processing.PaletteReductionEnabled,
+                    ["palette_color_count"] = profile.Processing.PaletteColorCount
                 },
                 ["processing"] = new Dictionary<string, object>
                 {
@@ -65,7 +75,12 @@ namespace UnityAiAssets.Editor.Profiles
                     ["alpha_threshold"] = profile.Processing.AlphaThreshold,
                     ["alpha_feather"] = profile.Processing.AlphaFeather,
                     ["remove_near_transparent"] = profile.Processing.RemoveNearTransparent,
-                    ["zero_rgb_when_transparent"] = profile.Processing.ZeroRgbWhenTransparent
+                    ["zero_rgb_when_transparent"] = profile.Processing.ZeroRgbWhenTransparent,
+                    ["tileable"] = profile.Processing.Tileable,
+                    ["apply_seam_correction"] = profile.Processing.ApplySeamCorrection,
+                    ["seam_blend_width"] = profile.Processing.SeamBlendWidth,
+                    ["palette_reduction_enabled"] = profile.Processing.PaletteReductionEnabled,
+                    ["palette_color_count"] = profile.Processing.PaletteColorCount
                 },
                 ["unity"] = new Dictionary<string, object>
                 {

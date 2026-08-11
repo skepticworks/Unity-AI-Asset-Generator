@@ -28,6 +28,8 @@ class AppErrorCode(StrEnum):
     TRANSPARENCY_STRATEGY_UNSUPPORTED = "TRANSPARENCY_STRATEGY_UNSUPPORTED"
     BACKGROUND_REMOVAL_UNAVAILABLE = "BACKGROUND_REMOVAL_UNAVAILABLE"
     BACKGROUND_REMOVAL_FAILED = "BACKGROUND_REMOVAL_FAILED"
+    SEAM_INPAINT_UNAVAILABLE = "SEAM_INPAINT_UNAVAILABLE"
+    SEAM_INPAINT_FAILED = "SEAM_INPAINT_FAILED"
     ALPHA_PROCESSING_FAILED = "ALPHA_PROCESSING_FAILED"
     SPRITE_IMPORT_FAILED = "SPRITE_IMPORT_FAILED"
     PIVOT_INVALID = "PIVOT_INVALID"
@@ -72,6 +74,10 @@ DEFAULT_MESSAGES: dict[AppErrorCode, str] = {
         "Background removal is unavailable on this backend."
     ),
     AppErrorCode.BACKGROUND_REMOVAL_FAILED: "Background removal failed.",
+    AppErrorCode.SEAM_INPAINT_UNAVAILABLE: (
+        "Local seam inpainting is unavailable on this backend."
+    ),
+    AppErrorCode.SEAM_INPAINT_FAILED: "Local seam inpainting failed.",
     AppErrorCode.ALPHA_PROCESSING_FAILED: "Alpha cleanup processing failed.",
     AppErrorCode.SPRITE_IMPORT_FAILED: "Sprite import failed.",
     AppErrorCode.PIVOT_INVALID: "The requested sprite pivot is invalid.",
@@ -98,6 +104,8 @@ HTTP_STATUS_BY_CODE: dict[AppErrorCode, int] = {
     AppErrorCode.TRANSPARENCY_STRATEGY_UNSUPPORTED: 422,
     AppErrorCode.BACKGROUND_REMOVAL_UNAVAILABLE: 422,
     AppErrorCode.BACKGROUND_REMOVAL_FAILED: 500,
+    AppErrorCode.SEAM_INPAINT_UNAVAILABLE: 422,
+    AppErrorCode.SEAM_INPAINT_FAILED: 500,
     AppErrorCode.ALPHA_PROCESSING_FAILED: 500,
     AppErrorCode.SPRITE_IMPORT_FAILED: 500,
     AppErrorCode.PIVOT_INVALID: 422,

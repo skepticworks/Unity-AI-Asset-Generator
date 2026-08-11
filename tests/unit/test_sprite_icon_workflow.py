@@ -55,7 +55,7 @@ def sprite_client(sprite_settings: Settings) -> TestClient:
 
 def test_capabilities_report_sprite_icon_and_processing(sprite_client: TestClient) -> None:
     payload = sprite_client.get("/api/v1/capabilities").json()
-    assert payload["schemas"]["capabilities"] == "1.1"
+    assert payload["schemas"]["capabilities"] == "1.2"
     t2i = payload["operations"]["text_to_image"]
     assert "sprite" in t2i["asset_types"]
     assert "icon" in t2i["asset_types"]
@@ -98,7 +98,7 @@ def test_sprite_generation_with_background_removal(sprite_client: TestClient) ->
     assert image.size == (64, 64)
 
     manifest = sprite_client.get(f"/api/v1/generations/{generation_id}/manifest").json()
-    assert manifest["schema"]["version"] == "1.2"
+    assert manifest["schema"]["version"] == "1.3"
     assert manifest["request"]["transparency_strategy"] == "background_removal"
     assert manifest["request"]["pixels_per_unit"] == 100
     assert manifest["request"]["pivot_mode"] == "bottom_center"
@@ -208,7 +208,7 @@ def test_invalid_pixels_per_unit_rejected(sprite_client: TestClient) -> None:
     assert response.status_code == 422
 
 
-def test_texture_rejects_sprite_fields(sprite_client: TestClient) -> None:
+def test_texture_soft_ignores_sprite_fields(sprite_client: TestClient) -> None:
     response = sprite_client.post(
         "/api/v1/generations/textures",
         json={
@@ -216,11 +216,20 @@ def test_texture_rejects_sprite_fields(sprite_client: TestClient) -> None:
             "width": 64,
             "height": 64,
             "steps": 2,
+            "seed": 1,
+            "output_name": "wall_tex",
             "asset_type": "texture",
             "pixels_per_unit": 100,
+            "pivot_mode": "center",
+            "atlas_hint": "ignored",
         },
     )
-    assert response.status_code == 422
+    assert response.status_code == 200, response.text
+    generation_id = response.json()["generation_id"]
+    manifest = sprite_client.get(f"/api/v1/generations/{generation_id}/manifest").json()
+    assert "pixels_per_unit" not in manifest["request"]
+    assert "pivot_mode" not in manifest["request"]
+    assert "atlas_hint" not in manifest["request"]
 
 
 def test_sprite_profile_incompatible_without_background_removal() -> None:

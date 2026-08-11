@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0 — Milestone 6 tileable texture workflow
+
+- Added `ps1_tileable_texture` generation/import profiles with seamless prompt guidance and
+  Repeat wrap-mode Unity import defaults.
+- Added offset (50%) preview, seam analysis diagnostics, modular soft-edge seam correction,
+  3×3 tile preview, optional palette reduction, and Unity repeat/material tiling preview.
+- Seam correction preserves the original asset (sibling `.corrected` / `.palette` outputs).
+- Extended generation profile schema 1.2, capabilities schema 1.2, and manifest schema 1.3
+  with tileable processing settings and provenance.
+
 ## 0.5.0 — Milestone 5 sprite and icon workflow
 
 - Added sprite/icon generation through the shared text-to-image pipeline with explicit

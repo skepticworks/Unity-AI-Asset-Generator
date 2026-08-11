@@ -18,6 +18,7 @@ from unity_ai_assets.core.errors import (
     GenerationRequestInvalidError,
     PivotInvalidError,
     PixelsPerUnitInvalidError,
+    SeamInpaintUnavailableError,
     TransparencyStrategyUnsupportedError,
 )
 from unity_ai_assets.core.logging import get_logger
@@ -33,6 +34,7 @@ from unity_ai_assets.domain.generation import GeneratedImage, GenerationRequest,
 from unity_ai_assets.domain.generation_policy import GenerationPolicy
 from unity_ai_assets.processing.alpha_cleanup import AlphaCleanupParams
 from unity_ai_assets.processing.pipeline import ImageProcessingPipeline, ProcessingResult
+from unity_ai_assets.processing.tileable import TileableProcessingParams
 from unity_ai_assets.services.output_service import OutputService, sanitize_output_name
 
 if TYPE_CHECKING:
@@ -140,6 +142,11 @@ class GenerationService:
         custom_pivot_x: float | None = None,
         custom_pivot_y: float | None = None,
         atlas_hint: str | None = None,
+        tileable: bool | None = None,
+        apply_seam_correction: bool | None = None,
+        seam_blend_width: int | None = None,
+        palette_reduction_enabled: bool | None = None,
+        palette_color_count: int | None = None,
     ) -> GenerationResult:
         """Validate inputs against policy, run inference under a lock, and persist."""
         policy = self._policy
@@ -338,22 +345,74 @@ class GenerationService:
                     )
                 resolved_atlas = hint or None
         else:
-            # Ignore sprite-only fields for textures (do not store misleading provenance).
-            if pixels_per_unit is not None or pivot_mode is not None or atlas_hint:
-                # Soft-ignore: Unity may omit them; if present for textures, reject clearly.
+            # Soft-ignore sprite-only fields for textures (do not store misleading provenance).
+            pass
+
+        resolved_tileable = bool(tileable) if tileable is not None else False
+        resolved_seam_correction = (
+            bool(apply_seam_correction) if apply_seam_correction is not None else False
+        )
+        resolved_seam_blend = (
+            settings.default_seam_width if seam_blend_width is None else int(seam_blend_width)
+        )
+        resolved_palette = (
+            bool(palette_reduction_enabled) if palette_reduction_enabled is not None else False
+        )
+        resolved_palette_colors = 16 if palette_color_count is None else int(palette_color_count)
+
+        if not 8 <= resolved_seam_blend <= 128:
+            raise GenerationRequestInvalidError(
+                "seam_blend_width is outside the supported range.",
+                field_issues={
+                    "seam_blend_width": [
+                        FieldIssue(
+                            code=FieldIssueCode.VALUE_INVALID,
+                            message="seam_blend_width must be between 8 and 128.",
+                            actual=resolved_seam_blend,
+                            minimum=8,
+                            maximum=128,
+                        )
+                    ]
+                },
+            )
+        if not 2 <= resolved_palette_colors <= 256:
+            raise GenerationRequestInvalidError(
+                "palette_color_count is outside the supported range.",
+                field_issues={
+                    "palette_color_count": [
+                        FieldIssue(
+                            code=FieldIssueCode.VALUE_INVALID,
+                            message="palette_color_count must be between 2 and 256.",
+                            actual=resolved_palette_colors,
+                            minimum=2,
+                            maximum=256,
+                        )
+                    ]
+                },
+            )
+
+        if resolved_seam_correction:
+            if width != 512 or height != 512:
                 raise GenerationRequestInvalidError(
-                    "pixels_per_unit, pivot_mode, and atlas_hint apply only to sprite/icon assets.",
+                    "AI seam repair requires exactly 512x512 textures.",
                     field_issues={
-                        "asset_type": [
+                        "width": [
                             FieldIssue(
                                 code=FieldIssueCode.VALUE_INVALID,
-                                message=(
-                                    "Sprite import fields are not valid for texture asset types."
-                                ),
-                                actual=asset_type,
+                                message="AI seam repair requires width and height of 512.",
+                                actual={"width": width, "height": height},
                             )
                         ]
                     },
+                )
+            if (
+                self._processing is None
+                or not self._processing.seam_inpainter.available
+            ):
+                raise SeamInpaintUnavailableError(
+                    "Local seam inpainting is required for apply_seam_correction "
+                    "but is unavailable. Enable SEAM_INPAINT_ENABLED and ensure the "
+                    "inpaint model can load, or disable apply_seam_correction."
                 )
 
         safe_name = sanitize_output_name(
@@ -396,6 +455,11 @@ class GenerationService:
             custom_pivot_x=resolved_pivot_x,
             custom_pivot_y=resolved_pivot_y,
             atlas_hint=resolved_atlas,
+            tileable=resolved_tileable,
+            apply_seam_correction=resolved_seam_correction,
+            seam_blend_width=resolved_seam_blend,
+            palette_reduction_enabled=resolved_palette,
+            palette_color_count=resolved_palette_colors,
         )
 
         logger.info(
@@ -442,25 +506,71 @@ class GenerationService:
             remove_near_transparent=request.remove_near_transparent,
             zero_rgb_when_transparent=request.zero_rgb_when_transparent,
         )
-        if (
-            self._processing is None
-            or request.transparency_strategy == TransparencyStrategy.NONE.value
-        ):
-            return ProcessingResult(
-                image=generated.image,
-                original_image=None,
-                transparency_strategy=TransparencyStrategy.NONE.value,
-                background_removal_applied=False,
-                background_removal_implementation=None,
-                alpha_cleanup_applied=False,
-                alpha_threshold=alpha_params.alpha_threshold,
-                alpha_feather=alpha_params.alpha_feather,
-                remove_near_transparent=alpha_params.remove_near_transparent,
-                zero_rgb_when_transparent=alpha_params.zero_rgb_when_transparent,
+        tileable_params = TileableProcessingParams(
+            tileable=request.tileable,
+            apply_seam_correction=request.apply_seam_correction,
+            seam_blend_width=request.seam_blend_width,
+            palette_reduction_enabled=request.palette_reduction_enabled,
+            palette_color_count=request.palette_color_count,
+            inpaint_seed=request.seed,
+        )
+        if self._processing is not None:
+            return self._processing.process(
+                generated.image,
+                transparency_strategy=request.transparency_strategy,
+                alpha_params=alpha_params,
+                preserve_original=self._settings.preserve_original_image,
+                tileable_params=tileable_params,
             )
-        return self._processing.process(
+
+        # No pipeline registered: still apply local tileable steps when requested.
+        from unity_ai_assets.processing.pipeline import _wrap_fields
+        from unity_ai_assets.processing.tileable import apply_tileable_processing
+
+        tileable_result = apply_tileable_processing(
             generated.image,
-            transparency_strategy=request.transparency_strategy,
-            alpha_params=alpha_params,
+            tileable_params,
             preserve_original=self._settings.preserve_original_image,
+            seam_inpainter=None,
+        )
+        wrap = _wrap_fields(tileable_result.wrap_before, tileable_result.wrap_after)
+        return ProcessingResult(
+            image=tileable_result.image,
+            original_image=tileable_result.original_image,
+            transparency_strategy=request.transparency_strategy,
+            background_removal_applied=False,
+            background_removal_implementation=None,
+            alpha_cleanup_applied=False,
+            alpha_threshold=alpha_params.alpha_threshold,
+            alpha_feather=alpha_params.alpha_feather,
+            remove_near_transparent=alpha_params.remove_near_transparent,
+            zero_rgb_when_transparent=alpha_params.zero_rgb_when_transparent,
+            tileable=tileable_result.tileable,
+            seam_correction_applied=tileable_result.seam_correction_applied,
+            palette_reduction_applied=tileable_result.palette_reduction_applied,
+            seam_blend_width=request.seam_blend_width,
+            palette_color_count=request.palette_color_count,
+            seam_score_before=(
+                None
+                if tileable_result.seam_analysis_before is None
+                else tileable_result.seam_analysis_before.combined_score
+            ),
+            seam_score_after=(
+                None
+                if tileable_result.seam_analysis_after is None
+                else tileable_result.seam_analysis_after.combined_score
+            ),
+            horizontal_seam_score=(
+                None
+                if tileable_result.seam_analysis_after is None
+                else tileable_result.seam_analysis_after.horizontal_score
+            ),
+            vertical_seam_score=(
+                None
+                if tileable_result.seam_analysis_after is None
+                else tileable_result.seam_analysis_after.vertical_score
+            ),
+            horizontal_wrap_discontinuity=wrap["horizontal_wrap_discontinuity"],
+            vertical_wrap_discontinuity=wrap["vertical_wrap_discontinuity"],
+            seam_inpaint_implementation=tileable_result.seam_inpaint_implementation,
         )

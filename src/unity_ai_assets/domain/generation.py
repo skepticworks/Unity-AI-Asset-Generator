@@ -39,6 +39,11 @@ class GenerationRequest:
     custom_pivot_x: float | None = None
     custom_pivot_y: float | None = None
     atlas_hint: str | None = None
+    tileable: bool = False
+    apply_seam_correction: bool = False
+    seam_blend_width: int = 64
+    palette_reduction_enabled: bool = False
+    palette_color_count: int = 16
 
 
 @dataclass(frozen=True, slots=True)

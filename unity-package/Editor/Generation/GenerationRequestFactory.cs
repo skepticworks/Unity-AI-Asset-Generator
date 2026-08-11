@@ -13,6 +13,9 @@ namespace UnityAiAssets.Editor.Generation
             if (resolved == null) throw new ArgumentNullException(nameof(resolved));
             if (request == null) throw new ArgumentNullException(nameof(request));
 
+            var isSpriteOrIcon = string.Equals(resolved.AssetType, "sprite", StringComparison.OrdinalIgnoreCase)
+                                 || string.Equals(resolved.AssetType, "icon", StringComparison.OrdinalIgnoreCase);
+
             return new TextureGenerationRequestDto
             {
                 prompt = (resolved.ConstructedPrompt ?? string.Empty).Trim(),
@@ -33,15 +36,21 @@ namespace UnityAiAssets.Editor.Generation
                 unity_import_profile_id = resolved.ImportProfileId,
                 asset_type = resolved.AssetType,
                 transparency_strategy = resolved.TransparencyStrategy,
-                alpha_threshold = resolved.AlphaThreshold,
-                alpha_feather = resolved.AlphaFeather,
-                remove_near_transparent = resolved.RemoveNearTransparent,
-                zero_rgb_when_transparent = resolved.ZeroRgbWhenTransparent,
-                pixels_per_unit = resolved.PixelsPerUnit,
-                pivot_mode = resolved.PivotMode,
-                custom_pivot_x = resolved.CustomPivotX,
-                custom_pivot_y = resolved.CustomPivotY,
-                atlas_hint = resolved.AtlasHint
+                alpha_threshold = isSpriteOrIcon ? (int?)resolved.AlphaThreshold : null,
+                alpha_feather = isSpriteOrIcon ? (int?)resolved.AlphaFeather : null,
+                remove_near_transparent = isSpriteOrIcon ? (bool?)resolved.RemoveNearTransparent : null,
+                zero_rgb_when_transparent = isSpriteOrIcon ? (bool?)resolved.ZeroRgbWhenTransparent : null,
+                // Backend rejects sprite import fields on texture requests.
+                pixels_per_unit = isSpriteOrIcon ? (float?)resolved.PixelsPerUnit : null,
+                pivot_mode = isSpriteOrIcon ? resolved.PivotMode : null,
+                custom_pivot_x = isSpriteOrIcon ? (float?)resolved.CustomPivotX : null,
+                custom_pivot_y = isSpriteOrIcon ? (float?)resolved.CustomPivotY : null,
+                atlas_hint = isSpriteOrIcon ? resolved.AtlasHint : null,
+                tileable = resolved.Tileable,
+                apply_seam_correction = resolved.ApplySeamCorrection,
+                seam_blend_width = resolved.SeamBlendWidth,
+                palette_reduction_enabled = resolved.PaletteReductionEnabled,
+                palette_color_count = resolved.PaletteColorCount
             };
         }
     }

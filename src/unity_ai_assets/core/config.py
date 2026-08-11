@@ -94,6 +94,19 @@ class Settings(BaseSettings):
         description="When processing sprites/icons, also persist the pre-processed RGB PNG",
     )
 
+    # Local AI seam inpainting for tileable textures (circular-offset + cross mask)
+    seam_inpaint_enabled: bool = Field(
+        default=True,
+        description="Enable local Diffusers inpainting for tileable seam repair",
+    )
+    seam_inpaint_model_id: str = Field(
+        default="runwayml/stable-diffusion-inpainting",
+        description="Hugging Face Diffusers inpaint model (local weights)",
+    )
+    seam_inpaint_model_revision: str | None = Field(default=None)
+    seam_inpaint_steps: int = Field(default=20, ge=1, le=150)
+    default_seam_width: int = Field(default=64, ge=8, le=128)
+
     # Alpha cleanup defaults (authoritative ranges for capability reporting)
     default_alpha_threshold: int = Field(default=16, ge=0, le=255)
     min_alpha_threshold: int = Field(default=0, ge=0, le=255)
@@ -109,6 +122,13 @@ class Settings(BaseSettings):
     @field_validator("model_revision", "model_variant", "model_display_name", mode="before")
     @classmethod
     def _empty_str_to_none(cls, value: object) -> object:
+        if value == "":
+            return None
+        return value
+
+    @field_validator("seam_inpaint_model_revision", mode="before")
+    @classmethod
+    def _empty_inpaint_revision(cls, value: object) -> object:
         if value == "":
             return None
         return value

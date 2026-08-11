@@ -5,11 +5,11 @@
   },
   "template": {
     "id": "ps1_environment_texture",
-    "revision": 1,
+    "revision": 2,
     "display_name": "PS1 Environment Texture",
-    "description": "Surface-focused PS1-era environment texture prompt.",
+    "description": "Surface-focused PS1-era environment albedo texture prompt.",
     "asset_type": "texture",
-    "pattern": "PS1-era game texture, {subject}, low-resolution game art, hand-authored appearance, surface-focused, {style_modifiers}",
+    "pattern": "PS1-era PlayStation 1 game albedo texture of {subject}, flat orthographic surface filling the frame, even lighting, low-resolution hand-painted game art, surface material detail, {style_modifiers}",
     "placeholders": ["subject", "style_modifiers", "asset_type"],
     "required_placeholders": ["subject"]
   }

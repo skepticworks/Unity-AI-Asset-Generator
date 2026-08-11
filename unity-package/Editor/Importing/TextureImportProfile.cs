@@ -8,6 +8,7 @@ namespace UnityAiAssets.Editor.Importing
     {
         public const string Ps1EnvironmentTexture = "ps1_environment_texture";
         public const string StandardEnvironmentTexture = "standard_environment_texture";
+        public const string Ps1TileableTexture = "ps1_tileable_texture";
         public const string Ps1Sprite = "ps1_sprite";
         public const string Ps1Icon = "ps1_icon";
         public const string Ps1Ui = "ps1_ui";
@@ -74,6 +75,25 @@ namespace UnityAiAssets.Editor.Importing
                 WrapMode = TextureWrapMode.Repeat,
                 Compression = TextureImporterCompression.Compressed,
                 NpotScale = TextureImporterNPOTScale.ToNearest,
+                IsReadable = false
+            };
+        }
+
+        public static TextureImportProfile CreatePs1Tileable()
+        {
+            return new TextureImportProfile
+            {
+                Id = UnityImportProfileIds.Ps1TileableTexture,
+                DisplayName = "PS1 Tileable Texture",
+                TextureType = TextureImporterType.Default,
+                Srgb = true,
+                AlphaSource = TextureImporterAlphaSource.FromInput,
+                AlphaIsTransparency = false,
+                Mipmaps = false,
+                FilterMode = FilterMode.Point,
+                WrapMode = TextureWrapMode.Repeat,
+                Compression = TextureImporterCompression.Uncompressed,
+                NpotScale = TextureImporterNPOTScale.None,
                 IsReadable = false
             };
         }
@@ -156,14 +176,14 @@ namespace UnityAiAssets.Editor.Importing
                 switch (PivotMode)
                 {
                     case "bottom_center":
-                        importer.spriteAlignment = (int)SpriteAlignment.BottomCenter;
+                        settings.spriteAlignment = (int)SpriteAlignment.BottomCenter;
                         break;
                     case "custom":
-                        importer.spriteAlignment = (int)SpriteAlignment.Custom;
-                        importer.spritePivot = new Vector2(CustomPivotX, CustomPivotY);
+                        settings.spriteAlignment = (int)SpriteAlignment.Custom;
+                        settings.spritePivot = new Vector2(CustomPivotX, CustomPivotY);
                         break;
                     default:
-                        importer.spriteAlignment = (int)SpriteAlignment.Center;
+                        settings.spriteAlignment = (int)SpriteAlignment.Center;
                         break;
                 }
                 importer.SetTextureSettings(settings);

@@ -152,8 +152,28 @@ class SpriteImportCapabilities:
 
 
 @dataclass(frozen=True, slots=True)
+class TileableProcessingCapabilities:
+    """Tileable texture workflow support advertised to clients."""
+
+    available: bool = True
+    seam_analysis: bool = True
+    seam_correction: bool = True
+    palette_reduction: bool = True
+    ai_inpaint_available: bool = False
+    seam_blend_width: NumericRangeInt = field(
+        default_factory=lambda: NumericRangeInt(minimum=8, maximum=128, default=64)
+    )
+    palette_color_count: NumericRangeInt = field(
+        default_factory=lambda: NumericRangeInt(minimum=2, maximum=256, default=16)
+    )
+    target_size: int = 512
+    circular_offset_px: int = 256
+    protected_border_px: int = 4
+
+
+@dataclass(frozen=True, slots=True)
 class ProcessingCapabilities:
-    """Post-inference processing capabilities (transparency, alpha cleanup).
+    """Post-inference processing capabilities (transparency, alpha cleanup, tileable).
 
     Transparency produced via post-processing is reported separately from
     image generation so clients do not assume the diffusion model emits alpha.
@@ -163,6 +183,7 @@ class ProcessingCapabilities:
     background_removal: BackgroundRemovalCapabilities
     alpha_cleanup: AlphaCleanupCapabilities
     sprite_import: SpriteImportCapabilities
+    tileable: TileableProcessingCapabilities | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -24,6 +24,11 @@ namespace UnityAiAssets.Editor.Profiles
         public float CustomPivotX;
         public float CustomPivotY;
         public string AtlasHint;
+        public bool Tileable;
+        public bool ApplySeamCorrection;
+        public int SeamBlendWidth = 64;
+        public bool PaletteReductionEnabled;
+        public int PaletteColorCount = 16;
         public ProfileCompatibility Compatibility;
         public string GenerationProfileId;
         public int GenerationProfileRevision;

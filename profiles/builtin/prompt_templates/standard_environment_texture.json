@@ -5,11 +5,11 @@
   },
   "template": {
     "id": "standard_environment_texture",
-    "revision": 1,
+    "revision": 2,
     "display_name": "Standard Environment Texture",
-    "description": "Clean game-ready environment surface texture prompt.",
+    "description": "Clean game-ready environment albedo surface texture prompt.",
     "asset_type": "texture",
-    "pattern": "game environment texture, {subject}, clean surface representation, suitable for materials, {style_modifiers}",
+    "pattern": "game-ready albedo texture map of {subject}, orthographic flat surface filling the entire frame, even diffuse lighting, continuous material appearance for Unity materials, {style_modifiers}",
     "placeholders": ["subject", "style_modifiers", "asset_type"],
     "required_placeholders": ["subject"]
   }

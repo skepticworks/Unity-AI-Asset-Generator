@@ -20,6 +20,7 @@ from unity_ai_assets.inference.diffusers_backend import DiffusersBackend
 from unity_ai_assets.inference.model_manager import ModelManager
 from unity_ai_assets.processing.background_removal import create_background_remover
 from unity_ai_assets.processing.pipeline import ImageProcessingPipeline
+from unity_ai_assets.processing.seam_inpaint import create_seam_inpainter
 from unity_ai_assets.services.capability_service import CapabilityService
 from unity_ai_assets.services.generation_service import GenerationService
 from unity_ai_assets.services.output_service import OutputService
@@ -38,6 +39,7 @@ def create_app(
     settings: Settings | None = None,
     backend: ImageGenerationBackend | None = None,
     force_fake_background_removal: bool = False,
+    force_fake_seam_inpaint: bool = False,
 ) -> FastAPI:
     """Application factory supporting dependency injection for tests."""
     resolved_settings = settings or get_settings()
@@ -62,6 +64,11 @@ def create_app(
             resolved_settings.background_removal_backend,
             resolved_settings.background_removal_model,
         )
+        logger.info(
+            "Seam inpaint enabled=%s model=%s",
+            resolved_settings.seam_inpaint_enabled,
+            resolved_settings.seam_inpaint_model_id,
+        )
         yield
         logger.info("Shutting down unity-ai-assets")
 
@@ -81,7 +88,23 @@ def create_app(
         model=resolved_settings.background_removal_model,
         force_fake=force_fake_background_removal,
     )
-    processing_pipeline = ImageProcessingPipeline(background_remover)
+
+    # Resolve device/dtype for inpaint without forcing txt2img weights to load.
+    device_manager = ModelManager(resolved_settings)
+    inpaint_device = device_manager.resolve_device_safe()
+    inpaint_dtype = device_manager.resolve_dtype_name_safe(inpaint_device)
+
+    seam_inpainter = create_seam_inpainter(
+        enabled=resolved_settings.seam_inpaint_enabled,
+        model_id=resolved_settings.seam_inpaint_model_id,
+        device=inpaint_device,
+        torch_dtype_name=inpaint_dtype,
+        local_files_only=resolved_settings.local_files_only,
+        enable_cpu_offload=resolved_settings.enable_cpu_offload,
+        model_revision=resolved_settings.seam_inpaint_model_revision,
+        force_fake=force_fake_seam_inpaint,
+    )
+    processing_pipeline = ImageProcessingPipeline(background_remover, seam_inpainter)
     output_service = OutputService(
         resolved_settings.output_directory,
         app_version=resolved_settings.app_version or APPLICATION_VERSION,
@@ -101,6 +124,7 @@ def create_app(
         policy=policy,
         backend=resolved_backend,
         background_remover=background_remover,
+        seam_inpainter=seam_inpainter,
     )
 
     app.state.settings = resolved_settings
@@ -109,6 +133,7 @@ def create_app(
     app.state.output_service = output_service
     app.state.capability_service = capability_service
     app.state.background_remover = background_remover
+    app.state.seam_inpainter = seam_inpainter
     app.state.processing_pipeline = processing_pipeline
 
     app.add_middleware(RequestIdMiddleware)

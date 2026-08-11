@@ -2,7 +2,7 @@ namespace UnityAiAssets.Editor.Profiles
 {
     public static class ProfileSchemaVersions
     {
-        public const string GenerationProfile = "1.1";
+        public const string GenerationProfile = "1.2";
         public const string PromptTemplate = "1.0";
         public const string NegativePrompt = "1.0";
         public const string GenerationProfileSchemaName = "generation-profile";

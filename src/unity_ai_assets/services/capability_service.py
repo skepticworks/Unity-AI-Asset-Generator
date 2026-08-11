@@ -34,12 +34,18 @@ from unity_ai_assets.domain.capabilities import (
     SeedConstraints,
     SpriteImportCapabilities,
     TextToImageCapabilities,
+    TileableProcessingCapabilities,
     UnsupportedOperation,
 )
 from unity_ai_assets.domain.enums import AssetType, PivotMode, TransparencyStrategy
 from unity_ai_assets.domain.generation_policy import GenerationPolicy
 from unity_ai_assets.inference.backend import ImageGenerationBackend
 from unity_ai_assets.processing.background_removal import ImageBackgroundRemover
+from unity_ai_assets.processing.seam_inpaint import (
+    FakeSeamInpainter,
+    SeamInpainter,
+    UnavailableSeamInpainter,
+)
 
 
 class CapabilityService:
@@ -51,16 +57,27 @@ class CapabilityService:
         policy: GenerationPolicy,
         backend: ImageGenerationBackend,
         background_remover: ImageBackgroundRemover | None = None,
+        seam_inpainter: SeamInpainter | None = None,
     ) -> None:
         self._settings = settings
         self._policy = policy
         self._backend = backend
         self._background_remover = background_remover
+        self._seam_inpainter = seam_inpainter
 
     def get_capabilities(self) -> CapabilityDocument:
         """Assemble the versioned capability document."""
         inference = self._backend.describe_capabilities()
         return self._assemble(inference)
+
+    def _seam_inpaint_available(self) -> bool:
+        if self._seam_inpainter is None:
+            return False
+        if isinstance(self._seam_inpainter, UnavailableSeamInpainter):
+            return False
+        if isinstance(self._seam_inpainter, FakeSeamInpainter):
+            return self._seam_inpainter.available
+        return bool(self._settings.seam_inpaint_enabled) and self._seam_inpainter.available
 
     def _background_removal_available(self) -> bool:
         if self._background_remover is None:
@@ -144,6 +161,22 @@ class CapabilityService:
                 supported=True,
                 single_sprite_only=True,
                 pivot_modes=[mode.value for mode in PivotMode],
+            ),
+            tileable=TileableProcessingCapabilities(
+                available=True,
+                seam_analysis=True,
+                seam_correction=True,
+                palette_reduction=True,
+                ai_inpaint_available=self._seam_inpaint_available(),
+                seam_blend_width=NumericRangeInt(
+                    minimum=8,
+                    maximum=128,
+                    default=settings.default_seam_width,
+                ),
+                palette_color_count=NumericRangeInt(minimum=2, maximum=256, default=16),
+                target_size=512,
+                circular_offset_px=256,
+                protected_border_px=4,
             ),
         )
 

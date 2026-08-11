@@ -50,6 +50,11 @@ namespace UnityAiAssets.Editor.Api
         public float? custom_pivot_x;
         public float? custom_pivot_y;
         public string atlas_hint;
+        public bool? tileable;
+        public bool? apply_seam_correction;
+        public int? seam_blend_width;
+        public bool? palette_reduction_enabled;
+        public int? palette_color_count;
 
         public string ToJson()
         {
@@ -86,6 +91,11 @@ namespace UnityAiAssets.Editor.Api
             if (custom_pivot_x.HasValue) AppendFloat(sb, "custom_pivot_x", custom_pivot_x.Value);
             if (custom_pivot_y.HasValue) AppendFloat(sb, "custom_pivot_y", custom_pivot_y.Value);
             AppendOptionalString(sb, "atlas_hint", atlas_hint);
+            if (tileable.HasValue) AppendBool(sb, "tileable", tileable.Value);
+            if (apply_seam_correction.HasValue) AppendBool(sb, "apply_seam_correction", apply_seam_correction.Value);
+            if (seam_blend_width.HasValue) AppendNumber(sb, "seam_blend_width", seam_blend_width.Value);
+            if (palette_reduction_enabled.HasValue) AppendBool(sb, "palette_reduction_enabled", palette_reduction_enabled.Value);
+            if (palette_color_count.HasValue) AppendNumber(sb, "palette_color_count", palette_color_count.Value);
             sb.Append('}');
             return sb.ToString();
         }

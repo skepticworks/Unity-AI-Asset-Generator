@@ -23,10 +23,26 @@ namespace UnityAiAssets.Editor.Tests
             Assert.AreEqual("negative", dto.negative_prompt_profile_id);
             Assert.AreEqual(4, dto.negative_prompt_profile_revision);
             Assert.AreEqual("ps1_environment_texture", dto.unity_import_profile_id);
-            Assert.AreEqual("background_removal", dto.transparency_strategy);
+            Assert.AreEqual("none", dto.transparency_strategy);
+            Assert.IsNull(dto.pixels_per_unit);
+            Assert.IsNull(dto.pivot_mode);
+            Assert.IsNull(dto.atlas_hint);
+        }
+
+        [Test]
+        public void FromResolved_IncludesSpriteFieldsForSpriteAssets()
+        {
+            var resolved = CreateResolved();
+            resolved.AssetType = "sprite";
+            resolved.TransparencyStrategy = "background_removal";
+            resolved.PixelsPerUnit = 100f;
+            resolved.PivotMode = "bottom_center";
+            resolved.AtlasHint = "items";
+            var dto = GenerationRequestFactory.FromResolved(resolved, new TextureGenerationRequestModel());
             Assert.AreEqual(100f, dto.pixels_per_unit);
             Assert.AreEqual("bottom_center", dto.pivot_mode);
             Assert.AreEqual("items", dto.atlas_hint);
+            Assert.AreEqual("background_removal", dto.transparency_strategy);
         }
 
         [Test]
@@ -57,7 +73,7 @@ namespace UnityAiAssets.Editor.Tests
             NegativePromptProfileId = "negative",
             NegativePromptProfileRevision = 4,
             ImportProfileId = "ps1_environment_texture",
-            TransparencyStrategy = "background_removal",
+            TransparencyStrategy = "none",
             AlphaThreshold = 16,
             AlphaFeather = 0,
             RemoveNearTransparent = true,
@@ -66,7 +82,8 @@ namespace UnityAiAssets.Editor.Tests
             PivotMode = "bottom_center",
             CustomPivotX = .5f,
             CustomPivotY = .5f,
-            AtlasHint = "items"
+            AtlasHint = "items",
+            Tileable = true
         };
     }
 }

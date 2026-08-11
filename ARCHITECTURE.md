@@ -6,7 +6,7 @@ Local FastAPI texture generation (Diffusers behind an inference protocol) plus a
 
 **ComfyUI is not used** in any form.
 
-Application/package version: **0.5.0** (Milestone 5 — sprite/icon workflow).
+Application/package version: **0.6.0** (Milestone 6 — tileable texture workflow).
 
 ## Backend component responsibilities
 
@@ -21,7 +21,7 @@ Application/package version: **0.5.0** (Milestone 5 — sprite/icon workflow).
 | `services/capability_service.py` | Assemble capability document from policy + inference + processing |
 | `services/generation_service.py` | Policy validation, seed, lock, orchestration, post-processing |
 | `services/output_service.py` | Atomic PNG + manifest persistence, SHA-256, resolve-by-UUID |
-| `processing/*` | Background removal + alpha cleanup (isolated from diffusion backends) |
+| `processing/*` | Background removal, alpha cleanup, tileable wrap/seam/palette (isolated from diffusion backends) |
 | `inference/*` | Backend protocol (`describe_capabilities` + `generate`), Diffusers, fake, model manager |
 | `core/version.py` | Central API / schema / application version constants |
 | `core/error_codes.py` | Stable application + field issue codes |
@@ -42,7 +42,8 @@ Application/package version: **0.5.0** (Milestone 5 — sprite/icon workflow).
 | `Editor/Importing/` | Path utilities, import profiles, `GeneratedAssetImporter`, materials |
 | `Editor/Metadata/` | Manifest-aware ScriptableObject + importer |
 | `Editor/UI/` | `Tools > AI Asset Generator` window |
-| `Editor/Tests/` | Edit Mode tests (capabilities, errors, manifests, integrity) |
+| `Editor/Tileable/` | Offset/wrap, seam analysis/correction, palette reduction, tileable previews |
+| `Editor/Tests/` | Edit Mode tests (capabilities, errors, manifests, integrity, tileable) |
 | `Editor/AssetTypes/` | Asset type contracts |
 | `Editor/Prompting/` | Prompt/negative contracts and deterministic resolution |
 | `Editor/Profiles/` | `ProfileCatalog`, generation registry/schema, compatibility, persistence, migration |

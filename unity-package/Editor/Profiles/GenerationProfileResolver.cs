@@ -1,5 +1,6 @@
 using System;
 using UnityAiAssets.Editor.Api;
+using UnityAiAssets.Editor.Prompting;
 
 namespace UnityAiAssets.Editor.Profiles
 {
@@ -80,6 +81,11 @@ namespace UnityAiAssets.Editor.Profiles
                 CustomPivotX = customPivotX,
                 CustomPivotY = customPivotY,
                 AtlasHint = string.IsNullOrWhiteSpace(overrides.AtlasHint) ? profile.Unity.AtlasHint : overrides.AtlasHint,
+                Tileable = overrides.Tileable ?? profile.Processing.Tileable,
+                ApplySeamCorrection = overrides.ApplySeamCorrection ?? profile.Processing.ApplySeamCorrection,
+                SeamBlendWidth = overrides.SeamBlendWidth ?? profile.Processing.SeamBlendWidth,
+                PaletteReductionEnabled = overrides.PaletteReductionEnabled ?? profile.Processing.PaletteReductionEnabled,
+                PaletteColorCount = overrides.PaletteColorCount ?? profile.Processing.PaletteColorCount,
                 Compatibility = compatibility,
                 GenerationProfileId = profile.Id,
                 GenerationProfileRevision = profile.Revision,

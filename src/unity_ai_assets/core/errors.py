@@ -182,6 +182,20 @@ class BackgroundRemovalFailedError(AppError):
         super().__init__(message, code=AppErrorCode.BACKGROUND_REMOVAL_FAILED)
 
 
+class SeamInpaintUnavailableError(AppError):
+    """Raised when local seam inpainting is required but unavailable."""
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, code=AppErrorCode.SEAM_INPAINT_UNAVAILABLE)
+
+
+class SeamInpaintFailedError(AppError):
+    """Raised when local seam inpainting fails during processing."""
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, code=AppErrorCode.SEAM_INPAINT_FAILED)
+
+
 class AlphaProcessingFailedError(AppError):
     """Raised when deterministic alpha cleanup fails."""
 

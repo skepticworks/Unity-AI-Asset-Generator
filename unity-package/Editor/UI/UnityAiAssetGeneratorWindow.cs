@@ -5,6 +5,7 @@ using UnityAiAssets.Editor.Configuration;
 using UnityAiAssets.Editor.Generation;
 using UnityAiAssets.Editor.Importing;
 using UnityAiAssets.Editor.Profiles;
+using UnityAiAssets.Editor.Tileable;
 using UnityEditor;
 using UnityEngine;
 
@@ -22,6 +23,20 @@ namespace UnityAiAssets.Editor.UI
         GenerationProfileRegistry _profiles;
         GenerationProfileResolver _resolver;
 
+        // Tileable inspect/correct workflow state (editor-only; preserves original asset).
+        Texture2D _previewOriginal;
+        Texture2D _previewOffset;
+        Texture2D _previewTiled;
+        Texture2D _previewMaterialSwatch;
+        SeamAnalysisResult _seamDiagnostics;
+        WrapDiscontinuityResult _wrapDiagnostics;
+        string _workingTexturePath;
+        Color32[] _workingPixels;
+        int _workingWidth;
+        int _workingHeight;
+        bool _showOffsetPreview = true;
+        int _materialTiling = 2;
+
         [MenuItem("Tools/AI Asset Generator")]
         public static void Open()
         {
@@ -34,6 +49,26 @@ namespace UnityAiAssets.Editor.UI
         void OnEnable()
         {
             EnsureInitialized();
+        }
+
+        void OnDisable()
+        {
+            DestroyPreviewTextures();
+        }
+
+        void DestroyPreviewTextures()
+        {
+            DestroyPreview(ref _previewOriginal);
+            DestroyPreview(ref _previewOffset);
+            DestroyPreview(ref _previewTiled);
+            DestroyPreview(ref _previewMaterialSwatch);
+        }
+
+        static void DestroyPreview(ref Texture2D texture)
+        {
+            if (texture == null) return;
+            DestroyImmediate(texture);
+            texture = null;
         }
 
         void EnsureInitialized()
@@ -100,6 +135,8 @@ namespace UnityAiAssets.Editor.UI
 
             EditorGUILayout.Space();
             DrawActions(progress, busy);
+            EditorGUILayout.Space();
+            DrawTileableWorkflowSection(progress);
             EditorGUILayout.Space();
             DrawStatus(progress);
             EditorGUILayout.EndScrollView();
@@ -298,6 +335,50 @@ namespace UnityAiAssets.Editor.UI
                         MessageType.Error);
             }
 
+            if (_request.AssetType == "texture" && IsTileableProfileSelected())
+            {
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Tileable Texture", EditorStyles.boldLabel);
+                EditorGUILayout.HelpBox(
+                    "Generate at 512×512 → optional local AI seam repair (circular offset + center-cross inpaint) → " +
+                    "3×3 tile preview → optional palette → Unity Repeat import.\n" +
+                    "AI seam repair runs on the backend during generate. There is no soft-blend success path.",
+                    MessageType.Info);
+                _request.Tileable = EditorGUILayout.Toggle("Tileable Workflow", _request.Tileable);
+                _request.ApplySeamCorrection = EditorGUILayout.Toggle(
+                    "Apply AI Seam Repair (on generate)", _request.ApplySeamCorrection);
+                var seamMin = SeamThresholds.MinSeamWidth;
+                var seamMax = SeamThresholds.MaxSeamWidth;
+                var tileableCaps = t2i?.Processing?.Tileable;
+                if (tileableCaps?.SeamBlendWidth != null)
+                {
+                    if (tileableCaps.SeamBlendWidth.Minimum > 0)
+                        seamMin = tileableCaps.SeamBlendWidth.Minimum;
+                    if (tileableCaps.SeamBlendWidth.Maximum > 0)
+                        seamMax = tileableCaps.SeamBlendWidth.Maximum;
+                }
+                _request.SeamBlendWidth = EditorGUILayout.IntSlider(
+                    "Seam Mask Width", _request.SeamBlendWidth, seamMin, seamMax);
+                _request.PaletteReductionEnabled = EditorGUILayout.Toggle(
+                    "Palette Reduction (on generate)", _request.PaletteReductionEnabled);
+                using (new EditorGUI.DisabledScope(!_request.PaletteReductionEnabled))
+                {
+                    _request.PaletteColorCount = EditorGUILayout.IntSlider(
+                        "Palette Colors", _request.PaletteColorCount, 2, 256);
+                }
+                if (_request.ApplySeamCorrection)
+                {
+                    if (_request.Width != 512 || _request.Height != 512)
+                        EditorGUILayout.HelpBox(
+                            "AI seam repair requires exactly 512×512.",
+                            MessageType.Error);
+                    if (tileableCaps != null && !tileableCaps.AiInpaintAvailable)
+                        EditorGUILayout.HelpBox(
+                            "Local seam inpainting is unavailable on the current backend; disable AI seam repair or enable the inpaint model.",
+                            MessageType.Error);
+                }
+            }
+
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Unity Import", EditorStyles.boldLabel);
             _request.DestinationFolder = EditorGUILayout.TextField("Destination Folder", _request.DestinationFolder);
@@ -361,6 +442,19 @@ namespace UnityAiAssets.Editor.UI
             _request.CustomPivotX = profile.Unity.CustomPivotX;
             _request.CustomPivotY = profile.Unity.CustomPivotY;
             _request.AtlasHint = profile.Unity.AtlasHint;
+            _request.Tileable = profile.Processing.Tileable;
+            _request.ApplySeamCorrection = profile.Processing.ApplySeamCorrection;
+            _request.SeamBlendWidth = profile.Processing.SeamBlendWidth;
+            _request.PaletteReductionEnabled = profile.Processing.PaletteReductionEnabled;
+            _request.PaletteColorCount = profile.Processing.PaletteColorCount;
+        }
+
+        bool IsTileableProfileSelected()
+        {
+            if (!_profiles.TryGet(_request.SelectedProfileId, out var profile)) return _request.Tileable;
+            if (profile.Processing.Tileable) return true;
+            return profile.Tags != null && profile.Tags.Exists(tag =>
+                string.Equals(tag, "tileable", StringComparison.OrdinalIgnoreCase));
         }
 
         bool HasDirtyOverrides()
@@ -376,7 +470,10 @@ namespace UnityAiAssets.Editor.UI
                    _request.TransparencyStrategy != profile.Processing.TransparencyStrategy ||
                    _request.PixelsPerUnit != profile.Unity.PixelsPerUnit ||
                    _request.PivotMode != profile.Unity.PivotMode ||
-                   _request.AtlasHint != profile.Unity.AtlasHint;
+                   _request.AtlasHint != profile.Unity.AtlasHint ||
+                   _request.Tileable != profile.Processing.Tileable ||
+                   _request.ApplySeamCorrection != profile.Processing.ApplySeamCorrection ||
+                   _request.PaletteReductionEnabled != profile.Processing.PaletteReductionEnabled;
         }
 
         void UpdatePromptPreview(GenerationProgress progress)
@@ -397,7 +494,12 @@ namespace UnityAiAssets.Editor.UI
                     PivotMode = _request.PivotMode,
                     CustomPivotX = _request.CustomPivotX,
                     CustomPivotY = _request.CustomPivotY,
-                    AtlasHint = _request.AtlasHint
+                    AtlasHint = _request.AtlasHint,
+                    Tileable = _request.Tileable,
+                    ApplySeamCorrection = _request.ApplySeamCorrection,
+                    SeamBlendWidth = _request.SeamBlendWidth,
+                    PaletteReductionEnabled = _request.PaletteReductionEnabled,
+                    PaletteColorCount = _request.PaletteColorCount
                 }, progress.Capabilities);
                 var dto = GenerationRequestFactory.FromResolved(resolved, _request);
                 _request.PreviewPrompt = _request.Prompt = dto.prompt;
@@ -408,6 +510,157 @@ namespace UnityAiAssets.Editor.UI
                 _request.PreviewPrompt = "Invalid profile input: " + exception.Message;
                 _request.PreviewNegative = string.Empty;
             }
+        }
+
+        void DrawTileableWorkflowSection(GenerationProgress progress)
+        {
+            if (_request.AssetType != "texture") return;
+
+            EditorGUILayout.LabelField("Tileable Inspect / Preview", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox(
+                "Load an imported texture to inspect offset seams, wrap discontinuity, and 3×3 tiling. " +
+                "AI seam repair is applied on generate only (local inpaint)—not via soft blending here.",
+                MessageType.None);
+
+            var importedPath = progress.ImportedTexturePath;
+            using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(importedPath)))
+            {
+                if (GUILayout.Button("Load Imported Texture for Tileable Tools"))
+                {
+                    LoadWorkingTexture(importedPath);
+                }
+            }
+
+            if (_workingPixels == null || string.IsNullOrEmpty(_workingTexturePath))
+            {
+                EditorGUILayout.LabelField("No working texture loaded.", EditorStyles.miniLabel);
+                return;
+            }
+
+            EditorGUILayout.LabelField("Working", _workingTexturePath, EditorStyles.miniLabel);
+            _showOffsetPreview = EditorGUILayout.Toggle("Show Offset Preview (50%)", _showOffsetPreview);
+
+            if (_seamDiagnostics != null)
+            {
+                EditorGUILayout.LabelField(
+                    "Edge RGB",
+                    $"H={_seamDiagnostics.HorizontalScore:0.###}  V={_seamDiagnostics.VerticalScore:0.###}  " +
+                    $"Combined={_seamDiagnostics.CombinedScore:0.###} ({_seamDiagnostics.QualityLabel})",
+                    EditorStyles.miniLabel);
+            }
+
+            if (_wrapDiagnostics != null)
+            {
+                EditorGUILayout.LabelField(
+                    "Wrap Δ",
+                    $"H={_wrapDiagnostics.HorizontalRatio:0.00}x  V={_wrapDiagnostics.VerticalRatio:0.00}x normal gradient",
+                    EditorStyles.miniLabel);
+            }
+
+            const float previewSize = 128f;
+            EditorGUILayout.BeginHorizontal();
+            DrawPreviewColumn("Original", _previewOriginal, previewSize);
+            if (_showOffsetPreview)
+                DrawPreviewColumn("Offset", _previewOffset, previewSize);
+            DrawPreviewColumn("3×3 Tile", _previewTiled, previewSize);
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("Re-Analyze Seams"))
+                RefreshDiagnosticsAndPreviews();
+            if (GUILayout.Button("Apply Palette Reduction"))
+                ApplyPaletteToWorking();
+            EditorGUILayout.EndHorizontal();
+
+            _request.PaletteColorCount = EditorGUILayout.IntSlider(
+                "Palette Colors", _request.PaletteColorCount, 2, 256);
+
+            _materialTiling = EditorGUILayout.IntSlider("Material UV Tiling Preview", _materialTiling, 1, 8);
+            if (_previewMaterialSwatch != null)
+            {
+                EditorGUILayout.LabelField("Unity Repeat Preview", EditorStyles.miniLabel);
+                var rect = GUILayoutUtility.GetRect(previewSize, previewSize, GUILayout.ExpandWidth(false));
+                EditorGUI.DrawPreviewTexture(rect, _previewMaterialSwatch, null, ScaleMode.ScaleToFit);
+            }
+
+            var wrapOk = false;
+            var importer = AssetImporter.GetAtPath(_workingTexturePath) as TextureImporter;
+            if (importer != null)
+                wrapOk = importer.wrapMode == TextureWrapMode.Repeat;
+            EditorGUILayout.HelpBox(
+                wrapOk
+                    ? "Import wrap mode is Repeat — suitable for tiling materials."
+                    : "Import wrap mode is not Repeat. Prefer the ps1_tileable_texture import profile.",
+                wrapOk ? MessageType.Info : MessageType.Warning);
+        }
+
+        static void DrawPreviewColumn(string label, Texture2D texture, float size)
+        {
+            EditorGUILayout.BeginVertical(GUILayout.Width(size + 8));
+            EditorGUILayout.LabelField(label, EditorStyles.miniBoldLabel);
+            var rect = GUILayoutUtility.GetRect(size, size, GUILayout.ExpandWidth(false));
+            if (texture != null)
+                EditorGUI.DrawPreviewTexture(rect, texture, null, ScaleMode.ScaleToFit);
+            else
+                EditorGUI.DrawRect(rect, new Color(0.15f, 0.15f, 0.15f));
+            EditorGUILayout.EndVertical();
+        }
+
+        void LoadWorkingTexture(string assetPath)
+        {
+            var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+            if (texture == null) return;
+            if (!TileableTextureWorkflow.TryReadPixels(texture, out var pixels, out var width, out var height, out var error))
+            {
+                EditorUtility.DisplayDialog("Tileable Tools", "Could not read texture pixels: " + error, "OK");
+                return;
+            }
+
+            _workingTexturePath = assetPath;
+            _workingPixels = pixels;
+            _workingWidth = width;
+            _workingHeight = height;
+            RefreshDiagnosticsAndPreviews();
+        }
+
+        void RefreshDiagnosticsAndPreviews()
+        {
+            if (_workingPixels == null) return;
+            _seamDiagnostics = SeamAnalysis.Analyze(_workingPixels, _workingWidth, _workingHeight);
+            _wrapDiagnostics = WrapDiagnostics.Analyze(_workingPixels, _workingWidth, _workingHeight);
+            DestroyPreviewTextures();
+            _previewOriginal = TileableTextureWorkflow.CreatePreviewTexture(
+                _workingPixels, _workingWidth, _workingHeight, FilterMode.Point);
+            var offset = OffsetWrap.OffsetPreview(_workingPixels, _workingWidth, _workingHeight);
+            _previewOffset = TileableTextureWorkflow.CreatePreviewTexture(
+                offset, _workingWidth, _workingHeight, FilterMode.Point);
+            var tiled = OffsetWrap.TiledPreview(_workingPixels, _workingWidth, _workingHeight, 3);
+            _previewTiled = TileableTextureWorkflow.CreatePreviewTexture(
+                tiled, _workingWidth * 3, _workingHeight * 3, FilterMode.Point);
+            var materialTiles = OffsetWrap.TiledPreview(
+                _workingPixels, _workingWidth, _workingHeight, Math.Max(1, _materialTiling));
+            _previewMaterialSwatch = TileableTextureWorkflow.CreatePreviewTexture(
+                materialTiles,
+                _workingWidth * Math.Max(1, _materialTiling),
+                _workingHeight * Math.Max(1, _materialTiling),
+                FilterMode.Point);
+            Repaint();
+        }
+
+        void ApplyPaletteToWorking()
+        {
+            if (_workingPixels == null) return;
+            var reduced = PaletteReduction.Reduce(
+                _workingPixels, _workingWidth, _workingHeight, _request.PaletteColorCount);
+            var profile = _catalog.TryGetImportProfile(_request.ImportProfileId, out var importProfile)
+                ? importProfile
+                : TextureImportProfile.CreatePs1Tileable();
+            var path = TileableTextureWorkflow.WriteSiblingPng(
+                _workingTexturePath, reduced, _workingWidth, _workingHeight, ".palette", profile);
+            _workingPixels = reduced;
+            _workingTexturePath = path;
+            _controller.Progress.ImportedTexturePath = path;
+            RefreshDiagnosticsAndPreviews();
         }
 
         /// <summary>
@@ -454,6 +707,13 @@ namespace UnityAiAssets.Editor.UI
             var canGenerate = progress.CanGenerate &&
                               profileCompatibility?.CanGenerate == true &&
                               !string.IsNullOrWhiteSpace(_request.Subject);
+            if (canGenerate &&
+                _request.ApplySeamCorrection &&
+                (_request.Width != 512 || _request.Height != 512 ||
+                 progress.Capabilities?.Operations?.TextToImage?.Processing?.Tileable?.AiInpaintAvailable == false))
+            {
+                canGenerate = false;
+            }
 
             EditorGUILayout.BeginHorizontal();
             using (new EditorGUI.DisabledScope(busy))
@@ -484,11 +744,18 @@ namespace UnityAiAssets.Editor.UI
 
             if (!canGenerate && !busy)
             {
-                var reason = profileCompatibility != null && !profileCompatibility.CanGenerate
-                    ? string.Join("\n", profileCompatibility.Messages)
-                    : string.IsNullOrWhiteSpace(_request.Subject)
-                        ? "Generate is disabled: subject is required."
-                        : GenerateUnavailableReason(progress);
+                string reason;
+                if (_request.ApplySeamCorrection && (_request.Width != 512 || _request.Height != 512))
+                    reason = "Generate is disabled: AI seam repair requires exactly 512×512.";
+                else if (_request.ApplySeamCorrection &&
+                         progress.Capabilities?.Operations?.TextToImage?.Processing?.Tileable?.AiInpaintAvailable == false)
+                    reason = "Generate is disabled: local seam inpainting is unavailable on the backend.";
+                else if (profileCompatibility != null && !profileCompatibility.CanGenerate)
+                    reason = string.Join("\n", profileCompatibility.Messages);
+                else if (string.IsNullOrWhiteSpace(_request.Subject))
+                    reason = "Generate is disabled: subject is required.";
+                else
+                    reason = GenerateUnavailableReason(progress);
                 EditorGUILayout.HelpBox(reason, MessageType.Warning);
             }
 

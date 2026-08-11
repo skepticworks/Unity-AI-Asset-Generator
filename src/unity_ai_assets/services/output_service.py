@@ -363,7 +363,11 @@ class OutputService:
             if (
                 processing is not None
                 and processing.original_image is not None
-                and processing.background_removal_applied
+                and (
+                    processing.background_removal_applied
+                    or processing.seam_correction_applied
+                    or processing.palette_reduction_applied
+                )
             ):
                 original_filename = f"{safe_name}.original.png"
                 original_path = generation_dir / original_filename
@@ -405,7 +409,14 @@ class OutputService:
                 )
 
             processing_info: ManifestProcessingInfo | None = None
-            if processing is not None:
+            if processing is not None and (
+                processing.background_removal_applied
+                or processing.alpha_cleanup_applied
+                or processing.seam_correction_applied
+                or processing.palette_reduction_applied
+                or processing.tileable
+                or request.asset_type in {AssetType.SPRITE.value, AssetType.ICON.value}
+            ):
                 processing_info = ManifestProcessingInfo(
                     transparency_strategy=processing.transparency_strategy,
                     background_removal_applied=processing.background_removal_applied,
@@ -422,6 +433,18 @@ class OutputService:
                     atlas_hint=request.atlas_hint,
                     original_relative_path=original_filename,
                     final_relative_path=image_filename,
+                    tileable=processing.tileable,
+                    seam_correction_applied=processing.seam_correction_applied,
+                    palette_reduction_applied=processing.palette_reduction_applied,
+                    seam_blend_width=processing.seam_blend_width,
+                    palette_color_count=processing.palette_color_count,
+                    seam_score_before=processing.seam_score_before,
+                    seam_score_after=processing.seam_score_after,
+                    horizontal_seam_score=processing.horizontal_seam_score,
+                    vertical_seam_score=processing.vertical_seam_score,
+                    horizontal_wrap_discontinuity=processing.horizontal_wrap_discontinuity,
+                    vertical_wrap_discontinuity=processing.vertical_wrap_discontinuity,
+                    seam_inpaint_implementation=processing.seam_inpaint_implementation,
                 )
 
             manifest = GenerationManifest(
@@ -472,6 +495,11 @@ class OutputService:
                     custom_pivot_x=request.custom_pivot_x,
                     custom_pivot_y=request.custom_pivot_y,
                     atlas_hint=request.atlas_hint,
+                    tileable=request.tileable,
+                    apply_seam_correction=request.apply_seam_correction,
+                    seam_blend_width=request.seam_blend_width,
+                    palette_reduction_enabled=request.palette_reduction_enabled,
+                    palette_color_count=request.palette_color_count,
                 ),
                 profile=ManifestProfileInfo(
                     generation_profile_id=request.generation_profile_id,

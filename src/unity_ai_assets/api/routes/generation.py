@@ -61,6 +61,11 @@ async def generate_texture(
         custom_pivot_x=payload.custom_pivot_x,
         custom_pivot_y=payload.custom_pivot_y,
         atlas_hint=payload.atlas_hint,
+        tileable=payload.tileable,
+        apply_seam_correction=payload.apply_seam_correction,
+        seam_blend_width=payload.seam_blend_width,
+        palette_reduction_enabled=payload.palette_reduction_enabled,
+        palette_color_count=payload.palette_color_count,
     )
     resources = _resources(result.generation_id)
     return TextureGenerationResponse(

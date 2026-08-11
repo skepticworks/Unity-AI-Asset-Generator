@@ -65,6 +65,9 @@ namespace UnityAiAssets.Editor.Api
         public string TransparencyStrategy;
         public bool BackgroundRemovalApplied;
         public string BackgroundRemovalImplementation;
+        public string BackgroundRemovalBackend;
+        public string BackgroundRemovalModel;
+        public bool ProducesNativeAlpha;
         public bool AlphaCleanupApplied;
         public int AlphaThreshold;
         public int AlphaFeather;
@@ -229,6 +232,9 @@ namespace UnityAiAssets.Editor.Api
                     TransparencyStrategy = processingNode.Get("transparency_strategy").AsString("none"),
                     BackgroundRemovalApplied = processingNode.Get("background_removal_applied").AsBool(),
                     BackgroundRemovalImplementation = processingNode.Get("background_removal_implementation").AsString(),
+                    BackgroundRemovalBackend = processingNode.Get("background_removal_backend").AsString(),
+                    BackgroundRemovalModel = processingNode.Get("background_removal_model").AsString(),
+                    ProducesNativeAlpha = processingNode.Get("produces_native_alpha").AsBool(),
                     AlphaCleanupApplied = processingNode.Get("alpha_cleanup_applied").AsBool(),
                     AlphaThreshold = processingNode.Get("alpha_threshold").AsInt(),
                     AlphaFeather = processingNode.Get("alpha_feather").AsInt(),

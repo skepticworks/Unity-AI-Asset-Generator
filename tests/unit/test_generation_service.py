@@ -70,6 +70,73 @@ def test_excessive_dimensions(
     assert exc_info.value.field_issues["width"][0].code.value == "VALUE_ABOVE_MAXIMUM"
 
 
+def test_exclusive_vram_unloads_between_txt2img_and_inpaint(tmp_path: Path) -> None:
+    """With EXCLUSIVE_MODEL_VRAM, only one diffusion stage should hold weights."""
+    from unity_ai_assets.processing.pipeline import ImageProcessingPipeline
+    from unity_ai_assets.processing.seam_inpaint import FakeSeamInpainter
+
+    settings = Settings(
+        model_id="fake/test-model",
+        device="cpu",
+        output_directory=tmp_path / "generated",
+        max_width=1024,
+        max_height=1024,
+        enable_cpu_offload=False,
+        exclusive_model_vram=True,
+        seam_inpaint_enabled=True,
+        preserve_original_image=True,
+    )
+    (tmp_path / "generated").mkdir()
+    backend = FakeImageGenerationBackend(model_loaded=False)
+    inpainter = FakeSeamInpainter()
+    pipeline = ImageProcessingPipeline(
+        __import__(
+            "unity_ai_assets.processing.background_removal", fromlist=["UnavailableBackgroundRemover"]
+        ).UnavailableBackgroundRemover(reason="unused"),
+        inpainter,
+    )
+    service = GenerationService(
+        backend,
+        OutputService(settings.output_directory, app_version="0.6.1-test", model_family="sd15"),
+        settings,
+        processing_pipeline=pipeline,
+    )
+
+    result = service.generate_texture(
+        prompt="tile",
+        width=512,
+        height=512,
+        steps=1,
+        seed=1,
+        tileable=True,
+        apply_seam_correction=True,
+        seam_blend_width=64,
+    )
+    assert result.generation_id
+    assert backend.unload_calls >= 1
+    assert inpainter.inpaint_calls == 1
+    assert inpainter.unload_calls >= 1
+    assert backend.model_loaded is False
+    assert inpainter.is_loaded is False
+
+
+def test_exclusive_vram_disabled_when_cpu_offload(tmp_path: Path) -> None:
+    settings = Settings(
+        model_id="fake/test-model",
+        device="cpu",
+        output_directory=tmp_path / "generated",
+        enable_cpu_offload=True,
+        exclusive_model_vram=True,
+    )
+    backend = FakeImageGenerationBackend()
+    service = GenerationService(
+        backend,
+        OutputService(settings.output_directory, app_version="0.6.1-test"),
+        settings,
+    )
+    assert service.exclusive_model_vram is False
+
+
 def test_missing_prompt(
     service: tuple[GenerationService, FakeImageGenerationBackend],
 ) -> None:

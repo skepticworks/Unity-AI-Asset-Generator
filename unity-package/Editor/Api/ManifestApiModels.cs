@@ -58,6 +58,11 @@ namespace UnityAiAssets.Editor.Api
         public float CustomPivotX;
         public float CustomPivotY;
         public string AtlasHint;
+        public bool Tileable;
+        public bool ApplySeamCorrection;
+        public int SeamBlendWidth;
+        public bool PaletteReductionEnabled;
+        public int PaletteColorCount;
     }
 
     public sealed class ManifestProcessingInfo
@@ -80,6 +85,18 @@ namespace UnityAiAssets.Editor.Api
         public string AtlasHint;
         public string OriginalRelativePath;
         public string FinalRelativePath;
+        public bool Tileable;
+        public bool SeamCorrectionApplied;
+        public bool PaletteReductionApplied;
+        public int SeamBlendWidth;
+        public int PaletteColorCount;
+        public float? SeamScoreBefore;
+        public float? SeamScoreAfter;
+        public float? HorizontalSeamScore;
+        public float? VerticalSeamScore;
+        public float? HorizontalWrapDiscontinuity;
+        public float? VerticalWrapDiscontinuity;
+        public string SeamInpaintImplementation;
     }
 
     public sealed class ManifestOutputInfo
@@ -225,7 +242,12 @@ namespace UnityAiAssets.Editor.Api
                     PivotMode = requestNode.Get("pivot_mode").AsString("center"),
                     CustomPivotX = requestNode.Get("custom_pivot_x").AsFloat(.5f),
                     CustomPivotY = requestNode.Get("custom_pivot_y").AsFloat(.5f),
-                    AtlasHint = requestNode.Get("atlas_hint").AsString()
+                    AtlasHint = requestNode.Get("atlas_hint").AsString(),
+                    Tileable = requestNode.Get("tileable").AsBool(),
+                    ApplySeamCorrection = requestNode.Get("apply_seam_correction").AsBool(),
+                    SeamBlendWidth = requestNode.Get("seam_blend_width").AsInt(64),
+                    PaletteReductionEnabled = requestNode.Get("palette_reduction_enabled").AsBool(),
+                    PaletteColorCount = requestNode.Get("palette_color_count").AsInt(16)
                 },
                 Processing = processingNode.IsObject ? new ManifestProcessingInfo
                 {
@@ -246,7 +268,19 @@ namespace UnityAiAssets.Editor.Api
                     CustomPivotY = processingNode.Get("custom_pivot_y").AsFloat(.5f),
                     AtlasHint = processingNode.Get("atlas_hint").AsString(),
                     OriginalRelativePath = processingNode.Get("original_relative_path").AsString(),
-                    FinalRelativePath = processingNode.Get("final_relative_path").AsString()
+                    FinalRelativePath = processingNode.Get("final_relative_path").AsString(),
+                    Tileable = processingNode.Get("tileable").AsBool(),
+                    SeamCorrectionApplied = processingNode.Get("seam_correction_applied").AsBool(),
+                    PaletteReductionApplied = processingNode.Get("palette_reduction_applied").AsBool(),
+                    SeamBlendWidth = processingNode.Get("seam_blend_width").AsInt(64),
+                    PaletteColorCount = processingNode.Get("palette_color_count").AsInt(16),
+                    SeamScoreBefore = processingNode.Get("seam_score_before").AsNullableFloat(),
+                    SeamScoreAfter = processingNode.Get("seam_score_after").AsNullableFloat(),
+                    HorizontalSeamScore = processingNode.Get("horizontal_seam_score").AsNullableFloat(),
+                    VerticalSeamScore = processingNode.Get("vertical_seam_score").AsNullableFloat(),
+                    HorizontalWrapDiscontinuity = processingNode.Get("horizontal_wrap_discontinuity").AsNullableFloat(),
+                    VerticalWrapDiscontinuity = processingNode.Get("vertical_wrap_discontinuity").AsNullableFloat(),
+                    SeamInpaintImplementation = processingNode.Get("seam_inpaint_implementation").AsString()
                 } : null,
                 Profile = profileNode.IsObject ? new ManifestProfileInfo
                 {

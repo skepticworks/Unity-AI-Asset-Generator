@@ -40,6 +40,10 @@ class SeamInpainter(Protocol):
         seed: int | None = None,
     ) -> Image.Image: ...
 
+    def unload_weights(self) -> bool:
+        """Release loaded inpaint weights when possible. Returns True if unloaded."""
+        ...
+
 
 class UnavailableSeamInpainter:
     """Sentinel when local inpainting is disabled or cannot load."""
@@ -54,6 +58,9 @@ class UnavailableSeamInpainter:
     @property
     def implementation_id(self) -> str:
         return "unavailable"
+
+    def unload_weights(self) -> bool:
+        return False
 
     def inpaint(
         self,
@@ -81,6 +88,9 @@ class FakeSeamInpainter:
 
     def __init__(self, *, fail: bool = False) -> None:
         self._fail = fail
+        self._loaded = False
+        self.unload_calls: int = 0
+        self.inpaint_calls: int = 0
 
     @property
     def available(self) -> bool:
@@ -89,6 +99,17 @@ class FakeSeamInpainter:
     @property
     def implementation_id(self) -> str:
         return "fake:neighbor_fill"
+
+    @property
+    def is_loaded(self) -> bool:
+        return self._loaded
+
+    def unload_weights(self) -> bool:
+        self.unload_calls += 1
+        if not self._loaded:
+            return False
+        self._loaded = False
+        return True
 
     def inpaint(
         self,
@@ -101,6 +122,8 @@ class FakeSeamInpainter:
         guidance_scale: float = 7.5,
         seed: int | None = None,
     ) -> Image.Image:
+        self.inpaint_calls += 1
+        self._loaded = True
         if self._fail:
             raise AppError(
                 "Fake seam inpainting forced failure.",
@@ -253,6 +276,33 @@ class DiffusersSeamInpainter:
 
             self._pipeline = pipeline
             return pipeline
+
+    def unload_weights(self) -> bool:
+        """Release the inpaint pipeline from memory/VRAM if loaded."""
+        with self._lock:
+            if self._pipeline is None:
+                return False
+            logger.info(
+                "Unloading seam inpaint pipeline %s from device to free VRAM",
+                self._model_id,
+            )
+            pipeline = self._pipeline
+            self._pipeline = None
+            try:
+                del pipeline
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                import gc
+
+                import torch
+
+                gc.collect()
+                if self._device == "cuda" and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception:  # noqa: BLE001
+                pass
+            return True
 
     def inpaint(
         self,

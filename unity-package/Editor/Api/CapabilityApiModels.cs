@@ -100,6 +100,7 @@ namespace UnityAiAssets.Editor.Api
         public string Backend;
         public string Model;
         public bool ProducesNativeAlpha;
+        public string UnavailableReason;
     }
 
     public sealed class AlphaCleanupCapabilities
@@ -356,7 +357,8 @@ namespace UnityAiAssets.Editor.Api
                         Available = processingNode.Get("background_removal").Get("available").AsBool(),
                         Backend = processingNode.Get("background_removal").Get("backend").AsString(),
                         Model = processingNode.Get("background_removal").Get("model").AsString(),
-                        ProducesNativeAlpha = processingNode.Get("background_removal").Get("produces_native_alpha").AsBool()
+                        ProducesNativeAlpha = processingNode.Get("background_removal").Get("produces_native_alpha").AsBool(),
+                        UnavailableReason = processingNode.Get("background_removal").Get("unavailable_reason").AsString()
                     },
                     AlphaCleanup = new AlphaCleanupCapabilities
                     {

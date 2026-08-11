@@ -76,12 +76,36 @@ namespace UnityAiAssets.Editor.Capabilities
             if (request.TransparencyStrategy == "background_removal" &&
                 textToImage.Processing?.BackgroundRemoval?.Available != true)
             {
+                var reason = textToImage.Processing?.BackgroundRemoval?.UnavailableReason;
                 issues.Add(new CapabilityValidationIssue
                 {
                     FieldName = "transparency_strategy",
                     Code = AppErrorCode.BackgroundRemovalUnavailable,
-                    Message = "The backend does not currently provide background removal.",
+                    Message = string.IsNullOrWhiteSpace(reason)
+                        ? "The backend does not currently provide background removal."
+                        : reason,
                 });
+            }
+            if (request.ApplySeamCorrection)
+            {
+                if (request.Width != 512 || request.Height != 512)
+                {
+                    issues.Add(new CapabilityValidationIssue
+                    {
+                        FieldName = "apply_seam_correction",
+                        Code = FieldIssueCode.ValueInvalid,
+                        Message = "AI seam repair requires exactly 512×512.",
+                    });
+                }
+                if (textToImage.Processing?.Tileable?.AiInpaintAvailable != true)
+                {
+                    issues.Add(new CapabilityValidationIssue
+                    {
+                        FieldName = "apply_seam_correction",
+                        Code = AppErrorCode.SeamInpaintUnavailable,
+                        Message = "Local seam inpainting is unavailable on the current backend.",
+                    });
+                }
             }
             if (assetType == "sprite" || assetType == "icon")
             {

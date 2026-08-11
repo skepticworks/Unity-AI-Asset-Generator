@@ -12,6 +12,7 @@ from PIL import Image
 
 from unity_ai_assets.core.error_codes import AppErrorCode
 from unity_ai_assets.core.errors import AppError
+from unity_ai_assets.core.logging import get_logger
 from unity_ai_assets.processing.offset_wrap import circular_shift
 from unity_ai_assets.processing.seam_inpaint import SeamInpainter
 from unity_ai_assets.processing.seam_mask import build_center_cross_mask
@@ -28,6 +29,8 @@ from unity_ai_assets.processing.wrap_diagnostics import (
     WrapDiscontinuityResult,
     analyze_wrap_discontinuity,
 )
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,6 +117,13 @@ def make_seamless_with_inpaint(
         seam_width=resolved.seam_width,
         feather_px=resolved.feather_px,
         protected_border=resolved.protected_border,
+    )
+
+    logger.info(
+        "Running seamless repair: circular offset=%spx, seam_width=%s, implementation=%s",
+        resolved.offset_px,
+        resolved.seam_width,
+        inpainter.implementation_id,
     )
 
     try:

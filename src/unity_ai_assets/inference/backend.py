@@ -24,6 +24,10 @@ class ImageGenerationBackend(Protocol):
         """Report implemented operations and runtime facts without loading weights."""
         ...
 
+    def unload_weights(self) -> bool:
+        """Release loaded inference weights when possible. Returns True if unloaded."""
+        ...
+
     @property
     def model_loaded(self) -> bool:
         """Whether the underlying model is currently loaded."""

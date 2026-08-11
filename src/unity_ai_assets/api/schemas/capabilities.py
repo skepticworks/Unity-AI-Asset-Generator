@@ -117,6 +117,7 @@ class BackgroundRemovalCapabilitiesSchema(BaseModel):
     backend: str | None = None
     model: str | None = None
     produces_native_alpha: bool = False
+    unavailable_reason: str | None = None
 
 
 class AlphaCleanupCapabilitiesSchema(BaseModel):
@@ -233,6 +234,7 @@ class CapabilitiesResponse(BaseModel):
                     backend=proc.background_removal.backend,
                     model=proc.background_removal.model,
                     produces_native_alpha=proc.background_removal.produces_native_alpha,
+                    unavailable_reason=proc.background_removal.unavailable_reason,
                 ),
                 alpha_cleanup=AlphaCleanupCapabilitiesSchema(
                     available=proc.alpha_cleanup.available,

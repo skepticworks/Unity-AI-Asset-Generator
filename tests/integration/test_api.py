@@ -29,6 +29,20 @@ def test_health_endpoint(client: TestClient) -> None:
     assert "X-Request-ID" in response.headers
 
 
+def test_service_root_endpoint(client: TestClient) -> None:
+    """GET / returns service identity so IDE/browser probes are not misleading 404s."""
+    response = client.get("/")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["service"] == "unity-ai-assets"
+    assert payload["status"] == "ok"
+    assert payload["endpoints"]["health"] == "/health"
+    assert payload["endpoints"]["capabilities"] == "/api/v1/capabilities"
+    # CDP discovery probes must not be faked as Chrome DevTools.
+    cdp = client.get("/json/version")
+    assert cdp.status_code == 404
+
+
 def test_valid_generation_request(client: TestClient, output_dir: Path) -> None:
     response = client.post(
         "/api/v1/generations/textures",

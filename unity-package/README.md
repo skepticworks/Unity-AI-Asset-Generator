@@ -17,12 +17,14 @@ validate, and reveal profiles. Built-ins are immutable and must be duplicated be
 Sprite and icon profiles support explicit transparency strategies (local background-removal
 post-processing, not native diffusion alpha), alpha cleanup, PPU, and center, bottom-center,
 or custom pivots. Generation is disabled unless the backend advertises the selected asset type;
-background-removal profiles also require processing availability in capabilities.
+background-removal requires rembg availability in capabilities (see `unavailable_reason` when not).
+Switch strategy to `none` for opaque sprites when rembg is unavailable.
 
 Tileable texture profiles (`ps1_tileable_texture`) use seamless prompt guidance and Repeat wrap
-import settings. After import, the generator window supports offset seam inspection, seam
-diagnostics, nondestructive correction, 3×3 tile preview, optional palette reduction, and a
-Unity repeat/material tiling swatch. Correction does not guarantee perfectly seamless results.
+import settings. **Apply AI Seam Repair** on generate sends `apply_seam_correction` to the backend
+(local Diffusers inpaint at 512×512). Status reports whether repair was requested and applied.
+After import, the generator window supports offset seam inspection, diagnostics, 3×3 tile preview,
+optional editor-side palette reduction, and a Unity repeat/material tiling swatch.
 
 ## Install from disk
 

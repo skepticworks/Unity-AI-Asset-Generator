@@ -129,6 +129,7 @@ class BackgroundRemovalCapabilities:
     backend: str | None = None
     model: str | None = None
     produces_native_alpha: bool = False
+    unavailable_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

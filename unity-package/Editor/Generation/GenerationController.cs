@@ -41,6 +41,17 @@ namespace UnityAiAssets.Editor.Generation
         public string RequestId;
         public List<CapabilityValidationIssue> ValidationIssues = new List<CapabilityValidationIssue>();
 
+        // Last generation processing provenance (from manifest; explicit, never implied).
+        public bool? SeamCorrectionRequested;
+        public bool? SeamCorrectionApplied;
+        public string SeamInpaintImplementation;
+        public float? SeamScoreBefore;
+        public float? SeamScoreAfter;
+        public bool? BackgroundRemovalApplied;
+        public string BackgroundRemovalImplementation;
+        public string TransparencyStrategy;
+        public string ProcessingSummary;
+
         public bool CapabilitiesUsable =>
             CapabilityState == CapabilityState.Ready || CapabilityState == CapabilityState.Stale;
 
@@ -225,6 +236,15 @@ namespace UnityAiAssets.Editor.Generation
             Progress.Seed = null;
             Progress.ElapsedSeconds = null;
             Progress.ValidationIssues = new List<CapabilityValidationIssue>();
+            Progress.SeamCorrectionRequested = null;
+            Progress.SeamCorrectionApplied = null;
+            Progress.SeamInpaintImplementation = null;
+            Progress.SeamScoreBefore = null;
+            Progress.SeamScoreAfter = null;
+            Progress.BackgroundRemovalApplied = null;
+            Progress.BackgroundRemovalImplementation = null;
+            Progress.TransparencyStrategy = null;
+            Progress.ProcessingSummary = null;
 
             try
             {
@@ -261,7 +281,12 @@ namespace UnityAiAssets.Editor.Generation
                     PivotMode = request.PivotMode,
                     CustomPivotX = request.CustomPivotX,
                     CustomPivotY = request.CustomPivotY,
-                    AtlasHint = request.AtlasHint
+                    AtlasHint = request.AtlasHint,
+                    Tileable = request.Tileable,
+                    ApplySeamCorrection = request.ApplySeamCorrection,
+                    SeamBlendWidth = request.SeamBlendWidth,
+                    PaletteReductionEnabled = request.PaletteReductionEnabled,
+                    PaletteColorCount = request.PaletteColorCount
                 }, capabilities);
                 if (!resolved.Compatibility.CanGenerate)
                     throw new InvalidOperationException(string.Join("\n", resolved.Compatibility.Messages));
@@ -288,6 +313,11 @@ namespace UnityAiAssets.Editor.Generation
                 request.CustomPivotX = resolved.CustomPivotX;
                 request.CustomPivotY = resolved.CustomPivotY;
                 request.AtlasHint = resolved.AtlasHint;
+                request.Tileable = resolved.Tileable;
+                request.ApplySeamCorrection = resolved.ApplySeamCorrection;
+                request.SeamBlendWidth = resolved.SeamBlendWidth;
+                request.PaletteReductionEnabled = resolved.PaletteReductionEnabled;
+                request.PaletteColorCount = resolved.PaletteColorCount;
 
                 var issues = GenerationCapabilityValidator.Validate(request, capabilities);
                 if (issues.Count > 0)
@@ -361,6 +391,8 @@ namespace UnityAiAssets.Editor.Generation
 
                 VerifyImageIntegrityOrThrow(png, manifest);
 
+                ApplyProcessingProvenance(request, manifest);
+
                 SetState(GenerationState.Importing, "Importing texture into the Unity project…");
                 var profile = !string.IsNullOrWhiteSpace(request.ImportProfileId)
                     ? _catalog.GetImportProfile(request.ImportProfileId)
@@ -411,7 +443,7 @@ namespace UnityAiAssets.Editor.Generation
 
                 SetState(
                     GenerationState.Completed,
-                    $"Imported texture at {import.AssetPath}");
+                    BuildCompletionStatus(import.AssetPath));
             }
             catch (OperationCanceledException)
             {
@@ -424,6 +456,84 @@ namespace UnityAiAssets.Editor.Generation
             {
                 Fail(ex);
             }
+        }
+
+        void ApplyProcessingProvenance(TextureGenerationRequestModel request, GenerationManifestDocument manifest)
+        {
+            Progress.SeamCorrectionRequested = request.ApplySeamCorrection;
+            Progress.TransparencyStrategy = request.TransparencyStrategy;
+
+            var processing = manifest?.Processing;
+            if (processing == null)
+            {
+                Progress.SeamCorrectionApplied = false;
+                Progress.BackgroundRemovalApplied = false;
+                Progress.ProcessingSummary = request.ApplySeamCorrection
+                    ? "Seam repair was requested but the manifest has no processing block — cannot verify application."
+                    : "No processing provenance in manifest.";
+                return;
+            }
+
+            Progress.SeamCorrectionApplied = processing.SeamCorrectionApplied;
+            Progress.SeamInpaintImplementation = processing.SeamInpaintImplementation;
+            Progress.SeamScoreBefore = processing.SeamScoreBefore;
+            Progress.SeamScoreAfter = processing.SeamScoreAfter;
+            Progress.BackgroundRemovalApplied = processing.BackgroundRemovalApplied;
+            Progress.BackgroundRemovalImplementation = processing.BackgroundRemovalImplementation;
+
+            var parts = new List<string>();
+            if (request.ApplySeamCorrection)
+            {
+                if (processing.SeamCorrectionApplied)
+                {
+                    parts.Add(
+                        "AI seam repair: requested and applied" +
+                        (string.IsNullOrEmpty(processing.SeamInpaintImplementation)
+                            ? string.Empty
+                            : $" ({processing.SeamInpaintImplementation})") +
+                        (processing.SeamScoreBefore.HasValue && processing.SeamScoreAfter.HasValue
+                            ? $"; seam score {processing.SeamScoreBefore.Value:0.###} → {processing.SeamScoreAfter.Value:0.###}"
+                            : string.Empty) +
+                        ". Final imported PNG is the repaired tile.");
+                }
+                else
+                {
+                    parts.Add(
+                        "AI seam repair: requested but NOT applied (manifest seam_correction_applied=false). " +
+                        "Final texture is unrepaired.");
+                }
+            }
+            else if (processing.SeamCorrectionApplied)
+            {
+                parts.Add("AI seam repair: applied unexpectedly without a UI request — check backend logs.");
+            }
+            else
+            {
+                parts.Add("AI seam repair: not requested.");
+            }
+
+            if (string.Equals(request.TransparencyStrategy, "background_removal", StringComparison.OrdinalIgnoreCase))
+            {
+                parts.Add(processing.BackgroundRemovalApplied
+                    ? "Transparent background: background_removal applied" +
+                      (string.IsNullOrEmpty(processing.BackgroundRemovalImplementation)
+                          ? "."
+                          : $" ({processing.BackgroundRemovalImplementation}).")
+                    : "Transparent background: requested but NOT applied.");
+            }
+            else if (request.AssetType == "sprite" || request.AssetType == "icon")
+            {
+                parts.Add("Transparent background: strategy=none (opaque RGB).");
+            }
+
+            Progress.ProcessingSummary = string.Join(" ", parts);
+        }
+
+        string BuildCompletionStatus(string assetPath)
+        {
+            if (!string.IsNullOrWhiteSpace(Progress.ProcessingSummary))
+                return $"Imported {assetPath}. {Progress.ProcessingSummary}";
+            return $"Imported texture at {assetPath}";
         }
 
         /// <summary>

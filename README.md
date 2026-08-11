@@ -60,7 +60,7 @@ Optional local background removal (sprites/icons):
 pip install -e ".[background-removal]"
 ```
 
-Then set `BACKGROUND_REMOVAL_ENABLED=true` in `.env`.
+Keep `BACKGROUND_REMOVAL_ENABLED=true` in `.env` (the example default). Capabilities report `background_removal.available` and an `unavailable_reason` when rembg is missing or disabled. Diffusion models do not emit native alpha — transparency is local rembg post-processing with alpha preserved in PNG + Unity sprite import.
 
 ## Starting the API
 
@@ -69,6 +69,10 @@ uvicorn unity_ai_assets.main:app --host 127.0.0.1 --port 8000 --workers 1
 ```
 
 Bind defaults to **loopback**. Use a **single worker**.
+
+`GET /` returns a small service-identity JSON (health/capabilities/docs links). IDE and browser tooling often probe localhost ports with Chrome DevTools discovery (`GET /json/version`); those probes are not part of this API and are filtered from uvicorn access logs so they do not look like application failures.
+
+On low-VRAM GPUs, keep `ENABLE_CPU_OFFLOAD=false` and `EXCLUSIVE_MODEL_VRAM=true` (defaults): txt2img and seam-inpaint pipelines are not kept in VRAM together. The inactive pipeline is unloaded between stages. CPU offload is an alternative that pages modules continuously and is often slower per step.
 
 ## Versioning policy
 
@@ -83,20 +87,20 @@ Bind defaults to **loopback**. Use a **single worker**.
 ## Tileable texture workflow
 
 1. Select the `ps1_tileable_texture` profile (seamless prompt/negative guidance)
-2. Generate and import with Repeat wrap import settings
-3. In the Unity window: **Load Imported Texture for Tileable Tools**
-4. Compare **Original** vs **Offset (50%)** previews (wrapped, no empty borders)
-5. Review compact seam diagnostics (horizontal / vertical / combined scores)
-6. Optionally **Apply Seam Correction** (writes a sibling asset; original preserved)
+2. Optionally enable **Apply AI Seam Repair** (requires 512×512 and local inpaint model)
+3. Generate and import with Repeat wrap import settings — Status reports whether repair was requested and applied
+4. In the Unity window: **Load Imported Texture for Tileable Tools**
+5. Compare **Original** vs **Offset (50%)** previews (wrapped, no empty borders)
+6. Review compact seam diagnostics (horizontal / vertical / combined scores)
 7. Inspect the **3×3 Tile** preview and Unity repeat/material tiling swatch
-8. Optionally **Apply Palette Reduction** (disabled by default; alpha preserved)
+8. Optionally **Apply Palette Reduction** (editor-side sibling asset; original preserved)
 9. Export/import uses Repeat wrap — suitable for tiling materials
 
-Seam scores and soft-edge correction are objective diagnostics / best-effort helpers, not perceptual guarantees.
+AI seam repair runs on the backend during generate only (circular offset + center-cross local Diffusers inpaint). Soft-blend is not a success path. Seam scores are objective diagnostics, not perceptual guarantees.
 
 ## Sprite and icon workflow
 
-Unchanged from Milestone 5: transparency via local background removal, single-sprite import, pivots, atlas hints.
+Transparency via local background removal, single-sprite import, pivots, atlas hints. Choose strategy `none` for opaque sprites when rembg is unavailable.
 
 ## Generation
 

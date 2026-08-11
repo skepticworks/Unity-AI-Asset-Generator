@@ -65,9 +65,11 @@ def create_app(
             resolved_settings.background_removal_model,
         )
         logger.info(
-            "Seam inpaint enabled=%s model=%s",
+            "Seam inpaint enabled=%s model=%s exclusive_vram=%s cpu_offload=%s",
             resolved_settings.seam_inpaint_enabled,
             resolved_settings.seam_inpaint_model_id,
+            resolved_settings.exclusive_model_vram and not resolved_settings.enable_cpu_offload,
+            resolved_settings.enable_cpu_offload,
         )
         yield
         logger.info("Shutting down unity-ai-assets")

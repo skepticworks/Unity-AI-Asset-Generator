@@ -40,6 +40,7 @@ class FakeImageGenerationBackend:
         self._default_scheduler = default_scheduler
         self.calls: list[GenerationRequest] = []
         self.capability_calls: int = 0
+        self.unload_calls: int = 0
 
     @staticmethod
     def _default_color(request: GenerationRequest) -> tuple[int, int, int]:
@@ -54,6 +55,13 @@ class FakeImageGenerationBackend:
     @property
     def device_name(self) -> str:
         return self._device_name
+
+    def unload_weights(self) -> bool:
+        self.unload_calls += 1
+        if not self._loaded:
+            return False
+        self._loaded = False
+        return True
 
     def describe_capabilities(self) -> InferenceCapabilities:
         self.capability_calls += 1
@@ -86,6 +94,7 @@ class FakeImageGenerationBackend:
         color = self._color_factory(request)
         image = Image.new("RGB", (request.width, request.height), color=color)
         elapsed = time.perf_counter() - started
+        self._loaded = True
         return GeneratedImage(
             image=image,
             seed=request.seed,

@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using UnityAiAssets.Editor.Api;
 using UnityAiAssets.Editor.Capabilities;
 using UnityAiAssets.Editor.Configuration;
 using UnityAiAssets.Editor.Generation;
@@ -13,6 +14,7 @@ namespace UnityAiAssets.Editor.UI
 {
     /// <summary>
     /// Texture generation editor window (Tools &gt; AI Asset Generator).
+    /// Layout uses flexible EditorGUILayout patterns so docked/narrow windows remain usable.
     /// </summary>
     public sealed class UnityAiAssetGeneratorWindow : EditorWindow
     {
@@ -23,11 +25,23 @@ namespace UnityAiAssets.Editor.UI
         GenerationProfileRegistry _profiles;
         GenerationProfileResolver _resolver;
 
-        // Tileable inspect/correct workflow state (editor-only; preserves original asset).
+        bool _foldBackend = true;
+        bool _foldProfile = true;
+        bool _foldPrompt = true;
+        bool _foldGeneration = true;
+        bool _foldProcessing = true;
+        bool _foldImport = true;
+        bool _foldTileable = true;
+        bool _foldStatus = true;
+
         Texture2D _previewOriginal;
         Texture2D _previewOffset;
         Texture2D _previewTiled;
         Texture2D _previewMaterialSwatch;
+        Texture2D _inspectSource;
+        Texture2D _compareSource;
+        Texture2D _previewCompare;
+        Texture2D _previewCompareTiled;
         SeamAnalysisResult _seamDiagnostics;
         WrapDiscontinuityResult _wrapDiagnostics;
         string _workingTexturePath;
@@ -36,13 +50,17 @@ namespace UnityAiAssets.Editor.UI
         int _workingHeight;
         bool _showOffsetPreview = true;
         int _materialTiling = 2;
+        string _autoLoadedImportPath;
+
+        static GUIStyle _wrappedTextArea;
+        static GUIStyle _sectionHelp;
 
         [MenuItem("Tools/AI Asset Generator")]
         public static void Open()
         {
             var window = GetWindow<UnityAiAssetGeneratorWindow>();
             window.titleContent = new GUIContent("AI Asset Generator");
-            window.minSize = new Vector2(420, 620);
+            window.minSize = new Vector2(360, 480);
             window.Show();
         }
 
@@ -62,6 +80,8 @@ namespace UnityAiAssets.Editor.UI
             DestroyPreview(ref _previewOffset);
             DestroyPreview(ref _previewTiled);
             DestroyPreview(ref _previewMaterialSwatch);
+            DestroyPreview(ref _previewCompare);
+            DestroyPreview(ref _previewCompareTiled);
         }
 
         static void DestroyPreview(ref Texture2D texture)
@@ -73,12 +93,8 @@ namespace UnityAiAssets.Editor.UI
 
         void EnsureInitialized()
         {
-            // EditorWindow serializes fields across domain reloads; plain C# objects
-            // become null while a stale "_initialized" flag can remain true.
             if (_controller != null && _request != null && _catalog != null && _profiles != null && _resolver != null)
-            {
                 return;
-            }
 
             var settings = UnityAiAssetSettings.instance;
             _catalog = new ProfileCatalog();
@@ -100,9 +116,30 @@ namespace UnityAiAssets.Editor.UI
             };
         }
 
+        static void EnsureStyles()
+        {
+            if (_wrappedTextArea == null)
+            {
+                _wrappedTextArea = new GUIStyle(EditorStyles.textArea)
+                {
+                    wordWrap = true,
+                    richText = false
+                };
+            }
+
+            if (_sectionHelp == null)
+            {
+                _sectionHelp = new GUIStyle(EditorStyles.miniLabel)
+                {
+                    wordWrap = true
+                };
+            }
+        }
+
         void OnGUI()
         {
             EnsureInitialized();
+            EnsureStyles();
             if (_controller == null || _request == null)
             {
                 EditorGUILayout.HelpBox(
@@ -115,309 +152,500 @@ namespace UnityAiAssets.Editor.UI
             var busy = _controller.IsBusy;
 
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
-            EditorGUILayout.LabelField("Local Texture Generation", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox(
-                "Requires the Python FastAPI backend on the configured base URL.\n" +
-                "Default model (SD 1.5) is trained at 512×512 — smaller sizes often look like broken grids.\n" +
-                "Generation can take 1–3+ minutes on a laptop GPU; the status line shows wait time.\n" +
-                "Cancel Wait only stops waiting in Unity; backend GPU work may continue.\n" +
-                "If 512×512 times out, raise API Timeout in Project Settings > AI Asset Generator.",
-                MessageType.Info);
+            EditorGUILayout.LabelField("Local AI Asset Generation", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(
+                "Requires the Python FastAPI backend. Default SD 1.5 is trained at 512×512. " +
+                "Cancel Wait only stops Unity waiting — GPU work may continue.",
+                _sectionHelp);
 
-            EditorGUILayout.Space();
-            DrawCapabilitiesSection(progress, busy);
-
-            EditorGUILayout.Space();
+            EditorGUILayout.Space(4);
             using (new EditorGUI.DisabledScope(busy))
             {
-                DrawRequestFields(progress);
+                DrawBackendSection(progress, busy);
+                DrawProfileSection(progress);
+                DrawPromptSection(progress);
+                DrawGenerationSection(progress);
+                DrawProcessingSection(progress);
+                DrawImportSection();
             }
 
-            EditorGUILayout.Space();
+            EditorGUILayout.Space(4);
             DrawActions(progress, busy);
-            EditorGUILayout.Space();
+            MaybeAutoLoadImportedTexture(progress);
             DrawTileableWorkflowSection(progress);
-            EditorGUILayout.Space();
             DrawStatus(progress);
             EditorGUILayout.EndScrollView();
         }
 
-        void DrawCapabilitiesSection(GenerationProgress progress, bool busy)
+        void MaybeAutoLoadImportedTexture(GenerationProgress progress)
         {
-            EditorGUILayout.LabelField("Backend Capabilities", EditorStyles.boldLabel);
+            if (_request.AssetType != "texture")
+                return;
+            if (progress.State != GenerationState.Completed)
+                return;
+            if (string.IsNullOrWhiteSpace(progress.ImportedTexturePath))
+                return;
+            if (string.Equals(progress.ImportedTexturePath, _autoLoadedImportPath, StringComparison.Ordinal))
+                return;
 
-            EditorGUILayout.BeginHorizontal();
-            using (new EditorGUI.DisabledScope(busy))
-            {
-                if (GUILayout.Button("Refresh Capabilities", GUILayout.Height(24)))
-                {
-                    RunSafe(() => _controller.RefreshCapabilitiesAsync());
-                }
-            }
-
-            EditorGUILayout.LabelField("State", progress.CapabilityState.ToString(), GUILayout.Width(160));
-            EditorGUILayout.EndHorizontal();
-
-            if (progress.Capabilities != null)
-            {
-                EditorGUILayout.LabelField(
-                    "Application",
-                    $"{progress.ApplicationVersion ?? "unknown"}");
-                EditorGUILayout.LabelField(
-                    "Model",
-                    $"{progress.ModelId ?? "unknown"} (family={progress.ModelFamily ?? "unknown"})");
-                EditorGUILayout.LabelField(
-                    "Runtime",
-                    $"device={progress.ResolvedDevice ?? "unknown"}, " +
-                    $"precision={progress.ResolvedPrecision ?? "unknown"}, " +
-                    $"model_loaded={progress.ModelLoaded}");
-            }
-            else
-            {
-                EditorGUILayout.HelpBox(
-                    "Capabilities have not been loaded yet. Click Refresh Capabilities before generating.",
-                    MessageType.Info);
-            }
-
-            switch (progress.CapabilityState)
-            {
-                case CapabilityState.Incompatible:
-                    EditorGUILayout.HelpBox(
-                        "Backend capabilities are incompatible with this package version " +
-                        $"({UnityAiAssets.Editor.Versioning.ClientCompatibility.PackageVersion}): " +
-                        (progress.CapabilityError ?? "unknown reason."),
-                        MessageType.Error);
-                    break;
-                case CapabilityState.Unavailable:
-                    EditorGUILayout.HelpBox(
-                        "Backend capabilities are unavailable: " + (progress.CapabilityError ?? "unknown error."),
-                        MessageType.Error);
-                    break;
-                case CapabilityState.Stale:
-                    EditorGUILayout.HelpBox(
-                        "Showing the last known-good capabilities; the most recent refresh failed: " +
-                        (progress.CapabilityError ?? "unknown error."),
-                        MessageType.Warning);
-                    break;
-            }
+            _autoLoadedImportPath = progress.ImportedTexturePath;
+            LoadWorkingTexture(progress.ImportedTexturePath);
         }
 
-        void DrawRequestFields(GenerationProgress progress)
-        {
-            var t2i = progress.Capabilities?.Operations?.TextToImage;
+        static GUIContent Tip(string label, string tooltip) => new GUIContent(label, tooltip);
 
-            EditorGUILayout.LabelField("Profile", EditorStyles.boldLabel);
-            var assetTypes = _catalog.GetAssetTypes().ToArray();
-            var assetIndex = Math.Max(0, Array.FindIndex(assetTypes, item => item.Id == _request.AssetType));
-            var selectedAsset = EditorGUILayout.Popup("Asset Type", assetIndex, assetTypes.Select(x => x.DisplayName).ToArray());
-            if (selectedAsset != assetIndex)
+        void DrawBackendSection(GenerationProgress progress, bool busy)
+        {
+            _foldBackend = EditorGUILayout.BeginFoldoutHeaderGroup(_foldBackend, "Backend");
+            if (_foldBackend)
             {
-                if (!HasDirtyOverrides() || EditorUtility.DisplayDialog(
-                    "Replace Overrides?", "Switching asset type resets profile override fields.", "Switch", "Cancel"))
+                EditorGUILayout.BeginHorizontal();
+                using (new EditorGUI.DisabledScope(busy))
                 {
-                    _request.AssetType = assetTypes[selectedAsset].Id;
-                    _request.SelectedProfileId = assetTypes[selectedAsset].DefaultGenerationProfileId;
-                    ResetToProfileDefaults();
+                    if (GUILayout.Button(
+                            Tip("Refresh Capabilities", "Fetch versioned capability document from the backend."),
+                            GUILayout.Height(22)))
+                        RunSafe(() => _controller.RefreshCapabilitiesAsync());
+                }
+
+                EditorGUILayout.LabelField(
+                    Tip("State", "Capability cache state for the configured base URL."),
+                    new GUIContent(progress.CapabilityState.ToString()),
+                    EditorStyles.miniLabel);
+                EditorGUILayout.EndHorizontal();
+
+                if (progress.Capabilities != null)
+                {
+                    EditorGUILayout.LabelField("Application", progress.ApplicationVersion ?? "unknown", _sectionHelp);
+                    EditorGUILayout.LabelField(
+                        "Model",
+                        $"{progress.ModelId ?? "unknown"} ({progress.ModelFamily ?? "unknown"})",
+                        _sectionHelp);
+                    EditorGUILayout.LabelField(
+                        "Runtime",
+                        $"device={progress.ResolvedDevice ?? "?"}, precision={progress.ResolvedPrecision ?? "?"}, loaded={progress.ModelLoaded}",
+                        _sectionHelp);
+                    var bg = progress.Capabilities.Operations?.TextToImage?.Processing?.BackgroundRemoval;
+                    if (bg != null)
+                    {
+                        EditorGUILayout.LabelField(
+                            "Background removal",
+                            bg.Available
+                                ? $"available ({bg.Backend}:{bg.Model})"
+                                : "unavailable — " + (bg.UnavailableReason ?? "see backend logs"),
+                            _sectionHelp);
+                    }
+
+                    var tile = progress.Capabilities.Operations?.TextToImage?.Processing?.Tileable;
+                    if (tile != null)
+                    {
+                        EditorGUILayout.LabelField(
+                            "AI seam inpaint",
+                            tile.AiInpaintAvailable ? "available (local Diffusers)" : "unavailable",
+                            _sectionHelp);
+                    }
+                }
+                else
+                {
+                    EditorGUILayout.HelpBox(
+                        "Capabilities have not been loaded yet. Click Refresh Capabilities before generating.",
+                        MessageType.Info);
+                }
+
+                switch (progress.CapabilityState)
+                {
+                    case CapabilityState.Incompatible:
+                        EditorGUILayout.HelpBox(
+                            "Backend capabilities are incompatible with this package " +
+                            $"({UnityAiAssets.Editor.Versioning.ClientCompatibility.PackageVersion}): " +
+                            (progress.CapabilityError ?? "unknown reason."),
+                            MessageType.Error);
+                        break;
+                    case CapabilityState.Unavailable:
+                        EditorGUILayout.HelpBox(
+                            "Backend capabilities are unavailable: " + (progress.CapabilityError ?? "unknown error."),
+                            MessageType.Error);
+                        break;
+                    case CapabilityState.Stale:
+                        EditorGUILayout.HelpBox(
+                            "Showing last known-good capabilities; refresh failed: " +
+                            (progress.CapabilityError ?? "unknown error."),
+                            MessageType.Warning);
+                        break;
                 }
             }
-            var profiles = _profiles.FilterByAssetType(_request.AssetType).ToArray();
-            var profileIndex = Math.Max(0, Array.FindIndex(profiles, item => item.Id == _request.SelectedProfileId));
-            if (profiles.Length > 0)
+
+            EditorGUILayout.EndFoldoutHeaderGroup();
+        }
+
+        void DrawProfileSection(GenerationProgress progress)
+        {
+            _foldProfile = EditorGUILayout.BeginFoldoutHeaderGroup(_foldProfile, "Profile");
+            if (_foldProfile)
             {
-                var labels = profiles.Select(profile =>
-                {
-                    var compatibility = GenerationProfileCompatibilityChecker.Check(profile, progress.Capabilities);
-                    return $"{profile.DisplayName} ({profile.Origin}, {compatibility.State})";
-                }).ToArray();
-                var selectedProfile = EditorGUILayout.Popup("Generation Profile", profileIndex, labels);
-                if (selectedProfile != profileIndex)
+                var assetTypes = _catalog.GetAssetTypes().ToArray();
+                var assetIndex = Math.Max(0, Array.FindIndex(assetTypes, item => item.Id == _request.AssetType));
+                var selectedAsset = EditorGUILayout.Popup(
+                    Tip("Asset Type", "Selects which generation profiles and processing options apply."),
+                    assetIndex,
+                    assetTypes.Select(x => x.DisplayName).ToArray());
+                if (selectedAsset != assetIndex)
                 {
                     if (!HasDirtyOverrides() || EditorUtility.DisplayDialog(
-                        "Replace Overrides?", "Switching profiles resets override fields.", "Switch", "Cancel"))
+                            "Replace Overrides?", "Switching asset type resets profile override fields.", "Switch", "Cancel"))
                     {
-                        _request.SelectedProfileId = profiles[selectedProfile].Id;
+                        _request.AssetType = assetTypes[selectedAsset].Id;
+                        _request.SelectedProfileId = assetTypes[selectedAsset].DefaultGenerationProfileId;
                         ResetToProfileDefaults();
                     }
                 }
-                var current = profiles[Math.Min(selectedProfile, profiles.Length - 1)];
-                EditorGUILayout.HelpBox(current.Description + "\nTags: " + string.Join(", ", current.Tags) +
-                    $"\nSchema {current.SchemaVersion}, revision {current.Revision}", MessageType.None);
+
+                var profiles = _profiles.FilterByAssetType(_request.AssetType).ToArray();
+                var profileIndex = Math.Max(0, Array.FindIndex(profiles, item => item.Id == _request.SelectedProfileId));
+                if (profiles.Length > 0)
+                {
+                    var labels = profiles.Select(profile =>
+                    {
+                        var compatibility = GenerationProfileCompatibilityChecker.Check(profile, progress.Capabilities);
+                        return $"{profile.DisplayName} ({profile.Origin}, {compatibility.State})";
+                    }).ToArray();
+                    var selectedProfile = EditorGUILayout.Popup(
+                        Tip("Generation Profile", "Built-in or user profile driving prompts, defaults, and import hints."),
+                        profileIndex,
+                        labels);
+                    if (selectedProfile != profileIndex)
+                    {
+                        if (!HasDirtyOverrides() || EditorUtility.DisplayDialog(
+                                "Replace Overrides?", "Switching profiles resets override fields.", "Switch", "Cancel"))
+                        {
+                            _request.SelectedProfileId = profiles[selectedProfile].Id;
+                            ResetToProfileDefaults();
+                        }
+                    }
+
+                    var current = profiles[Math.Min(Math.Max(selectedProfile, 0), profiles.Length - 1)];
+                    EditorGUILayout.LabelField(current.Description, _sectionHelp);
+                    EditorGUILayout.LabelField(
+                        $"Tags: {string.Join(", ", current.Tags)} · Schema {current.SchemaVersion}, rev {current.Revision}",
+                        _sectionHelp);
+                }
+
+                EditorGUILayout.BeginHorizontal();
+                if (GUILayout.Button("Reset Defaults")) ResetToProfileDefaults();
+                if (GUILayout.Button("Duplicate")) GenerationProfileManagerWindow.OpenWithProfile(_request.SelectedProfileId);
+                if (GUILayout.Button("Manage")) GenerationProfileManagerWindow.Open();
+                EditorGUILayout.EndHorizontal();
+                EditorGUILayout.BeginHorizontal();
+                if (GUILayout.Button("Create New"))
+                    GenerationProfileEditorWindow.OpenNew(new UserProfileRepository(
+                        UnityAiAssetSettings.instance.UserProfileDirectoryAbsolute));
+                using (new EditorGUI.DisabledScope(
+                    !_profiles.TryGet(_request.SelectedProfileId, out var editable) || editable.Builtin))
+                {
+                    if (GUILayout.Button("Edit User Profile"))
+                        GenerationProfileEditorWindow.Open(editable, new UserProfileRepository(
+                            UnityAiAssetSettings.instance.UserProfileDirectoryAbsolute));
+                }
+
+                EditorGUILayout.EndHorizontal();
             }
 
-            _request.Subject = EditorGUILayout.TextField("Subject", _request.Subject);
-            _request.AdditionalPrompt = EditorGUILayout.TextField("Additional Prompt", _request.AdditionalPrompt);
-            _request.AdditionalNegative = EditorGUILayout.TextField("Additional Negative", _request.AdditionalNegative);
-            UpdatePromptPreview(progress);
-            EditorGUILayout.LabelField("Prompt Preview", EditorStyles.boldLabel);
-            using (new EditorGUI.DisabledScope(true))
-            {
-                EditorGUILayout.TextArea(_request.PreviewPrompt, GUILayout.MinHeight(50));
-                EditorGUILayout.TextArea(_request.PreviewNegative, GUILayout.MinHeight(40));
-            }
-            if (t2i != null)
+            EditorGUILayout.EndFoldoutHeaderGroup();
+        }
+
+        void DrawPromptSection(GenerationProgress progress)
+        {
+            _foldPrompt = EditorGUILayout.BeginFoldoutHeaderGroup(_foldPrompt, "Prompt");
+            if (_foldPrompt)
             {
                 EditorGUILayout.LabelField(
-                    "Max prompt length",
-                    t2i.Prompt.MaximumLength.ToString(),
+                    Tip("Subject", "Primary subject inserted into the profile prompt template."),
                     EditorStyles.miniLabel);
+                _request.Subject = EditorGUILayout.TextArea(_request.Subject ?? string.Empty, _wrappedTextArea, GUILayout.MinHeight(40));
+
+                EditorGUILayout.LabelField(
+                    Tip("Additional Prompt", "Extra positive terms appended after template modifiers."),
+                    EditorStyles.miniLabel);
+                _request.AdditionalPrompt = EditorGUILayout.TextArea(
+                    _request.AdditionalPrompt ?? string.Empty, _wrappedTextArea, GUILayout.MinHeight(36));
+
+                EditorGUILayout.LabelField(
+                    Tip("Additional Negative", "Extra negative terms appended to the resolved negative prompt."),
+                    EditorStyles.miniLabel);
+                _request.AdditionalNegative = EditorGUILayout.TextArea(
+                    _request.AdditionalNegative ?? string.Empty, _wrappedTextArea, GUILayout.MinHeight(36));
+
+                UpdatePromptPreview(progress);
+                EditorGUILayout.LabelField("Resolved Prompt Preview", EditorStyles.miniBoldLabel);
+                using (new EditorGUI.DisabledScope(true))
+                {
+                    EditorGUILayout.TextArea(
+                        _request.PreviewPrompt ?? string.Empty, _wrappedTextArea, GUILayout.MinHeight(56));
+                    EditorGUILayout.TextArea(
+                        _request.PreviewNegative ?? string.Empty, _wrappedTextArea, GUILayout.MinHeight(40));
+                }
+
+                var t2i = progress.Capabilities?.Operations?.TextToImage;
+                if (t2i != null)
+                {
+                    EditorGUILayout.LabelField(
+                        $"Max prompt length: {t2i.Prompt.MaximumLength}",
+                        EditorStyles.miniLabel);
+                }
+
+                if (t2i != null && !t2i.NegativePrompt.Supported && !string.IsNullOrEmpty(_request.NegativePrompt))
+                    EditorGUILayout.HelpBox("The backend does not currently support a negative prompt.", MessageType.Warning);
             }
 
-            if (t2i != null && !t2i.NegativePrompt.Supported && !string.IsNullOrEmpty(_request.NegativePrompt))
+            EditorGUILayout.EndFoldoutHeaderGroup();
+        }
+
+        void DrawGenerationSection(GenerationProgress progress)
+        {
+            _foldGeneration = EditorGUILayout.BeginFoldoutHeaderGroup(_foldGeneration, "Generation Settings");
+            if (_foldGeneration)
             {
-                EditorGUILayout.HelpBox("The backend does not currently support a negative prompt.", MessageType.Warning);
+                var t2i = progress.Capabilities?.Operations?.TextToImage;
+                if (t2i != null)
+                {
+                    DrawConstrainedIntField(
+                        Tip("Width", "Output width in pixels. Must satisfy backend min/max/multiple."),
+                        ref _request.Width,
+                        t2i.Dimensions.MinimumWidth, t2i.Dimensions.MaximumWidth, t2i.Dimensions.WidthMultiple);
+                    DrawConstrainedIntField(
+                        Tip("Height", "Output height in pixels. Must satisfy backend min/max/multiple."),
+                        ref _request.Height,
+                        t2i.Dimensions.MinimumHeight, t2i.Dimensions.MaximumHeight, t2i.Dimensions.HeightMultiple);
+                    DrawConstrainedIntField(
+                        Tip("Steps", "Diffusion inference steps."),
+                        ref _request.Steps, t2i.Steps.Minimum, t2i.Steps.Maximum, 1);
+                    DrawConstrainedFloatField(
+                        Tip("Guidance Scale", "Classifier-free guidance scale."),
+                        ref _request.GuidanceScale,
+                        t2i.GuidanceScale.Minimum, t2i.GuidanceScale.Maximum);
+                }
+                else
+                {
+                    _request.Width = EditorGUILayout.IntField(Tip("Width", "Output width in pixels."), _request.Width);
+                    _request.Height = EditorGUILayout.IntField(Tip("Height", "Output height in pixels."), _request.Height);
+                    _request.Steps = EditorGUILayout.IntField(Tip("Steps", "Diffusion inference steps."), _request.Steps);
+                    _request.GuidanceScale = EditorGUILayout.FloatField(
+                        Tip("Guidance Scale", "Classifier-free guidance scale."), _request.GuidanceScale);
+                    EditorGUILayout.HelpBox("Refresh capabilities to see backend-enforced limits.", MessageType.Info);
+                }
+
+                _request.UseExplicitSeed = EditorGUILayout.Toggle(
+                    Tip("Use Explicit Seed", "When off, the backend picks a random seed within policy bounds."),
+                    _request.UseExplicitSeed);
+                using (new EditorGUI.DisabledScope(!_request.UseExplicitSeed))
+                {
+                    _request.Seed = EditorGUILayout.LongField(
+                        Tip("Seed", "Fixed seed for reproducible generations."), _request.Seed);
+                }
+
+                _request.OutputName = EditorGUILayout.TextField(
+                    Tip("Output Name", "Safe file stem for the imported PNG and metadata."),
+                    _request.OutputName);
             }
 
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Generation", EditorStyles.boldLabel);
+            EditorGUILayout.EndFoldoutHeaderGroup();
+        }
 
-            if (t2i != null)
+        void DrawProcessingSection(GenerationProgress progress)
+        {
+            var isSpriteOrIcon = _request.AssetType == "sprite" || _request.AssetType == "icon";
+            var isTileable = _request.AssetType == "texture" && IsTileableProfileSelected();
+            if (!isSpriteOrIcon && !isTileable)
+                return;
+
+            _foldProcessing = EditorGUILayout.BeginFoldoutHeaderGroup(_foldProcessing, "Processing");
+            if (_foldProcessing)
             {
-                DrawConstrainedIntField(
-                    "Width", ref _request.Width,
-                    t2i.Dimensions.MinimumWidth, t2i.Dimensions.MaximumWidth, t2i.Dimensions.WidthMultiple);
-                DrawConstrainedIntField(
-                    "Height", ref _request.Height,
-                    t2i.Dimensions.MinimumHeight, t2i.Dimensions.MaximumHeight, t2i.Dimensions.HeightMultiple);
-                DrawConstrainedIntField("Steps", ref _request.Steps, t2i.Steps.Minimum, t2i.Steps.Maximum, 1);
-                DrawConstrainedFloatField(
-                    "Guidance Scale", ref _request.GuidanceScale,
-                    t2i.GuidanceScale.Minimum, t2i.GuidanceScale.Maximum);
+                var t2i = progress.Capabilities?.Operations?.TextToImage;
+                if (isSpriteOrIcon)
+                    DrawSpriteProcessing(t2i);
+                if (isTileable)
+                    DrawTileableProcessing(t2i);
+            }
+
+            EditorGUILayout.EndFoldoutHeaderGroup();
+        }
+
+        void DrawSpriteProcessing(TextToImageCapabilities t2i)
+        {
+            EditorGUILayout.LabelField("Transparent Background", EditorStyles.miniBoldLabel);
+            EditorGUILayout.LabelField(
+                "Diffusion models do not emit alpha. Transparency uses local rembg post-processing, " +
+                "then alpha cleanup. Enabled only for sprite/icon asset types.",
+                _sectionHelp);
+
+            var bgAvailable = t2i?.Processing?.BackgroundRemoval?.Available == true;
+            var strategyIndex = _request.TransparencyStrategy == "background_removal" ? 1 : 0;
+            strategyIndex = EditorGUILayout.Popup(
+                Tip(
+                    "Transparency Strategy",
+                    "none = opaque RGB. background_removal = local rembg alpha (not a cloud API)."),
+                strategyIndex,
+                new[] { "none (opaque)", "background_removal (local rembg)" });
+            _request.TransparencyStrategy = strategyIndex == 1 ? "background_removal" : "none";
+
+            using (new EditorGUI.DisabledScope(_request.TransparencyStrategy != "background_removal"))
+            {
+                _request.AlphaThreshold = EditorGUILayout.IntSlider(
+                    Tip("Alpha Threshold", "Pixels at or below this alpha become fully transparent when cleanup runs."),
+                    _request.AlphaThreshold, 0, 255);
+                _request.AlphaFeather = EditorGUILayout.IntSlider(
+                    Tip("Alpha Feather", "Softens the alpha edge after thresholding (0 = hard cut)."),
+                    _request.AlphaFeather, 0, 64);
+                _request.RemoveNearTransparent = EditorGUILayout.Toggle(
+                    Tip("Remove Near Transparent", "Force near-zero alpha pixels to fully transparent."),
+                    _request.RemoveNearTransparent);
+                _request.ZeroRgbWhenTransparent = EditorGUILayout.Toggle(
+                    Tip("Zero RGB When Transparent", "Clear RGB on fully transparent pixels to avoid fringe colors."),
+                    _request.ZeroRgbWhenTransparent);
+            }
+
+            _request.PixelsPerUnit = EditorGUILayout.FloatField(
+                Tip("Pixels Per Unit", "Unity sprite pixels-per-unit applied on import."),
+                _request.PixelsPerUnit);
+            var pivotChoices = new[] { "center", "bottom_center", "custom" };
+            var pivotIndex = Array.IndexOf(pivotChoices, _request.PivotMode);
+            if (pivotIndex < 0) pivotIndex = 0;
+            _request.PivotMode = pivotChoices[EditorGUILayout.Popup(
+                Tip("Pivot Mode", "Sprite pivot alignment written to the TextureImporter."),
+                pivotIndex,
+                pivotChoices)];
+            if (_request.PivotMode == "custom")
+            {
+                _request.CustomPivotX = EditorGUILayout.Slider(
+                    Tip("Custom Pivot X", "Normalized pivot X (0–1)."), _request.CustomPivotX, 0f, 1f);
+                _request.CustomPivotY = EditorGUILayout.Slider(
+                    Tip("Custom Pivot Y", "Normalized pivot Y (0–1)."), _request.CustomPivotY, 0f, 1f);
+            }
+
+            _request.AtlasHint = EditorGUILayout.TextField(
+                Tip("Atlas Hint", "Optional metadata hint for future atlas grouping (not auto-atlased)."),
+                _request.AtlasHint);
+
+            if (_request.TransparencyStrategy == "background_removal" && !bgAvailable)
+            {
+                var reason = t2i?.Processing?.BackgroundRemoval?.UnavailableReason
+                             ?? "Background removal is unavailable on the current backend.";
+                EditorGUILayout.HelpBox(
+                    reason + "\nSwitch strategy to none for opaque sprites, or install rembg and set " +
+                    "BACKGROUND_REMOVAL_ENABLED=true, then refresh capabilities.",
+                    MessageType.Error);
+            }
+            else if (_request.TransparencyStrategy == "none")
+            {
+                EditorGUILayout.HelpBox(
+                    "Opaque output. Choose background_removal to produce alpha via local rembg.",
+                    MessageType.Info);
             }
             else
             {
-                // Capabilities not loaded yet - accept input as-is; preflight validation
-                // will run against capabilities once they are available.
-                _request.Width = EditorGUILayout.IntField("Width", _request.Width);
-                _request.Height = EditorGUILayout.IntField("Height", _request.Height);
-                _request.Steps = EditorGUILayout.IntField("Steps", _request.Steps);
-                _request.GuidanceScale = EditorGUILayout.FloatField("Guidance Scale", _request.GuidanceScale);
                 EditorGUILayout.HelpBox(
-                    "Refresh capabilities to see backend-enforced limits for these fields.",
+                    "Transparent PNG will be written with alpha preserved through import " +
+                    "(Alpha Is Transparency + FromInput).",
                     MessageType.Info);
             }
+        }
 
-            _request.UseExplicitSeed = EditorGUILayout.Toggle("Use Explicit Seed", _request.UseExplicitSeed);
-            using (new EditorGUI.DisabledScope(!_request.UseExplicitSeed))
+        void DrawTileableProcessing(TextToImageCapabilities t2i)
+        {
+            EditorGUILayout.LabelField("Tileable / AI Seam Repair", EditorStyles.miniBoldLabel);
+            EditorGUILayout.LabelField(
+                "Generate at 512×512 → optional local AI seam repair (circular offset + center-cross inpaint) → " +
+                "import with Repeat wrap. Repair runs on the backend during Generate only — not in the inspect tools below.",
+                _sectionHelp);
+
+            _request.Tileable = EditorGUILayout.Toggle(
+                Tip("Tileable Workflow", "Marks the request for tileable provenance and diagnostics."),
+                _request.Tileable);
+            _request.ApplySeamCorrection = EditorGUILayout.Toggle(
+                Tip(
+                    "Apply AI Seam Repair",
+                    "When enabled, the backend runs local Diffusers inpainting after txt2img. " +
+                    "Requires 512×512 and an available inpaint model. Soft-blend is not used as a success path."),
+                _request.ApplySeamCorrection);
+
+            var seamMin = SeamThresholds.MinSeamWidth;
+            var seamMax = SeamThresholds.MaxSeamWidth;
+            var tileableCaps = t2i?.Processing?.Tileable;
+            if (tileableCaps?.SeamBlendWidth != null)
             {
-                _request.Seed = EditorGUILayout.LongField("Seed", _request.Seed);
+                if (tileableCaps.SeamBlendWidth.Minimum > 0)
+                    seamMin = tileableCaps.SeamBlendWidth.Minimum;
+                if (tileableCaps.SeamBlendWidth.Maximum > 0)
+                    seamMax = tileableCaps.SeamBlendWidth.Maximum;
             }
 
-            _request.OutputName = EditorGUILayout.TextField("Output Name", _request.OutputName);
-            if (_request.AssetType == "sprite" || _request.AssetType == "icon")
+            using (new EditorGUI.DisabledScope(!_request.ApplySeamCorrection))
             {
-                EditorGUILayout.Space();
-                EditorGUILayout.LabelField("Sprite Processing", EditorStyles.boldLabel);
-                _request.TransparencyStrategy = EditorGUILayout.Popup(
-                    "Transparency Strategy",
-                    _request.TransparencyStrategy == "background_removal" ? 1 : 0,
-                    new[] { "none", "background_removal" }) == 1 ? "background_removal" : "none";
-                _request.AlphaThreshold = EditorGUILayout.IntSlider("Alpha Threshold", _request.AlphaThreshold, 0, 255);
-                _request.AlphaFeather = EditorGUILayout.IntSlider("Alpha Feather", _request.AlphaFeather, 0, 64);
-                _request.RemoveNearTransparent = EditorGUILayout.Toggle(
-                    "Remove Near Transparent", _request.RemoveNearTransparent);
-                _request.ZeroRgbWhenTransparent = EditorGUILayout.Toggle(
-                    "Zero RGB When Transparent", _request.ZeroRgbWhenTransparent);
-                _request.PixelsPerUnit = EditorGUILayout.FloatField("Pixels Per Unit", _request.PixelsPerUnit);
-                var pivotChoices = new[] { "center", "bottom_center", "custom" };
-                _request.PivotMode = pivotChoices[EditorGUILayout.Popup(
-                    "Pivot Mode", System.Array.IndexOf(pivotChoices, _request.PivotMode) < 0 ? 0 :
-                    System.Array.IndexOf(pivotChoices, _request.PivotMode), pivotChoices)];
-                if (_request.PivotMode == "custom")
-                {
-                    _request.CustomPivotX = EditorGUILayout.FloatField("Custom Pivot X", _request.CustomPivotX);
-                    _request.CustomPivotY = EditorGUILayout.FloatField("Custom Pivot Y", _request.CustomPivotY);
-                }
-                _request.AtlasHint = EditorGUILayout.TextField("Atlas Hint", _request.AtlasHint);
-                if (_request.TransparencyStrategy == "background_removal" &&
-                    t2i?.Processing?.BackgroundRemoval?.Available != true)
-                    EditorGUILayout.HelpBox(
-                        "Background removal is unavailable on the current backend; generation is disabled.",
-                        MessageType.Error);
-            }
-
-            if (_request.AssetType == "texture" && IsTileableProfileSelected())
-            {
-                EditorGUILayout.Space();
-                EditorGUILayout.LabelField("Tileable Texture", EditorStyles.boldLabel);
-                EditorGUILayout.HelpBox(
-                    "Generate at 512×512 → optional local AI seam repair (circular offset + center-cross inpaint) → " +
-                    "3×3 tile preview → optional palette → Unity Repeat import.\n" +
-                    "AI seam repair runs on the backend during generate. There is no soft-blend success path.",
-                    MessageType.Info);
-                _request.Tileable = EditorGUILayout.Toggle("Tileable Workflow", _request.Tileable);
-                _request.ApplySeamCorrection = EditorGUILayout.Toggle(
-                    "Apply AI Seam Repair (on generate)", _request.ApplySeamCorrection);
-                var seamMin = SeamThresholds.MinSeamWidth;
-                var seamMax = SeamThresholds.MaxSeamWidth;
-                var tileableCaps = t2i?.Processing?.Tileable;
-                if (tileableCaps?.SeamBlendWidth != null)
-                {
-                    if (tileableCaps.SeamBlendWidth.Minimum > 0)
-                        seamMin = tileableCaps.SeamBlendWidth.Minimum;
-                    if (tileableCaps.SeamBlendWidth.Maximum > 0)
-                        seamMax = tileableCaps.SeamBlendWidth.Maximum;
-                }
                 _request.SeamBlendWidth = EditorGUILayout.IntSlider(
-                    "Seam Mask Width", _request.SeamBlendWidth, seamMin, seamMax);
-                _request.PaletteReductionEnabled = EditorGUILayout.Toggle(
-                    "Palette Reduction (on generate)", _request.PaletteReductionEnabled);
-                using (new EditorGUI.DisabledScope(!_request.PaletteReductionEnabled))
+                    Tip("Seam Mask Width", "Width of the center-cross inpaint mask in offset space."),
+                    _request.SeamBlendWidth, seamMin, seamMax);
+            }
+
+            _request.PaletteReductionEnabled = EditorGUILayout.Toggle(
+                Tip("Palette Reduction", "Optional median-cut palette reduction after seam repair (alpha preserved)."),
+                _request.PaletteReductionEnabled);
+            using (new EditorGUI.DisabledScope(!_request.PaletteReductionEnabled))
+            {
+                _request.PaletteColorCount = EditorGUILayout.IntSlider(
+                    Tip("Palette Colors", "Target color count when palette reduction is enabled."),
+                    _request.PaletteColorCount, 2, 256);
+            }
+
+            if (_request.ApplySeamCorrection)
+            {
+                if (_request.Width != 512 || _request.Height != 512)
+                    EditorGUILayout.HelpBox("AI seam repair requires exactly 512×512.", MessageType.Error);
+                if (tileableCaps != null && !tileableCaps.AiInpaintAvailable)
+                    EditorGUILayout.HelpBox(
+                        "Local seam inpainting is unavailable. Enable SEAM_INPAINT_ENABLED and ensure the " +
+                        "inpaint model can load, or disable AI seam repair.",
+                        MessageType.Error);
+                else
+                    EditorGUILayout.HelpBox(
+                        "On generate, Status will report whether seam repair was requested, applied, and which implementation ran.",
+                        MessageType.Info);
+            }
+        }
+
+        void DrawImportSection()
+        {
+            _foldImport = EditorGUILayout.BeginFoldoutHeaderGroup(_foldImport, "Unity Import");
+            if (_foldImport)
+            {
+                _request.DestinationFolder = EditorGUILayout.TextField(
+                    Tip("Destination Folder", "Project-relative Assets/ folder for the imported PNG."),
+                    _request.DestinationFolder);
+                _request.ImportProfileId = EditorGUILayout.TextField(
+                    Tip("Import Profile ID", "Primary import profile id from the catalog."),
+                    _request.ImportProfileId);
+                var previousKind = _request.ImportProfile;
+                _request.ImportProfile = (TextureImportProfileKind)EditorGUILayout.EnumPopup(
+                    Tip("Legacy Import Kind", "Secondary fallback used only when the profile id is empty."),
+                    _request.ImportProfile);
+                if (_request.ImportProfile != previousKind)
+                    _request.ImportProfileId = TextureImportProfile.FromKind(_request.ImportProfile).Id;
+
+                _request.CreateMaterial = EditorGUILayout.Toggle(
+                    Tip("Create Material", "Also create a material referencing the imported texture."),
+                    _request.CreateMaterial);
+                using (new EditorGUI.DisabledScope(!_request.CreateMaterial))
                 {
-                    _request.PaletteColorCount = EditorGUILayout.IntSlider(
-                        "Palette Colors", _request.PaletteColorCount, 2, 256);
-                }
-                if (_request.ApplySeamCorrection)
-                {
-                    if (_request.Width != 512 || _request.Height != 512)
-                        EditorGUILayout.HelpBox(
-                            "AI seam repair requires exactly 512×512.",
-                            MessageType.Error);
-                    if (tileableCaps != null && !tileableCaps.AiInpaintAvailable)
-                        EditorGUILayout.HelpBox(
-                            "Local seam inpainting is unavailable on the current backend; disable AI seam repair or enable the inpaint model.",
-                            MessageType.Error);
+                    _request.MaterialDestinationFolder = EditorGUILayout.TextField(
+                        Tip("Material Destination", "Folder for the optional material asset."),
+                        _request.MaterialDestinationFolder);
+                    _request.ShaderName = EditorGUILayout.TextField(
+                        Tip("Shader", "Shader name for the created material."),
+                        _request.ShaderName);
                 }
             }
 
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Unity Import", EditorStyles.boldLabel);
-            _request.DestinationFolder = EditorGUILayout.TextField("Destination Folder", _request.DestinationFolder);
-            _request.ImportProfileId = EditorGUILayout.TextField(
-                "Import Profile ID (Primary)", _request.ImportProfileId);
-            var previousKind = _request.ImportProfile;
-            _request.ImportProfile = (TextureImportProfileKind)EditorGUILayout.EnumPopup(
-                "Legacy Import Kind (Secondary)",
-                _request.ImportProfile);
-            if (_request.ImportProfile != previousKind)
-            {
-                _request.ImportProfileId = TextureImportProfile.FromKind(_request.ImportProfile).Id;
-            }
-            _request.CreateMaterial = EditorGUILayout.Toggle("Create Material", _request.CreateMaterial);
-            using (new EditorGUI.DisabledScope(!_request.CreateMaterial))
-            {
-                _request.MaterialDestinationFolder = EditorGUILayout.TextField(
-                    "Material Destination",
-                    _request.MaterialDestinationFolder);
-                _request.ShaderName = EditorGUILayout.TextField("Shader", _request.ShaderName);
-            }
-
-            EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("Reset to Profile Defaults")) ResetToProfileDefaults();
-            if (GUILayout.Button("Duplicate Profile")) GenerationProfileManagerWindow.OpenWithProfile(_request.SelectedProfileId);
-            if (GUILayout.Button("Manage Profiles")) GenerationProfileManagerWindow.Open();
-            EditorGUILayout.EndHorizontal();
-            EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("Create New Profile"))
-                GenerationProfileEditorWindow.OpenNew(new UserProfileRepository(
-                    UnityAiAssetSettings.instance.UserProfileDirectoryAbsolute));
-            using (new EditorGUI.DisabledScope(
-                !_profiles.TryGet(_request.SelectedProfileId, out var editable) || editable.Builtin))
-            {
-                if (GUILayout.Button("Edit User Profile"))
-                    GenerationProfileEditorWindow.Open(editable, new UserProfileRepository(
-                        UnityAiAssetSettings.instance.UserProfileDirectoryAbsolute));
-            }
-            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.EndFoldoutHeaderGroup();
         }
 
         void ResetToProfileDefaults()
@@ -516,89 +744,171 @@ namespace UnityAiAssets.Editor.UI
         {
             if (_request.AssetType != "texture") return;
 
-            EditorGUILayout.LabelField("Tileable Inspect / Preview", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox(
-                "Load an imported texture to inspect offset seams, wrap discontinuity, and 3×3 tiling. " +
-                "AI seam repair is applied on generate only (local inpaint)—not via soft blending here.",
-                MessageType.None);
+            _foldTileable = EditorGUILayout.BeginFoldoutHeaderGroup(_foldTileable, "Tileable Inspect / Preview");
+            if (_foldTileable)
+            {
+                EditorGUILayout.LabelField(
+                    "Pick any project texture to compare the single tile with a 3×3 tiled preview. " +
+                    "AI seam repair runs on generate only — use Compare to load a second texture (e.g. pre-repair).",
+                    _sectionHelp);
 
+                DrawInspectTexturePicker(progress);
+
+                if (_workingPixels == null || string.IsNullOrEmpty(_workingTexturePath))
+                {
+                    EditorGUILayout.HelpBox(
+                        "No texture loaded yet. Assign a Texture2D above, use Project Selection, or generate/import first.",
+                        MessageType.Info);
+                    EditorGUILayout.EndFoldoutHeaderGroup();
+                    return;
+                }
+
+                EditorGUILayout.LabelField("Working", _workingTexturePath, _sectionHelp);
+                _showOffsetPreview = EditorGUILayout.Toggle(
+                    Tip("Show Offset Preview (50%)", "Circular-shift preview highlighting wrap seams."),
+                    _showOffsetPreview);
+
+                if (_seamDiagnostics != null)
+                {
+                    EditorGUILayout.LabelField(
+                        "Edge RGB",
+                        $"H={_seamDiagnostics.HorizontalScore:0.###}  V={_seamDiagnostics.VerticalScore:0.###}  " +
+                        $"Combined={_seamDiagnostics.CombinedScore:0.###} ({_seamDiagnostics.QualityLabel})",
+                        _sectionHelp);
+                }
+
+                if (_wrapDiagnostics != null)
+                {
+                    EditorGUILayout.LabelField(
+                        "Wrap Δ",
+                        $"H={_wrapDiagnostics.HorizontalRatio:0.00}x  V={_wrapDiagnostics.VerticalRatio:0.00}x normal gradient",
+                        _sectionHelp);
+                }
+
+                var previewSize = Mathf.Clamp(position.width / 3.5f, 72f, 140f);
+                EditorGUILayout.LabelField("Primary (working texture)", EditorStyles.miniBoldLabel);
+                EditorGUILayout.BeginHorizontal();
+                DrawPreviewColumn("Single tile", _previewOriginal, previewSize);
+                if (_showOffsetPreview)
+                    DrawPreviewColumn("Offset 50%", _previewOffset, previewSize);
+                DrawPreviewColumn("3×3 Tiled", _previewTiled, previewSize);
+                EditorGUILayout.EndHorizontal();
+
+                DrawCompareTexturePicker(previewSize);
+
+                EditorGUILayout.BeginHorizontal();
+                if (GUILayout.Button("Re-Analyze Seams"))
+                    RefreshDiagnosticsAndPreviews();
+                if (GUILayout.Button(
+                        Tip("Apply Palette Reduction", "Writes a sibling palette-reduced PNG; original preserved.")))
+                    ApplyPaletteToWorking();
+                EditorGUILayout.EndHorizontal();
+
+                _request.PaletteColorCount = EditorGUILayout.IntSlider(
+                    Tip("Palette Colors", "Color count for the editor-side palette tool."),
+                    _request.PaletteColorCount, 2, 256);
+
+                EditorGUI.BeginChangeCheck();
+                _materialTiling = EditorGUILayout.IntSlider(
+                    Tip("Material UV Tiling Preview", "How many repeats to show in the Unity Repeat preview."),
+                    _materialTiling, 1, 8);
+                if (EditorGUI.EndChangeCheck() && _workingPixels != null)
+                    RefreshDiagnosticsAndPreviews();
+                if (_previewMaterialSwatch != null)
+                {
+                    EditorGUILayout.LabelField("Unity Repeat Preview", EditorStyles.miniLabel);
+                    var rect = GUILayoutUtility.GetRect(previewSize, previewSize, GUILayout.ExpandWidth(false));
+                    EditorGUI.DrawPreviewTexture(rect, _previewMaterialSwatch, null, ScaleMode.ScaleToFit);
+                }
+
+                var wrapOk = false;
+                var importer = AssetImporter.GetAtPath(_workingTexturePath) as TextureImporter;
+                if (importer != null)
+                    wrapOk = importer.wrapMode == TextureWrapMode.Repeat;
+                EditorGUILayout.HelpBox(
+                    wrapOk
+                        ? "Import wrap mode is Repeat — suitable for tiling materials."
+                        : "Import wrap mode is not Repeat. Prefer the ps1_tileable_texture import profile.",
+                    wrapOk ? MessageType.Info : MessageType.Warning);
+            }
+
+            EditorGUILayout.EndFoldoutHeaderGroup();
+        }
+
+        void DrawInspectTexturePicker(GenerationProgress progress)
+        {
+            EditorGUI.BeginChangeCheck();
+            var next = (Texture2D)EditorGUILayout.ObjectField(
+                Tip("Inspect Texture", "Any Texture2D asset in the project. Used for single-tile vs 3×3 compare."),
+                _inspectSource,
+                typeof(Texture2D),
+                false);
+            if (EditorGUI.EndChangeCheck())
+            {
+                _inspectSource = next;
+                if (_inspectSource != null)
+                    LoadWorkingTexture(AssetDatabase.GetAssetPath(_inspectSource));
+            }
+
+            EditorGUILayout.BeginHorizontal();
             var importedPath = progress.ImportedTexturePath;
             using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(importedPath)))
             {
-                if (GUILayout.Button("Load Imported Texture for Tileable Tools"))
+                if (GUILayout.Button(
+                        Tip("Use Last Import", "Load the texture imported by the most recent Generate And Import in this window.")))
                 {
                     LoadWorkingTexture(importedPath);
+                    _inspectSource = AssetDatabase.LoadAssetAtPath<Texture2D>(importedPath);
                 }
             }
 
-            if (_workingPixels == null || string.IsNullOrEmpty(_workingTexturePath))
+            var selectionTex = Selection.activeObject as Texture2D;
+            using (new EditorGUI.DisabledScope(selectionTex == null))
             {
-                EditorGUILayout.LabelField("No working texture loaded.", EditorStyles.miniLabel);
+                if (GUILayout.Button(
+                        Tip("Use Project Selection", "Load the Texture2D currently selected in the Project window.")))
+                {
+                    _inspectSource = selectionTex;
+                    LoadWorkingTexture(AssetDatabase.GetAssetPath(selectionTex));
+                }
+            }
+
+            EditorGUILayout.EndHorizontal();
+        }
+
+        void DrawCompareTexturePicker(float previewSize)
+        {
+            EditorGUI.BeginChangeCheck();
+            var next = (Texture2D)EditorGUILayout.ObjectField(
+                Tip(
+                    "Compare Texture (optional)",
+                    "Second texture for side-by-side compare — e.g. unrepaired original vs repaired import."),
+                _compareSource,
+                typeof(Texture2D),
+                false);
+            if (EditorGUI.EndChangeCheck())
+            {
+                _compareSource = next;
+                RefreshComparePreviews();
+            }
+
+            if (_compareSource == null || _previewCompare == null)
                 return;
-            }
 
-            EditorGUILayout.LabelField("Working", _workingTexturePath, EditorStyles.miniLabel);
-            _showOffsetPreview = EditorGUILayout.Toggle("Show Offset Preview (50%)", _showOffsetPreview);
-
-            if (_seamDiagnostics != null)
-            {
-                EditorGUILayout.LabelField(
-                    "Edge RGB",
-                    $"H={_seamDiagnostics.HorizontalScore:0.###}  V={_seamDiagnostics.VerticalScore:0.###}  " +
-                    $"Combined={_seamDiagnostics.CombinedScore:0.###} ({_seamDiagnostics.QualityLabel})",
-                    EditorStyles.miniLabel);
-            }
-
-            if (_wrapDiagnostics != null)
-            {
-                EditorGUILayout.LabelField(
-                    "Wrap Δ",
-                    $"H={_wrapDiagnostics.HorizontalRatio:0.00}x  V={_wrapDiagnostics.VerticalRatio:0.00}x normal gradient",
-                    EditorStyles.miniLabel);
-            }
-
-            const float previewSize = 128f;
+            EditorGUILayout.LabelField(
+                "Compare: " + AssetDatabase.GetAssetPath(_compareSource),
+                _sectionHelp);
             EditorGUILayout.BeginHorizontal();
-            DrawPreviewColumn("Original", _previewOriginal, previewSize);
-            if (_showOffsetPreview)
-                DrawPreviewColumn("Offset", _previewOffset, previewSize);
-            DrawPreviewColumn("3×3 Tile", _previewTiled, previewSize);
+            DrawPreviewColumn("Compare tile", _previewCompare, previewSize);
+            DrawPreviewColumn("Compare 3×3", _previewCompareTiled, previewSize);
             EditorGUILayout.EndHorizontal();
-
-            EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("Re-Analyze Seams"))
-                RefreshDiagnosticsAndPreviews();
-            if (GUILayout.Button("Apply Palette Reduction"))
-                ApplyPaletteToWorking();
-            EditorGUILayout.EndHorizontal();
-
-            _request.PaletteColorCount = EditorGUILayout.IntSlider(
-                "Palette Colors", _request.PaletteColorCount, 2, 256);
-
-            _materialTiling = EditorGUILayout.IntSlider("Material UV Tiling Preview", _materialTiling, 1, 8);
-            if (_previewMaterialSwatch != null)
-            {
-                EditorGUILayout.LabelField("Unity Repeat Preview", EditorStyles.miniLabel);
-                var rect = GUILayoutUtility.GetRect(previewSize, previewSize, GUILayout.ExpandWidth(false));
-                EditorGUI.DrawPreviewTexture(rect, _previewMaterialSwatch, null, ScaleMode.ScaleToFit);
-            }
-
-            var wrapOk = false;
-            var importer = AssetImporter.GetAtPath(_workingTexturePath) as TextureImporter;
-            if (importer != null)
-                wrapOk = importer.wrapMode == TextureWrapMode.Repeat;
-            EditorGUILayout.HelpBox(
-                wrapOk
-                    ? "Import wrap mode is Repeat — suitable for tiling materials."
-                    : "Import wrap mode is not Repeat. Prefer the ps1_tileable_texture import profile.",
-                wrapOk ? MessageType.Info : MessageType.Warning);
         }
 
         static void DrawPreviewColumn(string label, Texture2D texture, float size)
         {
-            EditorGUILayout.BeginVertical(GUILayout.Width(size + 8));
+            EditorGUILayout.BeginVertical(GUILayout.MaxWidth(size + 8), GUILayout.ExpandWidth(true));
             EditorGUILayout.LabelField(label, EditorStyles.miniBoldLabel);
-            var rect = GUILayoutUtility.GetRect(size, size, GUILayout.ExpandWidth(false));
+            var rect = GUILayoutUtility.GetRect(size, size, GUILayout.ExpandWidth(true), GUILayout.MaxWidth(size + 8));
             if (texture != null)
                 EditorGUI.DrawPreviewTexture(rect, texture, null, ScaleMode.ScaleToFit);
             else
@@ -608,18 +918,31 @@ namespace UnityAiAssets.Editor.UI
 
         void LoadWorkingTexture(string assetPath)
         {
+            if (string.IsNullOrWhiteSpace(assetPath))
+                return;
+
             var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
-            if (texture == null) return;
+            if (texture == null)
+            {
+                EditorUtility.DisplayDialog(
+                    "Tileable Tools",
+                    "No Texture2D found at:\n" + assetPath,
+                    "OK");
+                return;
+            }
+
             if (!TileableTextureWorkflow.TryReadPixels(texture, out var pixels, out var width, out var height, out var error))
             {
                 EditorUtility.DisplayDialog("Tileable Tools", "Could not read texture pixels: " + error, "OK");
                 return;
             }
 
+            _inspectSource = texture;
             _workingTexturePath = assetPath;
             _workingPixels = pixels;
             _workingWidth = width;
             _workingHeight = height;
+            _foldTileable = true;
             RefreshDiagnosticsAndPreviews();
         }
 
@@ -628,7 +951,10 @@ namespace UnityAiAssets.Editor.UI
             if (_workingPixels == null) return;
             _seamDiagnostics = SeamAnalysis.Analyze(_workingPixels, _workingWidth, _workingHeight);
             _wrapDiagnostics = WrapDiagnostics.Analyze(_workingPixels, _workingWidth, _workingHeight);
-            DestroyPreviewTextures();
+            DestroyPreview(ref _previewOriginal);
+            DestroyPreview(ref _previewOffset);
+            DestroyPreview(ref _previewTiled);
+            DestroyPreview(ref _previewMaterialSwatch);
             _previewOriginal = TileableTextureWorkflow.CreatePreviewTexture(
                 _workingPixels, _workingWidth, _workingHeight, FilterMode.Point);
             var offset = OffsetWrap.OffsetPreview(_workingPixels, _workingWidth, _workingHeight);
@@ -644,7 +970,30 @@ namespace UnityAiAssets.Editor.UI
                 _workingWidth * Math.Max(1, _materialTiling),
                 _workingHeight * Math.Max(1, _materialTiling),
                 FilterMode.Point);
+            RefreshComparePreviews();
             Repaint();
+        }
+
+        void RefreshComparePreviews()
+        {
+            DestroyPreview(ref _previewCompare);
+            DestroyPreview(ref _previewCompareTiled);
+            if (_compareSource == null)
+                return;
+
+            if (!TileableTextureWorkflow.TryReadPixels(
+                    _compareSource, out var pixels, out var width, out var height, out var error))
+            {
+                EditorUtility.DisplayDialog("Tileable Tools", "Could not read compare texture: " + error, "OK");
+                _compareSource = null;
+                return;
+            }
+
+            _previewCompare = TileableTextureWorkflow.CreatePreviewTexture(
+                pixels, width, height, FilterMode.Point);
+            var tiled = OffsetWrap.TiledPreview(pixels, width, height, 3);
+            _previewCompareTiled = TileableTextureWorkflow.CreatePreviewTexture(
+                tiled, width * 3, height * 3, FilterMode.Point);
         }
 
         void ApplyPaletteToWorking()
@@ -663,38 +1012,32 @@ namespace UnityAiAssets.Editor.UI
             RefreshDiagnosticsAndPreviews();
         }
 
-        /// <summary>
-        /// Draws a plain int field annotated with the backend-reported valid range/multiple.
-        /// Deliberately uses IntField rather than IntSlider: Unity's slider controls clamp
-        /// their displayed value to [minimum, maximum] on every repaint, which would silently
-        /// rewrite an out-of-range value the user just typed. Out-of-range values are instead
-        /// left as-is and flagged with a warning; preflight validation is the real gate.
-        /// </summary>
-        static void DrawConstrainedIntField(string label, ref int value, int minimum, int maximum, int multiple)
+        static void DrawConstrainedIntField(GUIContent label, ref int value, int minimum, int maximum, int multiple)
         {
             var hint = multiple > 1
-                ? $"{minimum}–{maximum}, multiple of {multiple}"
+                ? $"{minimum}–{maximum}, ×{multiple}"
                 : $"{minimum}–{maximum}";
-            value = EditorGUILayout.IntField($"{label} ({hint})", value);
+            value = EditorGUILayout.IntField(new GUIContent($"{label.text} ({hint})", label.tooltip), value);
 
             if (value < minimum || value > maximum || (multiple > 1 && value % multiple != 0))
             {
                 EditorGUILayout.HelpBox(
-                    $"{label} must be between {minimum} and {maximum}" +
+                    $"{label.text} must be between {minimum} and {maximum}" +
                     (multiple > 1 ? $" and divisible by {multiple}" : string.Empty) +
                     $" (currently {value}).",
                     MessageType.Warning);
             }
         }
 
-        static void DrawConstrainedFloatField(string label, ref float value, float minimum, float maximum)
+        static void DrawConstrainedFloatField(GUIContent label, ref float value, float minimum, float maximum)
         {
-            value = EditorGUILayout.FloatField($"{label} ({minimum:0.#}–{maximum:0.#})", value);
+            value = EditorGUILayout.FloatField(
+                new GUIContent($"{label.text} ({minimum:0.#}–{maximum:0.#})", label.tooltip), value);
 
             if (value < minimum || value > maximum)
             {
                 EditorGUILayout.HelpBox(
-                    $"{label} must be between {minimum} and {maximum} (currently {value}).",
+                    $"{label.text} must be between {minimum} and {maximum} (currently {value}).",
                     MessageType.Warning);
             }
         }
@@ -715,29 +1058,36 @@ namespace UnityAiAssets.Editor.UI
                 canGenerate = false;
             }
 
+            if (canGenerate &&
+                _request.TransparencyStrategy == "background_removal" &&
+                progress.Capabilities?.Operations?.TextToImage?.Processing?.BackgroundRemoval?.Available != true)
+            {
+                canGenerate = false;
+            }
+
             EditorGUILayout.BeginHorizontal();
             using (new EditorGUI.DisabledScope(busy))
             {
-                if (GUILayout.Button("Check Backend Connection", GUILayout.Height(28)))
-                {
+                if (GUILayout.Button(
+                        Tip("Check Connection", "GET /health against the configured backend URL."),
+                        GUILayout.Height(28)))
                     RunSafe(() => _controller.CheckConnectionAsync());
-                }
 
                 using (new EditorGUI.DisabledScope(!canGenerate))
                 {
-                    if (GUILayout.Button("Generate And Import", GUILayout.Height(28)))
-                    {
+                    if (GUILayout.Button(
+                            Tip("Generate And Import", "Submit generation, download PNG+manifest, verify, and import."),
+                            GUILayout.Height(28)))
                         RunSafe(() => _controller.GenerateAndImportAsync(_request));
-                    }
                 }
             }
 
             using (new EditorGUI.DisabledScope(!busy))
             {
-                if (GUILayout.Button("Cancel Wait", GUILayout.Height(28)))
-                {
+                if (GUILayout.Button(
+                        Tip("Cancel Wait", "Stops waiting in Unity only; backend work may continue."),
+                        GUILayout.Height(28)))
                     _controller.CancelLocalWait();
-                }
             }
 
             EditorGUILayout.EndHorizontal();
@@ -750,6 +1100,12 @@ namespace UnityAiAssets.Editor.UI
                 else if (_request.ApplySeamCorrection &&
                          progress.Capabilities?.Operations?.TextToImage?.Processing?.Tileable?.AiInpaintAvailable == false)
                     reason = "Generate is disabled: local seam inpainting is unavailable on the backend.";
+                else if (_request.TransparencyStrategy == "background_removal" &&
+                         progress.Capabilities?.Operations?.TextToImage?.Processing?.BackgroundRemoval?.Available != true)
+                {
+                    reason = progress.Capabilities?.Operations?.TextToImage?.Processing?.BackgroundRemoval?.UnavailableReason
+                             ?? "Generate is disabled: background removal is unavailable.";
+                }
                 else if (profileCompatibility != null && !profileCompatibility.CanGenerate)
                     reason = string.Join("\n", profileCompatibility.Messages);
                 else if (string.IsNullOrWhiteSpace(_request.Subject))
@@ -761,20 +1117,31 @@ namespace UnityAiAssets.Editor.UI
 
             EditorGUILayout.BeginHorizontal();
             if (GUILayout.Button("Open Generated Folder"))
-            {
                 OpenFolder(_request.DestinationFolder);
-            }
 
-            using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(_controller.Progress.ImportedTexturePath)))
+            var pingPath = !string.IsNullOrWhiteSpace(_controller.Progress.ImportedTexturePath)
+                ? _controller.Progress.ImportedTexturePath
+                : _workingTexturePath;
+            using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(pingPath)))
             {
-                if (GUILayout.Button("Select Imported Texture"))
+                if (GUILayout.Button(
+                        Tip("Ping Texture", "Select and ping the last import, or the texture currently loaded for inspect.")))
                 {
-                    var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(_controller.Progress.ImportedTexturePath);
+                    var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(pingPath);
                     if (texture != null)
                     {
                         Selection.activeObject = texture;
                         EditorGUIUtility.PingObject(texture);
                     }
+                }
+            }
+
+            using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(_controller.Progress.ImportedTexturePath)))
+            {
+                if (GUILayout.Button(
+                        Tip("Inspect Last Import", "Load the last Generate And Import result into Tileable Inspect / Preview.")))
+                {
+                    LoadWorkingTexture(_controller.Progress.ImportedTexturePath);
                 }
             }
 
@@ -802,64 +1169,68 @@ namespace UnityAiAssets.Editor.UI
 
         void DrawStatus(GenerationProgress progress)
         {
-            EditorGUILayout.LabelField("Status", EditorStyles.boldLabel);
-            EditorGUILayout.LabelField("State", progress.State.ToString());
-            EditorGUILayout.LabelField("Message", progress.StatusMessage ?? string.Empty);
-            EditorGUILayout.LabelField(
-                "Backend",
-                progress.BackendReachable
-                    ? $"Reachable (device={progress.ResolvedDevice}, model_loaded={progress.ModelLoaded})"
-                    : "Not confirmed / unreachable");
-
-            if (!string.IsNullOrWhiteSpace(progress.GenerationId))
+            _foldStatus = EditorGUILayout.BeginFoldoutHeaderGroup(_foldStatus, "Status");
+            if (_foldStatus)
             {
-                EditorGUILayout.LabelField("Generation ID", progress.GenerationId);
-            }
+                EditorGUILayout.LabelField("State", progress.State.ToString());
+                EditorGUILayout.LabelField("Message", progress.StatusMessage ?? string.Empty, _sectionHelp);
+                EditorGUILayout.LabelField(
+                    "Backend",
+                    progress.BackendReachable
+                        ? $"Reachable (device={progress.ResolvedDevice}, model_loaded={progress.ModelLoaded})"
+                        : "Not confirmed / unreachable",
+                    _sectionHelp);
 
-            if (progress.Seed.HasValue)
-            {
-                EditorGUILayout.LabelField("Seed", progress.Seed.Value.ToString());
-            }
+                if (!string.IsNullOrWhiteSpace(progress.ProcessingSummary))
+                    EditorGUILayout.HelpBox(progress.ProcessingSummary, MessageType.Info);
 
-            if (progress.ElapsedSeconds.HasValue)
-            {
-                EditorGUILayout.LabelField("Backend Elapsed (s)", progress.ElapsedSeconds.Value.ToString("0.###"));
-            }
-
-            if (!string.IsNullOrWhiteSpace(progress.RequestId))
-            {
-                EditorGUILayout.LabelField("Last Request ID", progress.RequestId);
-            }
-
-            if (!string.IsNullOrWhiteSpace(progress.ImportedTexturePath))
-            {
-                EditorGUILayout.LabelField("Imported Texture", progress.ImportedTexturePath);
-            }
-
-            if (!string.IsNullOrWhiteSpace(progress.ImportedMaterialPath))
-            {
-                EditorGUILayout.LabelField("Imported Material", progress.ImportedMaterialPath);
-            }
-
-            if (!string.IsNullOrWhiteSpace(progress.MetadataAssetPath))
-            {
-                EditorGUILayout.LabelField("Metadata Asset", progress.MetadataAssetPath);
-            }
-
-            if (progress.ValidationIssues != null && progress.ValidationIssues.Count > 0)
-            {
-                foreach (var issue in progress.ValidationIssues)
+                if (progress.SeamCorrectionRequested == true)
                 {
-                    EditorGUILayout.HelpBox(issue.ToString(), MessageType.Warning);
+                    var applied = progress.SeamCorrectionApplied == true;
+                    EditorGUILayout.LabelField(
+                        "AI seam repair",
+                        applied
+                            ? $"applied ({progress.SeamInpaintImplementation ?? "unknown"})"
+                            : "requested but not applied",
+                        _sectionHelp);
                 }
+
+                if (progress.BackgroundRemovalApplied == true)
+                {
+                    EditorGUILayout.LabelField(
+                        "Background removal",
+                        $"applied ({progress.BackgroundRemovalImplementation ?? "unknown"})",
+                        _sectionHelp);
+                }
+
+                if (!string.IsNullOrWhiteSpace(progress.GenerationId))
+                    EditorGUILayout.LabelField("Generation ID", progress.GenerationId, _sectionHelp);
+                if (progress.Seed.HasValue)
+                    EditorGUILayout.LabelField("Seed", progress.Seed.Value.ToString());
+                if (progress.ElapsedSeconds.HasValue)
+                    EditorGUILayout.LabelField("Backend Elapsed (s)", progress.ElapsedSeconds.Value.ToString("0.###"));
+                if (!string.IsNullOrWhiteSpace(progress.RequestId))
+                    EditorGUILayout.LabelField("Last Request ID", progress.RequestId, _sectionHelp);
+                if (!string.IsNullOrWhiteSpace(progress.ImportedTexturePath))
+                    EditorGUILayout.LabelField("Imported Texture", progress.ImportedTexturePath, _sectionHelp);
+                if (!string.IsNullOrWhiteSpace(progress.ImportedMaterialPath))
+                    EditorGUILayout.LabelField("Imported Material", progress.ImportedMaterialPath, _sectionHelp);
+                if (!string.IsNullOrWhiteSpace(progress.MetadataAssetPath))
+                    EditorGUILayout.LabelField("Metadata Asset", progress.MetadataAssetPath, _sectionHelp);
+
+                if (progress.ValidationIssues != null && progress.ValidationIssues.Count > 0)
+                {
+                    foreach (var issue in progress.ValidationIssues)
+                        EditorGUILayout.HelpBox(issue.ToString(), MessageType.Warning);
+                }
+
+                if (!string.IsNullOrWhiteSpace(progress.ErrorMessage))
+                    EditorGUILayout.HelpBox(progress.ErrorMessage, MessageType.Error);
+
+                RepaintIfBusy(progress);
             }
 
-            if (!string.IsNullOrWhiteSpace(progress.ErrorMessage))
-            {
-                EditorGUILayout.HelpBox(progress.ErrorMessage, MessageType.Error);
-            }
-
-            RepaintIfBusy(progress);
+            EditorGUILayout.EndFoldoutHeaderGroup();
         }
 
         void RepaintIfBusy(GenerationProgress progress)

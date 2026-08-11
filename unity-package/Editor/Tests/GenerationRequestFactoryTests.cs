@@ -54,6 +54,23 @@ namespace UnityAiAssets.Editor.Tests
             Assert.IsNull(dto.seed);
         }
 
+        [Test]
+        public void FromResolved_IncludesTileableSeamRepairFlags()
+        {
+            var resolved = CreateResolved();
+            resolved.Tileable = true;
+            resolved.ApplySeamCorrection = true;
+            resolved.SeamBlendWidth = 48;
+            resolved.PaletteReductionEnabled = true;
+            resolved.PaletteColorCount = 32;
+            var dto = GenerationRequestFactory.FromResolved(resolved, new TextureGenerationRequestModel());
+            Assert.IsTrue(dto.tileable);
+            Assert.IsTrue(dto.apply_seam_correction);
+            Assert.AreEqual(48, dto.seam_blend_width);
+            Assert.IsTrue(dto.palette_reduction_enabled);
+            Assert.AreEqual(32, dto.palette_color_count);
+        }
+
         static ResolvedGenerationSettings CreateResolved() => new ResolvedGenerationSettings
         {
             ConstructedPrompt = " constructed prompt ",

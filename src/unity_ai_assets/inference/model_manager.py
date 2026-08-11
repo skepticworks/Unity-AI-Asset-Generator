@@ -229,3 +229,41 @@ class ModelManager:
         self._dtype = dtype
         logger.info("Model loaded successfully on %s", device)
         return pipeline
+
+    def unload_pipeline(self) -> bool:
+        """Release the txt2img pipeline from memory/VRAM if loaded.
+
+        Returns True when a pipeline was unloaded.
+        """
+        with self._lock:
+            if self._pipeline is None:
+                return False
+            logger.info("Unloading txt2img pipeline from device to free VRAM")
+            pipeline = self._pipeline
+            self._pipeline = None
+            try:
+                del pipeline
+            except Exception:  # noqa: BLE001
+                pass
+            _release_torch_memory(self._device)
+            return True
+
+
+def _release_torch_memory(device: str | None) -> None:
+    """Best-effort GC + CUDA cache clear after unloading a pipeline."""
+    import gc
+
+    gc.collect()
+    if device == "cuda" or (device is None and torch.cuda.is_available()):
+        try:
+            torch.cuda.empty_cache()
+        except Exception:  # noqa: BLE001
+            pass
+    mps = getattr(torch.backends, "mps", None)
+    if device == "mps" and mps is not None and hasattr(torch, "mps"):
+        try:
+            empty = getattr(torch.mps, "empty_cache", None)
+            if callable(empty):
+                empty()
+        except Exception:  # noqa: BLE001
+            pass

@@ -48,6 +48,14 @@ class Settings(BaseSettings):
     torch_dtype: TorchDtypeChoice = Field(default="auto")
     output_directory: Path = Field(default=Path("generated"))
     enable_cpu_offload: bool = Field(default=False)
+    exclusive_model_vram: bool = Field(
+        default=True,
+        description=(
+            "When true (and CPU offload is off), keep only one diffusion pipeline in VRAM "
+            "at a time: unload txt2img before seam inpaint, unload inpaint before the next "
+            "txt2img. Preferred on low-VRAM GPUs when model reload cost is acceptable."
+        ),
+    )
     local_files_only: bool = Field(default=False)
     log_level: str = Field(default="INFO")
     app_version: str = Field(default="")
@@ -78,8 +86,12 @@ class Settings(BaseSettings):
 
     # Optional local background-removal post-processing (sprites/icons)
     background_removal_enabled: bool = Field(
-        default=False,
-        description="Enable local rembg-based background removal for sprite/icon workflows",
+        default=True,
+        description=(
+            "Enable local rembg-based background removal for sprite/icon workflows. "
+            "Requires the optional [background-removal] extra; when rembg is missing, "
+            "capabilities report available=false with an install reason."
+        ),
     )
     background_removal_backend: str = Field(
         default="rembg",

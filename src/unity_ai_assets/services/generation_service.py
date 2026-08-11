@@ -112,6 +112,29 @@ class GenerationService:
     def policy(self) -> GenerationPolicy:
         return self._policy
 
+    @property
+    def exclusive_model_vram(self) -> bool:
+        """True when only one diffusion pipeline should occupy VRAM at a time."""
+        return bool(self._settings.exclusive_model_vram) and not bool(
+            self._settings.enable_cpu_offload
+        )
+
+    def _unload_txt2img(self, *, reason: str) -> None:
+        unload = getattr(self._backend, "unload_weights", None)
+        if not callable(unload):
+            return
+        if unload():
+            logger.info("Freed txt2img VRAM (%s)", reason)
+
+    def _unload_inpaint(self, *, reason: str) -> None:
+        if self._processing is None:
+            return
+        unload = getattr(self._processing.seam_inpainter, "unload_weights", None)
+        if not callable(unload):
+            return
+        if unload():
+            logger.info("Freed seam-inpaint VRAM (%s)", reason)
+
     def generate_texture(
         self,
         *,
@@ -464,11 +487,13 @@ class GenerationService:
 
         logger.info(
             "Starting generation_id=%s request_id=%s asset_type=%s strategy=%s "
-            "seed=%s size=%sx%s steps=%s",
+            "tileable=%s apply_seam_correction=%s seed=%s size=%sx%s steps=%s",
             request.generation_id,
             get_request_id(),
             request.asset_type,
             request.transparency_strategy,
+            request.tileable,
+            request.apply_seam_correction,
             request.seed,
             request.width,
             request.height,
@@ -476,8 +501,46 @@ class GenerationService:
         )
 
         with self._generation_lock:
+            if self.exclusive_model_vram:
+                # Ensure inpaint is not occupying VRAM during txt2img.
+                self._unload_inpaint(reason="before txt2img")
+
             generated = self._backend.generate(request)
+
+            if self.exclusive_model_vram and request.apply_seam_correction:
+                # Hand VRAM to the inpaint stage before post-processing.
+                self._unload_txt2img(reason="before seam inpaint")
+
             processing_result = self._apply_processing(generated, request)
+
+            if self.exclusive_model_vram and request.apply_seam_correction:
+                # Free inpaint weights after repair so Unity / next generate have headroom.
+                self._unload_inpaint(reason="after seam inpaint")
+
+            if request.apply_seam_correction:
+                logger.info(
+                    "Seam repair generation_id=%s requested=true applied=%s "
+                    "implementation=%s scores_before=%s scores_after=%s",
+                    request.generation_id,
+                    processing_result.seam_correction_applied,
+                    processing_result.seam_inpaint_implementation,
+                    processing_result.seam_score_before,
+                    processing_result.seam_score_after,
+                )
+            elif processing_result.seam_correction_applied:
+                # Should not happen: never claim repair without a request.
+                logger.warning(
+                    "Seam repair generation_id=%s applied unexpectedly without request",
+                    request.generation_id,
+                )
+            if request.transparency_strategy == "background_removal":
+                logger.info(
+                    "Transparency generation_id=%s strategy=background_removal "
+                    "applied=%s implementation=%s",
+                    request.generation_id,
+                    processing_result.background_removal_applied,
+                    processing_result.background_removal_implementation,
+                )
             processed_image = GeneratedImage(
                 image=processing_result.image,
                 seed=generated.seed,

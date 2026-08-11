@@ -157,6 +157,12 @@ def test_background_removal_unavailable_when_disabled(tmp_path: Path) -> None:
         force_fake_background_removal=False,
     )
     with TestClient(app) as client:
+        caps = client.get("/api/v1/capabilities").json()
+        bg = caps["operations"]["text_to_image"]["processing"]["background_removal"]
+        assert bg["available"] is False
+        assert bg["unavailable_reason"]
+        assert "BACKGROUND_REMOVAL_ENABLED" in bg["unavailable_reason"]
+
         response = client.post(
             "/api/v1/generations/textures",
             json={

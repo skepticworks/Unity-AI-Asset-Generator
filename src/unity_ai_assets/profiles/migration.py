@@ -69,7 +69,30 @@ class Profile10To11Migration:
         return migrated
 
 
-_MIGRATIONS: tuple[MigrationStep, ...] = (Legacy09To10Migration(), Profile10To11Migration())
+class Profile11To12Migration:
+    """Additive Milestone 6 fields for tileable texture workflow defaults."""
+
+    source_version = "1.1"
+    target_version = "1.2"
+
+    def migrate(self, payload: dict[str, Any]) -> dict[str, Any]:
+        migrated = deepcopy(payload)
+        schema = cast(dict[str, Any], migrated["schema"])
+        schema["version"] = self.target_version
+        defaults = cast(dict[str, Any], migrated["generation_defaults"])
+        defaults.setdefault("tileable", False)
+        defaults.setdefault("apply_seam_correction", False)
+        defaults.setdefault("seam_blend_width", 64)
+        defaults.setdefault("palette_reduction_enabled", False)
+        defaults.setdefault("palette_color_count", 16)
+        return migrated
+
+
+_MIGRATIONS: tuple[MigrationStep, ...] = (
+    Legacy09To10Migration(),
+    Profile10To11Migration(),
+    Profile11To12Migration(),
+)
 
 
 def migrate_profile_payload(

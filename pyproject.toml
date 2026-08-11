@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "unity-ai-assets"
-version = "0.5.0"
-description = "Local AI-assisted Unity 2D asset generation (textures, sprites, icons)"
+version = "0.6.0"
+description = "Local AI-assisted Unity 2D asset generation (textures, sprites, icons, tileable)"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 license = { text = "MIT" }

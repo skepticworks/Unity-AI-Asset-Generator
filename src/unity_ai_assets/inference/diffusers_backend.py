@@ -130,3 +130,7 @@ class DiffusersBackend:
             model_id=self._model_manager.model_id,
             model_revision=self._model_manager.model_revision,
         )
+
+    def unload_weights(self) -> bool:
+        """Unload the Diffusers txt2img pipeline from VRAM/RAM when loaded."""
+        return self._model_manager.unload_pipeline()

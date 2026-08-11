@@ -59,6 +59,11 @@ class TextureGenerationRequest(BaseModel):
     custom_pivot_x: float | None = Field(default=None, ge=0.0, le=1.0)
     custom_pivot_y: float | None = Field(default=None, ge=0.0, le=1.0)
     atlas_hint: str | None = Field(default=None, max_length=64, pattern=_ATLAS_HINT_PATTERN)
+    tileable: bool | None = None
+    apply_seam_correction: bool | None = None
+    seam_blend_width: int | None = Field(default=None, ge=8, le=128)
+    palette_reduction_enabled: bool | None = None
+    palette_color_count: int | None = Field(default=None, ge=2, le=256)
 
     @field_validator("prompt")
     @classmethod

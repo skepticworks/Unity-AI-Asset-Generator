@@ -140,7 +140,12 @@ namespace UnityAiAssets.Editor.Profiles
                 AlphaThreshold = ReadAlphaByte(source.Get("alpha_threshold"), 16),
                 AlphaFeather = ReadAlphaByte(source.Get("alpha_feather"), 0),
                 RemoveNearTransparent = source.Get("remove_near_transparent").AsBool(true),
-                ZeroRgbWhenTransparent = source.Get("zero_rgb_when_transparent").AsBool(true)
+                ZeroRgbWhenTransparent = source.Get("zero_rgb_when_transparent").AsBool(true),
+                Tileable = source.Get("tileable").AsBool(false),
+                ApplySeamCorrection = source.Get("apply_seam_correction").AsBool(false),
+                SeamBlendWidth = source.Get("seam_blend_width").AsInt(64),
+                PaletteReductionEnabled = source.Get("palette_reduction_enabled").AsBool(false),
+                PaletteColorCount = source.Get("palette_color_count").AsInt(16)
             };
         }
 

@@ -48,6 +48,14 @@ class Settings(BaseSettings):
     torch_dtype: TorchDtypeChoice = Field(default="auto")
     output_directory: Path = Field(default=Path("generated"))
     enable_cpu_offload: bool = Field(default=False)
+    exclusive_model_vram: bool = Field(
+        default=True,
+        description=(
+            "When true (and CPU offload is off), keep only one diffusion pipeline in VRAM "
+            "at a time: unload txt2img before seam inpaint, unload inpaint before the next "
+            "txt2img. Preferred on low-VRAM GPUs when model reload cost is acceptable."
+        ),
+    )
     local_files_only: bool = Field(default=False)
     log_level: str = Field(default="INFO")
     app_version: str = Field(default="")
@@ -78,8 +86,12 @@ class Settings(BaseSettings):
 
     # Optional local background-removal post-processing (sprites/icons)
     background_removal_enabled: bool = Field(
-        default=False,
-        description="Enable local rembg-based background removal for sprite/icon workflows",
+        default=True,
+        description=(
+            "Enable local rembg-based background removal for sprite/icon workflows. "
+            "Requires the optional [background-removal] extra; when rembg is missing, "
+            "capabilities report available=false with an install reason."
+        ),
     )
     background_removal_backend: str = Field(
         default="rembg",
@@ -93,6 +105,19 @@ class Settings(BaseSettings):
         default=True,
         description="When processing sprites/icons, also persist the pre-processed RGB PNG",
     )
+
+    # Local AI seam inpainting for tileable textures (circular-offset + cross mask)
+    seam_inpaint_enabled: bool = Field(
+        default=True,
+        description="Enable local Diffusers inpainting for tileable seam repair",
+    )
+    seam_inpaint_model_id: str = Field(
+        default="runwayml/stable-diffusion-inpainting",
+        description="Hugging Face Diffusers inpaint model (local weights)",
+    )
+    seam_inpaint_model_revision: str | None = Field(default=None)
+    seam_inpaint_steps: int = Field(default=20, ge=1, le=150)
+    default_seam_width: int = Field(default=64, ge=8, le=128)
 
     # Alpha cleanup defaults (authoritative ranges for capability reporting)
     default_alpha_threshold: int = Field(default=16, ge=0, le=255)
@@ -109,6 +134,13 @@ class Settings(BaseSettings):
     @field_validator("model_revision", "model_variant", "model_display_name", mode="before")
     @classmethod
     def _empty_str_to_none(cls, value: object) -> object:
+        if value == "":
+            return None
+        return value
+
+    @field_validator("seam_inpaint_model_revision", mode="before")
+    @classmethod
+    def _empty_inpaint_revision(cls, value: object) -> object:
         if value == "":
             return None
         return value

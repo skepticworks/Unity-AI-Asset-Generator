@@ -117,6 +117,7 @@ class BackgroundRemovalCapabilitiesSchema(BaseModel):
     backend: str | None = None
     model: str | None = None
     produces_native_alpha: bool = False
+    unavailable_reason: str | None = None
 
 
 class AlphaCleanupCapabilitiesSchema(BaseModel):
@@ -137,6 +138,21 @@ class SpriteImportCapabilitiesSchema(BaseModel):
     pivot_modes: list[str] = Field(default_factory=list)
 
 
+class TileableProcessingCapabilitiesSchema(BaseModel):
+    """Tileable texture workflow capabilities."""
+
+    available: bool = True
+    seam_analysis: bool = True
+    seam_correction: bool = True
+    palette_reduction: bool = True
+    ai_inpaint_available: bool = False
+    seam_blend_width: IntRangeSchema
+    palette_color_count: IntRangeSchema
+    target_size: int = 512
+    circular_offset_px: int = 256
+    protected_border_px: int = 4
+
+
 class ProcessingCapabilitiesSchema(BaseModel):
     """Post-inference processing capabilities."""
 
@@ -144,6 +160,7 @@ class ProcessingCapabilitiesSchema(BaseModel):
     background_removal: BackgroundRemovalCapabilitiesSchema
     alpha_cleanup: AlphaCleanupCapabilitiesSchema
     sprite_import: SpriteImportCapabilitiesSchema
+    tileable: TileableProcessingCapabilitiesSchema | None = None
 
 
 class TextToImageCapabilitiesSchema(BaseModel):
@@ -217,6 +234,7 @@ class CapabilitiesResponse(BaseModel):
                     backend=proc.background_removal.backend,
                     model=proc.background_removal.model,
                     produces_native_alpha=proc.background_removal.produces_native_alpha,
+                    unavailable_reason=proc.background_removal.unavailable_reason,
                 ),
                 alpha_cleanup=AlphaCleanupCapabilitiesSchema(
                     available=proc.alpha_cleanup.available,
@@ -243,6 +261,32 @@ class CapabilitiesResponse(BaseModel):
                     supported=proc.sprite_import.supported,
                     single_sprite_only=proc.sprite_import.single_sprite_only,
                     pivot_modes=list(proc.sprite_import.pivot_modes),
+                ),
+                tileable=(
+                    None
+                    if proc.tileable is None
+                    else TileableProcessingCapabilitiesSchema(
+                        available=proc.tileable.available,
+                        seam_analysis=proc.tileable.seam_analysis,
+                        seam_correction=proc.tileable.seam_correction,
+                        palette_reduction=proc.tileable.palette_reduction,
+                        ai_inpaint_available=proc.tileable.ai_inpaint_available,
+                        seam_blend_width=IntRangeSchema(
+                            minimum=proc.tileable.seam_blend_width.minimum,
+                            maximum=proc.tileable.seam_blend_width.maximum,
+                            default=proc.tileable.seam_blend_width.default
+                            or proc.tileable.seam_blend_width.minimum,
+                        ),
+                        palette_color_count=IntRangeSchema(
+                            minimum=proc.tileable.palette_color_count.minimum,
+                            maximum=proc.tileable.palette_color_count.maximum,
+                            default=proc.tileable.palette_color_count.default
+                            or proc.tileable.palette_color_count.minimum,
+                        ),
+                        target_size=proc.tileable.target_size,
+                        circular_offset_px=proc.tileable.circular_offset_px,
+                        protected_border_px=proc.tileable.protected_border_px,
+                    )
                 ),
             )
         return cls(

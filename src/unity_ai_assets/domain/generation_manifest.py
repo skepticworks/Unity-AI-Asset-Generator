@@ -90,6 +90,11 @@ class ManifestRequestInfo:
     custom_pivot_x: float | None = None
     custom_pivot_y: float | None = None
     atlas_hint: str | None = None
+    tileable: bool = False
+    apply_seam_correction: bool = False
+    seam_blend_width: int | None = None
+    palette_reduction_enabled: bool = False
+    palette_color_count: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +130,18 @@ class ManifestProcessingInfo:
     atlas_hint: str | None = None
     original_relative_path: str | None = None
     final_relative_path: str | None = None
+    tileable: bool = False
+    seam_correction_applied: bool = False
+    palette_reduction_applied: bool = False
+    seam_blend_width: int | None = None
+    palette_color_count: int | None = None
+    seam_score_before: float | None = None
+    seam_score_after: float | None = None
+    horizontal_seam_score: float | None = None
+    vertical_seam_score: float | None = None
+    horizontal_wrap_discontinuity: float | None = None
+    vertical_wrap_discontinuity: float | None = None
+    seam_inpaint_implementation: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,10 +195,19 @@ class GenerationManifest:
             "custom_pivot_x": self.request.custom_pivot_x,
             "custom_pivot_y": self.request.custom_pivot_y,
             "atlas_hint": self.request.atlas_hint,
+            "tileable": self.request.tileable,
+            "apply_seam_correction": self.request.apply_seam_correction,
+            "seam_blend_width": self.request.seam_blend_width,
+            "palette_reduction_enabled": self.request.palette_reduction_enabled,
+            "palette_color_count": self.request.palette_color_count,
         }
         for key, value in optional_request.items():
             if value is not None:
                 request_payload[key] = value
+        # Always echo booleans for tileable controls when present on the request model.
+        request_payload["tileable"] = self.request.tileable
+        request_payload["apply_seam_correction"] = self.request.apply_seam_correction
+        request_payload["palette_reduction_enabled"] = self.request.palette_reduction_enabled
 
         payload: dict[str, Any] = {
             "schema": {
@@ -254,6 +280,18 @@ class GenerationManifest:
                 "atlas_hint": proc.atlas_hint,
                 "original_relative_path": proc.original_relative_path,
                 "final_relative_path": proc.final_relative_path,
+                "tileable": proc.tileable,
+                "seam_correction_applied": proc.seam_correction_applied,
+                "palette_reduction_applied": proc.palette_reduction_applied,
+                "seam_blend_width": proc.seam_blend_width,
+                "palette_color_count": proc.palette_color_count,
+                "seam_score_before": proc.seam_score_before,
+                "seam_score_after": proc.seam_score_after,
+                "horizontal_seam_score": proc.horizontal_seam_score,
+                "vertical_seam_score": proc.vertical_seam_score,
+                "horizontal_wrap_discontinuity": proc.horizontal_wrap_discontinuity,
+                "vertical_wrap_discontinuity": proc.vertical_wrap_discontinuity,
+                "seam_inpaint_implementation": proc.seam_inpaint_implementation,
             }
         return payload
 
@@ -352,6 +390,18 @@ def _parse_processing(raw: Any) -> ManifestProcessingInfo | None:
         atlas_hint=raw.get("atlas_hint"),
         original_relative_path=raw.get("original_relative_path"),
         final_relative_path=raw.get("final_relative_path"),
+        tileable=bool(raw.get("tileable") or False),
+        seam_correction_applied=bool(raw.get("seam_correction_applied") or False),
+        palette_reduction_applied=bool(raw.get("palette_reduction_applied") or False),
+        seam_blend_width=_optional_int(raw.get("seam_blend_width")),
+        palette_color_count=_optional_int(raw.get("palette_color_count")),
+        seam_score_before=_optional_float(raw.get("seam_score_before")),
+        seam_score_after=_optional_float(raw.get("seam_score_after")),
+        horizontal_seam_score=_optional_float(raw.get("horizontal_seam_score")),
+        vertical_seam_score=_optional_float(raw.get("vertical_seam_score")),
+        horizontal_wrap_discontinuity=_optional_float(raw.get("horizontal_wrap_discontinuity")),
+        vertical_wrap_discontinuity=_optional_float(raw.get("vertical_wrap_discontinuity")),
+        seam_inpaint_implementation=raw.get("seam_inpaint_implementation"),
     )
 
 
@@ -431,6 +481,11 @@ def _parse_versioned(payload: dict[str, Any], *, schema_version: str) -> Generat
             custom_pivot_x=_optional_float(request.get("custom_pivot_x")),
             custom_pivot_y=_optional_float(request.get("custom_pivot_y")),
             atlas_hint=request.get("atlas_hint"),
+            tileable=bool(request.get("tileable") or False),
+            apply_seam_correction=bool(request.get("apply_seam_correction") or False),
+            seam_blend_width=_optional_int(request.get("seam_blend_width")),
+            palette_reduction_enabled=bool(request.get("palette_reduction_enabled") or False),
+            palette_color_count=_optional_int(request.get("palette_color_count")),
         ),
         outputs=outputs,
         profile=(

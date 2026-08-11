@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.6.1 — UI, seam-repair wiring, transparency clarity
+
+- Generator window: foldout sections, word-wrapped prompts, tooltips, responsive previews,
+  and explicit post-generate processing status (seam repair / background removal).
+- Tileable inspect: always-available Texture2D picker, Project Selection / last-import shortcuts,
+  optional compare texture (single + 3×3), auto-load after generate.
+- Fixed `GenerationController` dropping tileable/seam-repair overrides so AI seam repair
+  actually runs when enabled on generate; manifest fields expose applied/implementation.
+- Transparent backgrounds: default `BACKGROUND_REMOVAL_ENABLED=true`, capabilities expose
+  `unavailable_reason`, UI enables strategy only for sprite/icon with clear rembg guidance.
+- Backend: `GET /` service identity; CDP probe paths filtered from access logs.
+
+## 0.6.0 — Milestone 6 tileable texture workflow
+
+- Added `ps1_tileable_texture` generation/import profiles with seamless prompt guidance and
+  Repeat wrap-mode Unity import defaults.
+- Added offset (50%) preview, seam analysis diagnostics, modular soft-edge seam correction,
+  3×3 tile preview, optional palette reduction, and Unity repeat/material tiling preview.
+- Seam correction preserves the original asset (sibling `.corrected` / `.palette` outputs).
+- Extended generation profile schema 1.2, capabilities schema 1.2, and manifest schema 1.3
+  with tileable processing settings and provenance.
+
 ## 0.5.0 — Milestone 5 sprite and icon workflow
 
 - Added sprite/icon generation through the shared text-to-image pipeline with explicit

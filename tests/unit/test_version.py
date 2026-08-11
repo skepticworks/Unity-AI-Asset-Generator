@@ -21,13 +21,13 @@ def test_api_version_constants() -> None:
 
 
 def test_schema_versions() -> None:
-    assert CAPABILITIES_SCHEMA_VERSION == "1.1"
-    assert GENERATION_MANIFEST_SCHEMA_VERSION == "1.2"
+    assert CAPABILITIES_SCHEMA_VERSION == "1.2"
+    assert GENERATION_MANIFEST_SCHEMA_VERSION == "1.3"
 
 
 def test_application_identity() -> None:
     assert APPLICATION_NAME == "unity-ai-asset-generator"
-    assert APPLICATION_VERSION_FALLBACK == "0.5.0"
+    assert APPLICATION_VERSION_FALLBACK == "0.6.0"
     assert APPLICATION_VERSION
     resolved = resolve_application_version()
     assert resolved == APPLICATION_VERSION
@@ -35,5 +35,5 @@ def test_application_identity() -> None:
 
 
 def test_version_module_is_single_source() -> None:
-    assert version_module.CAPABILITIES_SCHEMA_VERSION == "1.1"
-    assert version_module.GENERATION_MANIFEST_SCHEMA_VERSION == "1.2"
+    assert version_module.CAPABILITIES_SCHEMA_VERSION == "1.2"
+    assert version_module.GENERATION_MANIFEST_SCHEMA_VERSION == "1.3"

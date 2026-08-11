@@ -50,6 +50,11 @@ def generation_profile_to_dict(profile: GenerationProfile) -> dict[str, Any]:
             "custom_pivot_x": defaults.custom_pivot_x,
             "custom_pivot_y": defaults.custom_pivot_y,
             "atlas_hint": defaults.atlas_hint,
+            "tileable": defaults.tileable,
+            "apply_seam_correction": defaults.apply_seam_correction,
+            "seam_blend_width": defaults.seam_blend_width,
+            "palette_reduction_enabled": defaults.palette_reduction_enabled,
+            "palette_color_count": defaults.palette_color_count,
         },
         "unity": {
             "import_profile_id": profile.unity.import_profile_id,

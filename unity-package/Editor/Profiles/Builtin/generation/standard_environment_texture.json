@@ -5,7 +5,7 @@
   },
   "profile": {
     "id": "standard_environment_texture",
-    "revision": 1,
+    "revision": 2,
     "display_name": "Standard Environment Texture",
     "description": "General game environment texture suitable for Unity materials.",
     "asset_type": "texture",
@@ -14,16 +14,26 @@
   },
   "prompt": {
     "template_id": "standard_environment_texture",
-    "template_revision": 1,
+    "template_revision": 2,
     "default_modifiers": [
       "consistent lighting",
-      "game-ready detail"
+      "natural surface variation",
+      "material sample filling the frame"
     ]
   },
   "negative_prompt": {
     "profile_id": "base_quality_negative",
     "profile_revision": 1,
-    "additional_terms": []
+    "additional_terms": [
+      "grid",
+      "tiled panels",
+      "mosaic",
+      "sheet of tiles",
+      "border",
+      "frame",
+      "vignette",
+      "perspective vanishing point"
+    ]
   },
   "generation_defaults": {
     "width": 512,

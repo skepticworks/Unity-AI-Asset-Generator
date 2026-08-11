@@ -1,0 +1,49 @@
+{
+  "schema": {
+    "name": "generation-profile",
+    "version": "1.2"
+  },
+  "profile": {
+    "id": "ps1_tileable_texture",
+    "revision": 2,
+    "display_name": "PS1 Tileable Texture",
+    "description": "Low-resolution continuous surface texture for repeating Unity materials. Prompts describe an albedo map, not a sheet of tiles. Use offset/tile previews and seam diagnostics after generation; optional correction does not guarantee perfect seams.",
+    "asset_type": "texture",
+    "builtin": true,
+    "tags": ["ps1", "texture", "tileable", "seamless"]
+  },
+  "prompt": {
+    "template_id": "ps1_tileable_texture",
+    "template_revision": 2,
+    "default_modifiers": [
+      "uniform surface density",
+      "consistent weathering across the whole image",
+      "soft dithering",
+      "material sample not a constructed wall"
+    ]
+  },
+  "negative_prompt": {
+    "profile_id": "tileable_texture_negative",
+    "profile_revision": 2,
+    "additional_terms": []
+  },
+  "generation_defaults": {
+    "width": 512,
+    "height": 512,
+    "steps": 25,
+    "guidance_scale": 7.0,
+    "seed_strategy": "random",
+    "fixed_seed": null,
+    "transparency_strategy": "none",
+    "tileable": true,
+    "apply_seam_correction": false,
+    "seam_blend_width": 64,
+    "palette_reduction_enabled": false,
+    "palette_color_count": 16
+  },
+  "unity": {
+    "import_profile_id": "ps1_tileable_texture",
+    "suggested_output_directory": "Assets/Generated/Textures/Tileable",
+    "create_material": true
+  }
+}

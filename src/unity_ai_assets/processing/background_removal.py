@@ -18,6 +18,39 @@ REMBG_BACKEND_ID = "rembg"
 REMBG_DEFAULT_MODEL = "u2net"
 REMBG_MODEL_LICENSE = "Apache-2.0"
 REMBG_MODEL_SOURCE = "https://github.com/danielgatis/rembg (U^2-Net / u2net weights)"
+REMBG_INSTALL_HINT = (
+    "Install optional extra: pip install -e \".[background-removal]\" "
+    "(or pip install rembg onnxruntime), then restart the backend."
+)
+
+
+def rembg_importable() -> bool:
+    """Return True when the rembg package imports (does not load ONNX weights)."""
+    try:
+        import rembg  # noqa: F401
+    except Exception:  # noqa: BLE001
+        return False
+    return True
+
+
+def background_removal_unavailable_reason(
+    *,
+    enabled: bool,
+    backend: str,
+    remover: ImageBackgroundRemover | None = None,
+) -> str | None:
+    """Human-readable reason when background removal cannot run."""
+    if not enabled:
+        return (
+            "Background removal is disabled in backend settings "
+            "(BACKGROUND_REMOVAL_ENABLED=false)."
+        )
+    if isinstance(remover, UnavailableBackgroundRemover):
+        return remover.reason
+    normalized = (backend or REMBG_BACKEND_ID).strip().lower()
+    if normalized in {REMBG_BACKEND_ID, "rembg-u2net"} and not rembg_importable():
+        return f"rembg is not installed. {REMBG_INSTALL_HINT}"
+    return None
 
 
 @runtime_checkable
@@ -222,6 +255,10 @@ def create_background_remover(
         )
     normalized = (backend or REMBG_BACKEND_ID).strip().lower()
     if normalized in {REMBG_BACKEND_ID, "rembg-u2net"}:
+        if not rembg_importable():
+            return UnavailableBackgroundRemover(
+                reason=f"rembg is not installed. {REMBG_INSTALL_HINT}"
+            )
         return RembgBackgroundRemover(model_name=model or REMBG_DEFAULT_MODEL)
     if normalized == "fake":
         return FakeBackgroundRemover()

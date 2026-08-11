@@ -34,12 +34,18 @@ from unity_ai_assets.domain.capabilities import (
     SeedConstraints,
     SpriteImportCapabilities,
     TextToImageCapabilities,
+    TileableProcessingCapabilities,
     UnsupportedOperation,
 )
 from unity_ai_assets.domain.enums import AssetType, PivotMode, TransparencyStrategy
 from unity_ai_assets.domain.generation_policy import GenerationPolicy
 from unity_ai_assets.inference.backend import ImageGenerationBackend
 from unity_ai_assets.processing.background_removal import ImageBackgroundRemover
+from unity_ai_assets.processing.seam_inpaint import (
+    FakeSeamInpainter,
+    SeamInpainter,
+    UnavailableSeamInpainter,
+)
 
 
 class CapabilityService:
@@ -51,32 +57,62 @@ class CapabilityService:
         policy: GenerationPolicy,
         backend: ImageGenerationBackend,
         background_remover: ImageBackgroundRemover | None = None,
+        seam_inpainter: SeamInpainter | None = None,
     ) -> None:
         self._settings = settings
         self._policy = policy
         self._backend = backend
         self._background_remover = background_remover
+        self._seam_inpainter = seam_inpainter
 
     def get_capabilities(self) -> CapabilityDocument:
         """Assemble the versioned capability document."""
         inference = self._backend.describe_capabilities()
         return self._assemble(inference)
 
+    def _seam_inpaint_available(self) -> bool:
+        if self._seam_inpainter is None:
+            return False
+        if isinstance(self._seam_inpainter, UnavailableSeamInpainter):
+            return False
+        if isinstance(self._seam_inpainter, FakeSeamInpainter):
+            return self._seam_inpainter.available
+        return bool(self._settings.seam_inpaint_enabled) and self._seam_inpainter.available
+
     def _background_removal_available(self) -> bool:
         if self._background_remover is None:
             return False
-        # Do not force-load rembg weights during capability probes.
-        # Report configured enablement; Unavailable/Fake advertise accurately.
+        # Do not force-load rembg ONNX weights during capability probes.
         from unity_ai_assets.processing.background_removal import (  # noqa: PLC0415
             FakeBackgroundRemover,
             UnavailableBackgroundRemover,
+            rembg_importable,
         )
 
         if isinstance(self._background_remover, UnavailableBackgroundRemover):
             return False
         if isinstance(self._background_remover, FakeBackgroundRemover):
             return True
-        return bool(self._settings.background_removal_enabled)
+        if not self._settings.background_removal_enabled:
+            return False
+        # For rembg: importability without weight load is enough for advertising.
+        backend = (self._settings.background_removal_backend or "").strip().lower()
+        if backend in {"rembg", "rembg-u2net", ""}:
+            return rembg_importable()
+        return True
+
+    def _background_removal_unavailable_reason(self) -> str | None:
+        if self._background_removal_available():
+            return None
+        from unity_ai_assets.processing.background_removal import (  # noqa: PLC0415
+            background_removal_unavailable_reason,
+        )
+
+        return background_removal_unavailable_reason(
+            enabled=self._settings.background_removal_enabled,
+            backend=self._settings.background_removal_backend,
+            remover=self._background_remover,
+        )
 
     def _assemble(self, inference: InferenceCapabilities) -> CapabilityDocument:
         policy = self._policy
@@ -90,6 +126,7 @@ class CapabilityService:
         )
 
         bg_available = self._background_removal_available()
+        bg_reason = self._background_removal_unavailable_reason()
         strategies = [TransparencyStrategy.NONE.value]
         if bg_available or settings.background_removal_enabled:
             # Advertise background_removal when enabled in config even if the
@@ -97,18 +134,9 @@ class CapabilityService:
             # once generation is attempted / availability is probed.
             strategies.append(TransparencyStrategy.BACKGROUND_REMOVAL.value)
 
-        # When enabled but dependency missing, still list the strategy but mark
-        # background_removal.available=false so compatibility can gate.
-        if settings.background_removal_enabled and not bg_available:
-            # Probe without downloading if already known unavailable.
-            bg_available = False
-
         remover_id = None
         remover_model = None
-        if self._background_remover is not None and not isinstance(
-            self._background_remover,
-            type(None),
-        ):
+        if self._background_remover is not None:
             from unity_ai_assets.processing.background_removal import (  # noqa: PLC0415
                 UnavailableBackgroundRemover,
             )
@@ -124,6 +152,7 @@ class CapabilityService:
                 backend=remover_id if settings.background_removal_enabled else None,
                 model=remover_model if settings.background_removal_enabled else None,
                 produces_native_alpha=False,
+                unavailable_reason=None if bg_available else bg_reason,
             ),
             alpha_cleanup=AlphaCleanupCapabilities(
                 available=True,
@@ -144,6 +173,22 @@ class CapabilityService:
                 supported=True,
                 single_sprite_only=True,
                 pivot_modes=[mode.value for mode in PivotMode],
+            ),
+            tileable=TileableProcessingCapabilities(
+                available=True,
+                seam_analysis=True,
+                seam_correction=True,
+                palette_reduction=True,
+                ai_inpaint_available=self._seam_inpaint_available(),
+                seam_blend_width=NumericRangeInt(
+                    minimum=8,
+                    maximum=128,
+                    default=settings.default_seam_width,
+                ),
+                palette_color_count=NumericRangeInt(minimum=2, maximum=256, default=16),
+                target_size=512,
+                circular_offset_px=256,
+                protected_border_px=4,
             ),
         )
 

@@ -5,7 +5,7 @@
   },
   "profile": {
     "id": "ps1_environment_texture",
-    "revision": 1,
+    "revision": 2,
     "display_name": "PS1 Environment Texture",
     "description": "Low-resolution environment texture for PS1-style games.",
     "asset_type": "texture",
@@ -14,16 +14,25 @@
   },
   "prompt": {
     "template_id": "ps1_environment_texture",
-    "template_revision": 1,
+    "template_revision": 2,
     "default_modifiers": [
       "muted industrial colors",
-      "tileable surface appearance"
+      "continuous material surface",
+      "no panel grid"
     ]
   },
   "negative_prompt": {
     "profile_id": "base_ps1_negative",
     "profile_revision": 1,
-    "additional_terms": []
+    "additional_terms": [
+      "grid",
+      "tiled panels",
+      "mosaic",
+      "sheet of tiles",
+      "border",
+      "frame",
+      "vignette"
+    ]
   },
   "generation_defaults": {
     "width": 512,

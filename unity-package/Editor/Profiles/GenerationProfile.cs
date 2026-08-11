@@ -45,6 +45,11 @@ namespace UnityAiAssets.Editor.Profiles
         public int AlphaFeather;
         public bool RemoveNearTransparent = true;
         public bool ZeroRgbWhenTransparent = true;
+        public bool Tileable;
+        public bool ApplySeamCorrection;
+        public int SeamBlendWidth = 64;
+        public bool PaletteReductionEnabled;
+        public int PaletteColorCount = 16;
     }
 
     public sealed class GenerationProfile

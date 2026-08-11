@@ -100,6 +100,7 @@ namespace UnityAiAssets.Editor.Api
         public string Backend;
         public string Model;
         public bool ProducesNativeAlpha;
+        public string UnavailableReason;
     }
 
     public sealed class AlphaCleanupCapabilities
@@ -118,12 +119,27 @@ namespace UnityAiAssets.Editor.Api
         public List<string> PivotModes = new List<string>();
     }
 
+    public sealed class TileableProcessingCapabilities
+    {
+        public bool Available = true;
+        public bool SeamAnalysis = true;
+        public bool SeamCorrection = true;
+        public bool PaletteReduction = true;
+        public bool AiInpaintAvailable;
+        public IntRange SeamBlendWidth;
+        public IntRange PaletteColorCount;
+        public int TargetSize = 512;
+        public int CircularOffsetPx = 256;
+        public int ProtectedBorderPx = 4;
+    }
+
     public sealed class ProcessingCapabilities
     {
         public List<string> TransparencyStrategies = new List<string>();
         public BackgroundRemovalCapabilities BackgroundRemoval;
         public AlphaCleanupCapabilities AlphaCleanup;
         public SpriteImportCapabilities SpriteImport;
+        public TileableProcessingCapabilities Tileable;
     }
 
     public sealed class TextToImageCapabilities
@@ -341,7 +357,8 @@ namespace UnityAiAssets.Editor.Api
                         Available = processingNode.Get("background_removal").Get("available").AsBool(),
                         Backend = processingNode.Get("background_removal").Get("backend").AsString(),
                         Model = processingNode.Get("background_removal").Get("model").AsString(),
-                        ProducesNativeAlpha = processingNode.Get("background_removal").Get("produces_native_alpha").AsBool()
+                        ProducesNativeAlpha = processingNode.Get("background_removal").Get("produces_native_alpha").AsBool(),
+                        UnavailableReason = processingNode.Get("background_removal").Get("unavailable_reason").AsString()
                     },
                     AlphaCleanup = new AlphaCleanupCapabilities
                     {
@@ -356,7 +373,22 @@ namespace UnityAiAssets.Editor.Api
                         Supported = processingNode.Get("sprite_import").Get("supported").AsBool(),
                         SingleSpriteOnly = processingNode.Get("sprite_import").Get("single_sprite_only").AsBool(),
                         PivotModes = processingNode.Get("sprite_import").Get("pivot_modes").AsStringList()
-                    }
+                    },
+                    Tileable = processingNode.Get("tileable").IsObject
+                        ? new TileableProcessingCapabilities
+                        {
+                            Available = processingNode.Get("tileable").Get("available").AsBool(true),
+                            SeamAnalysis = processingNode.Get("tileable").Get("seam_analysis").AsBool(true),
+                            SeamCorrection = processingNode.Get("tileable").Get("seam_correction").AsBool(true),
+                            PaletteReduction = processingNode.Get("tileable").Get("palette_reduction").AsBool(true),
+                            AiInpaintAvailable = processingNode.Get("tileable").Get("ai_inpaint_available").AsBool(),
+                            SeamBlendWidth = ParseIntRange(processingNode.Get("tileable").Get("seam_blend_width")),
+                            PaletteColorCount = ParseIntRange(processingNode.Get("tileable").Get("palette_color_count")),
+                            TargetSize = processingNode.Get("tileable").Get("target_size").AsInt(512),
+                            CircularOffsetPx = processingNode.Get("tileable").Get("circular_offset_px").AsInt(256),
+                            ProtectedBorderPx = processingNode.Get("tileable").Get("protected_border_px").AsInt(4)
+                        }
+                        : new TileableProcessingCapabilities()
                 } : null,
             };
 
@@ -379,6 +411,13 @@ namespace UnityAiAssets.Editor.Api
             Minimum = node.Get("minimum").IsNull ? node.Get("min").AsFloat() : node.Get("minimum").AsFloat(),
             Maximum = node.Get("maximum").IsNull ? node.Get("max").AsFloat() : node.Get("maximum").AsFloat(),
             Default = node.Get("default").AsFloat()
+        };
+
+        static IntRange ParseIntRange(JsonNode node) => new IntRange
+        {
+            Minimum = node.Get("minimum").IsNull ? node.Get("min").AsInt() : node.Get("minimum").AsInt(),
+            Maximum = node.Get("maximum").IsNull ? node.Get("max").AsInt() : node.Get("maximum").AsInt(),
+            Default = node.Get("default").AsInt()
         };
     }
 }

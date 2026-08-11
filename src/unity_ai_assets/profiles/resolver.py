@@ -37,6 +37,11 @@ def resolve_generation_profile(
     custom_pivot_x: float | None = None,
     custom_pivot_y: float | None = None,
     atlas_hint: str | None = None,
+    tileable: bool | None = None,
+    apply_seam_correction: bool | None = None,
+    seam_blend_width: int | None = None,
+    palette_reduction_enabled: bool | None = None,
+    palette_color_count: int | None = None,
     max_prompt_length: int = 2**31 - 1,
     max_negative_prompt_length: int = 2**31 - 1,
 ) -> ResolvedGenerationSettings:
@@ -146,6 +151,23 @@ def resolve_generation_profile(
         custom_pivot_x=resolved_pivot_x,
         custom_pivot_y=resolved_pivot_y,
         atlas_hint=resolved_atlas,
+        tileable=defaults.tileable if tileable is None else tileable,
+        apply_seam_correction=(
+            defaults.apply_seam_correction
+            if apply_seam_correction is None
+            else apply_seam_correction
+        ),
+        seam_blend_width=(
+            defaults.seam_blend_width if seam_blend_width is None else seam_blend_width
+        ),
+        palette_reduction_enabled=(
+            defaults.palette_reduction_enabled
+            if palette_reduction_enabled is None
+            else palette_reduction_enabled
+        ),
+        palette_color_count=(
+            defaults.palette_color_count if palette_color_count is None else palette_color_count
+        ),
     )
     compatibility = evaluate_resolved_settings(
         resolved,
@@ -177,5 +199,10 @@ def resolve_generation_profile(
         custom_pivot_x=resolved.custom_pivot_x,
         custom_pivot_y=resolved.custom_pivot_y,
         atlas_hint=resolved.atlas_hint,
+        tileable=resolved.tileable,
+        apply_seam_correction=resolved.apply_seam_correction,
+        seam_blend_width=resolved.seam_blend_width,
+        palette_reduction_enabled=resolved.palette_reduction_enabled,
+        palette_color_count=resolved.palette_color_count,
         compatibility=compatibility,
     )

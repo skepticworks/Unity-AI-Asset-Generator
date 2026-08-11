@@ -215,6 +215,11 @@ def parse_generation_profile(
                 atlas_hint=(
                     None if defaults.get("atlas_hint") is None else str(defaults["atlas_hint"])
                 ),
+                tileable=bool(defaults.get("tileable", False)),
+                apply_seam_correction=bool(defaults.get("apply_seam_correction", False)),
+                seam_blend_width=int(defaults.get("seam_blend_width", 64)),
+                palette_reduction_enabled=bool(defaults.get("palette_reduction_enabled", False)),
+                palette_color_count=int(defaults.get("palette_color_count", 16)),
             ),
             unity=GenerationProfileUnitySettings(
                 import_profile_id=validate_profile_id(str(unity["import_profile_id"])),

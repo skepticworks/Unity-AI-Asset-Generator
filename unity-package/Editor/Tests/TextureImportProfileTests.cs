@@ -24,6 +24,17 @@ namespace UnityAiAssets.Editor.Tests
         }
 
         [Test]
+        public void Ps1Tileable_HasRepeatWrapAndPointFilter()
+        {
+            var profile = TextureImportProfile.CreatePs1Tileable();
+            Assert.AreEqual("PS1 Tileable Texture", profile.DisplayName);
+            Assert.AreEqual(TextureWrapMode.Repeat, profile.WrapMode);
+            Assert.AreEqual(FilterMode.Point, profile.FilterMode);
+            Assert.IsFalse(profile.Mipmaps);
+            Assert.AreEqual(TextureImporterCompression.Uncompressed, profile.Compression);
+        }
+
+        [Test]
         public void StandardEnvironment_HasExpectedDefaults()
         {
             var profile = TextureImportProfile.CreateStandardEnvironment();

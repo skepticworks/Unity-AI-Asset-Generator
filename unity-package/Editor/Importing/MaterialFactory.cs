@@ -52,6 +52,16 @@ namespace UnityAiAssets.Editor.Importing
                 name = PathWithoutExtension(uniquePath)
             };
             AssignMainTexture(material, texture);
+            // For repeating textures, show UV tiling on the material by default (PS1-style surfaces).
+            if (texture.wrapMode == TextureWrapMode.Repeat)
+            {
+                if (material.HasProperty("_BaseMap"))
+                    material.SetTextureScale("_BaseMap", new Vector2(2f, 2f));
+                else if (material.HasProperty("_MainTex"))
+                    material.SetTextureScale("_MainTex", new Vector2(2f, 2f));
+                else
+                    material.mainTextureScale = new Vector2(2f, 2f);
+            }
 
             AssetDatabase.CreateAsset(material, uniquePath);
             AssetDatabase.SaveAssets();

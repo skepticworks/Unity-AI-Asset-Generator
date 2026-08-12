@@ -51,9 +51,11 @@ class Settings(BaseSettings):
     exclusive_model_vram: bool = Field(
         default=True,
         description=(
-            "When true (and CPU offload is off), keep only one diffusion pipeline in VRAM "
-            "at a time: unload txt2img before seam inpaint, unload inpaint before the next "
-            "txt2img. Preferred on low-VRAM GPUs when model reload cost is acceptable."
+            "When true (and CPU offload is off), keep only one GPU-resident model in VRAM "
+            "at a time across txt2img, background removal (rembg), and seam inpaint: unload "
+            "post-processing weights before txt2img, unload txt2img before post-processing, "
+            "then unload post-processing weights after the request. Preferred on low-VRAM "
+            "GPUs when reload cost is acceptable."
         ),
     )
     local_files_only: bool = Field(default=False)

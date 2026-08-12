@@ -120,6 +120,49 @@ def test_exclusive_vram_unloads_between_txt2img_and_inpaint(tmp_path: Path) -> N
     assert inpainter.is_loaded is False
 
 
+def test_exclusive_vram_unloads_between_txt2img_and_background_removal(tmp_path: Path) -> None:
+    """With EXCLUSIVE_MODEL_VRAM, txt2img and rembg should not stay resident together."""
+    from unity_ai_assets.processing.background_removal import FakeBackgroundRemover
+    from unity_ai_assets.processing.pipeline import ImageProcessingPipeline
+    from unity_ai_assets.processing.seam_inpaint import UnavailableSeamInpainter
+
+    settings = Settings(
+        model_id="fake/test-model",
+        device="cpu",
+        output_directory=tmp_path / "generated",
+        max_width=1024,
+        max_height=1024,
+        enable_cpu_offload=False,
+        exclusive_model_vram=True,
+        preserve_original_image=True,
+    )
+    (tmp_path / "generated").mkdir()
+    backend = FakeImageGenerationBackend(model_loaded=False)
+    remover = FakeBackgroundRemover()
+    pipeline = ImageProcessingPipeline(remover, UnavailableSeamInpainter())
+    service = GenerationService(
+        backend,
+        OutputService(settings.output_directory, app_version="0.6.1-test", model_family="sd15"),
+        settings,
+        processing_pipeline=pipeline,
+    )
+
+    result = service.generate_texture(
+        prompt="hero",
+        width=64,
+        height=64,
+        steps=1,
+        seed=1,
+        asset_type="sprite",
+        transparency_strategy="background_removal",
+    )
+    assert result.generation_id
+    assert backend.unload_calls >= 1
+    assert remover.unload_calls >= 1
+    assert backend.model_loaded is False
+    assert remover.is_loaded is False
+
+
 def test_exclusive_vram_disabled_when_cpu_offload(tmp_path: Path) -> None:
     settings = Settings(
         model_id="fake/test-model",

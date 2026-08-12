@@ -1,0 +1,16 @@
+{
+  "schema": {
+    "name": "prompt-template",
+    "version": "1.0"
+  },
+  "template": {
+    "id": "empty_icon",
+    "revision": 1,
+    "display_name": "Empty Icon",
+    "description": "Passthrough prompt for testing icon generation. The subject is sent as the full prompt with no extra wording.",
+    "asset_type": "icon",
+    "pattern": "{subject}",
+    "placeholders": ["subject"],
+    "required_placeholders": ["subject"]
+  }
+}

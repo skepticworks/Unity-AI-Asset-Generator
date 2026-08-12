@@ -135,6 +135,15 @@ class GenerationService:
         if unload():
             logger.info("Freed seam-inpaint VRAM (%s)", reason)
 
+    def _unload_background_removal(self, *, reason: str) -> None:
+        if self._processing is None:
+            return
+        unload = getattr(self._processing.background_remover, "unload_weights", None)
+        if not callable(unload):
+            return
+        if unload():
+            logger.info("Freed background-removal VRAM (%s)", reason)
+
     def generate_texture(
         self,
         *,
@@ -500,22 +509,32 @@ class GenerationService:
             request.steps,
         )
 
+        needs_background_removal = (
+            request.transparency_strategy == TransparencyStrategy.BACKGROUND_REMOVAL.value
+        )
+        needs_gpu_post_processing = (
+            needs_background_removal or request.apply_seam_correction
+        )
+
         with self._generation_lock:
             if self.exclusive_model_vram:
-                # Ensure inpaint is not occupying VRAM during txt2img.
+                # Ensure post-processing models are not occupying VRAM during txt2img.
                 self._unload_inpaint(reason="before txt2img")
+                self._unload_background_removal(reason="before txt2img")
 
             generated = self._backend.generate(request)
 
-            if self.exclusive_model_vram and request.apply_seam_correction:
-                # Hand VRAM to the inpaint stage before post-processing.
-                self._unload_txt2img(reason="before seam inpaint")
+            if self.exclusive_model_vram and needs_gpu_post_processing:
+                # Hand VRAM to the next GPU post-processing stage.
+                self._unload_txt2img(reason="before post-processing")
 
             processing_result = self._apply_processing(generated, request)
 
-            if self.exclusive_model_vram and request.apply_seam_correction:
-                # Free inpaint weights after repair so Unity / next generate have headroom.
-                self._unload_inpaint(reason="after seam inpaint")
+            if self.exclusive_model_vram:
+                if request.apply_seam_correction:
+                    self._unload_inpaint(reason="after post-processing")
+                if needs_background_removal:
+                    self._unload_background_removal(reason="after post-processing")
 
             if request.apply_seam_correction:
                 logger.info(
@@ -584,6 +603,7 @@ class GenerationService:
                 alpha_params=alpha_params,
                 preserve_original=self._settings.preserve_original_image,
                 tileable_params=tileable_params,
+                exclusive_vram=self.exclusive_model_vram,
             )
 
         # No pipeline registered: still apply local tileable steps when requested.

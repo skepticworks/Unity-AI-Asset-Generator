@@ -28,5 +28,21 @@ namespace UnityAiAssets.Editor.Tests
             Assert.AreEqual("bottom_center", result.PivotMode);
             Assert.AreEqual("characters", result.AtlasHint);
         }
+
+        [TestCase("empty_tileable_texture", true)]
+        [TestCase("empty_standard_texture", false)]
+        [TestCase("empty_sprite", false)]
+        [TestCase("empty_icon", false)]
+        [TestCase("empty_ui", false)]
+        public void ResolvesEmptyProfilePromptAsSubjectOnly(string profileId, bool tileable)
+        {
+            var registry = new GenerationProfileRegistry();
+            var resolver = new GenerationProfileResolver(new ProfileCatalog());
+            var result = resolver.Resolve(registry.Get(profileId),
+                new UserProfileOverrides { Subject = "test prompt" });
+            Assert.AreEqual("test prompt", result.ConstructedPrompt);
+            Assert.AreEqual("", result.ConstructedNegativePrompt);
+            Assert.AreEqual(tileable, result.Tileable);
+        }
     }
 }

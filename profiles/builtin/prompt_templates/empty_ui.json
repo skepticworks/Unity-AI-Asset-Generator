@@ -1,0 +1,16 @@
+{
+  "schema": {
+    "name": "prompt-template",
+    "version": "1.0"
+  },
+  "template": {
+    "id": "empty_ui",
+    "revision": 1,
+    "display_name": "Empty UI",
+    "description": "Passthrough prompt for testing UI generation. The subject is sent as the full prompt with no extra wording.",
+    "asset_type": "ui",
+    "pattern": "{subject}",
+    "placeholders": ["subject"],
+    "required_placeholders": ["subject"]
+  }
+}

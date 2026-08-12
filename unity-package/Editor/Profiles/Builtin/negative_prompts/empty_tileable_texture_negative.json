@@ -1,0 +1,14 @@
+{
+  "schema": {
+    "name": "negative-prompt-profile",
+    "version": "1.0"
+  },
+  "profile": {
+    "id": "empty_tileable_texture_negative",
+    "revision": 1,
+    "display_name": "Empty Tileable Texture Negative",
+    "description": "No baked-in negative terms. Use Additional Negative when testing.",
+    "tags": ["texture", "tileable"],
+    "terms": []
+  }
+}

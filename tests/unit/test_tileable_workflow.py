@@ -13,6 +13,7 @@ from unity_ai_assets.inference.fake_backend import FakeImageGenerationBackend
 from unity_ai_assets.main import create_app
 from unity_ai_assets.profiles.loader import load_builtin_catalog, parse_generation_profile
 from unity_ai_assets.profiles.migration import migrate_profile_payload
+from unity_ai_assets.profiles.resolver import resolve_generation_profile
 from unity_ai_assets.profiles.serialize import generation_profile_to_dict
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -64,6 +65,24 @@ def test_builtin_tileable_profile_loads() -> None:
     assert "ps1_tileable_texture" in catalog.prompt_templates
     assert "tileable_texture_negative" in catalog.negative_prompt_profiles
     assert catalog.import_profiles["ps1_tileable_texture"].settings["wrap_mode"] == "Repeat"
+
+
+def test_empty_tileable_profile_uses_subject_as_full_prompt() -> None:
+    catalog = load_builtin_catalog(BUILTIN)
+    profile = catalog.generation_profiles["empty_tileable_texture"]
+    assert profile.generation_defaults.tileable is True
+    assert profile.default_modifiers == ()
+    assert profile.additional_negative_terms == ()
+    assert catalog.negative_prompt_profiles[profile.negative_prompt_profile_id].terms == ()
+    resolved = resolve_generation_profile(
+        profile,
+        catalog.prompt_templates[profile.template_id],
+        catalog.negative_prompt_profiles[profile.negative_prompt_profile_id],
+        subject="cracked dry mud",
+    )
+    assert resolved.prompt == "cracked dry mud"
+    assert resolved.negative_prompt == ""
+    assert resolved.tileable is True
 
 
 def test_profile_11_migrates_to_12_with_tileable_defaults() -> None:

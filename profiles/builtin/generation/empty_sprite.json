@@ -1,0 +1,53 @@
+{
+  "schema": {
+    "name": "generation-profile",
+    "version": "1.1"
+  },
+  "profile": {
+    "id": "empty_sprite",
+    "revision": 1,
+    "display_name": "Empty Sprite",
+    "description": "Sprite with no baked-in prompt or negative terms. Type the full prompt in Subject to test generation wording. Transparent backgrounds use local background-removal post-processing.",
+    "asset_type": "sprite",
+    "builtin": true,
+    "tags": ["sprite", "character"]
+  },
+  "prompt": {
+    "template_id": "empty_sprite",
+    "template_revision": 1,
+    "default_modifiers": []
+  },
+  "negative_prompt": {
+    "profile_id": "empty_negative",
+    "profile_revision": 1,
+    "additional_terms": []
+  },
+  "generation_defaults": {
+    "width": 512,
+    "height": 512,
+    "steps": 25,
+    "guidance_scale": 7.0,
+    "seed_strategy": "random",
+    "fixed_seed": null,
+    "transparency_strategy": "background_removal",
+    "alpha_threshold": 16,
+    "alpha_feather": 0,
+    "remove_near_transparent": true,
+    "zero_rgb_when_transparent": true,
+    "pixels_per_unit": 100,
+    "pivot_mode": "bottom_center",
+    "custom_pivot_x": null,
+    "custom_pivot_y": null,
+    "atlas_hint": "characters"
+  },
+  "unity": {
+    "import_profile_id": "ps1_sprite",
+    "suggested_output_directory": "Assets/Generated/Sprites",
+    "create_material": false,
+    "pixels_per_unit": 100,
+    "pivot_mode": "bottom_center",
+    "custom_pivot_x": null,
+    "custom_pivot_y": null,
+    "atlas_hint": "characters"
+  }
+}

@@ -71,6 +71,10 @@ class ImageBackgroundRemover(Protocol):
         """Return an RGBA image with background removed. Dimensions preserved."""
         ...
 
+    def unload_weights(self) -> bool:
+        """Release loaded remover weights when possible. Returns True if unloaded."""
+        ...
+
 
 class FakeBackgroundRemover:
     """Deterministic fake used by tests (no weights, no network).
@@ -83,6 +87,8 @@ class FakeBackgroundRemover:
     ) -> None:
         self._white_threshold = white_threshold
         self._implementation_id = implementation_id
+        self._loaded = False
+        self.unload_calls: int = 0
 
     @property
     def implementation_id(self) -> str:
@@ -92,7 +98,19 @@ class FakeBackgroundRemover:
     def available(self) -> bool:
         return True
 
+    @property
+    def is_loaded(self) -> bool:
+        return self._loaded
+
+    def unload_weights(self) -> bool:
+        self.unload_calls += 1
+        if not self._loaded:
+            return False
+        self._loaded = False
+        return True
+
     def remove_background(self, image: Image.Image) -> Image.Image:
+        self._loaded = True
         rgb = image.convert("RGB")
         width, height = rgb.size
         rgba = Image.new("RGBA", (width, height))
@@ -124,6 +142,9 @@ class UnavailableBackgroundRemover:
     @property
     def reason(self) -> str:
         return self._reason
+
+    def unload_weights(self) -> bool:
+        return False
 
     def remove_background(self, image: Image.Image) -> Image.Image:
         raise AppError(
@@ -196,6 +217,19 @@ class RembgBackgroundRemover:
                 ) from exc
             return self._session
 
+    def unload_weights(self) -> bool:
+        """Drop the cached rembg session so VRAM/RAM can be reclaimed."""
+        with self._lock:
+            if self._session is None:
+                return False
+            logger.info(
+                "Unloading background-removal model (backend=rembg, model=%s) to free memory",
+                self._model_name,
+            )
+            self._session = None
+            _release_background_removal_memory()
+            return True
+
     def remove_background(self, image: Image.Image) -> Image.Image:
         session = self._ensure_session()
         try:
@@ -230,6 +264,20 @@ class RembgBackgroundRemover:
                 code=AppErrorCode.BACKGROUND_REMOVAL_FAILED,
             )
         return rgba
+
+
+def _release_background_removal_memory() -> None:
+    """Best-effort GC + CUDA cache clear after unloading rembg sessions."""
+    import gc
+
+    gc.collect()
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except ImportError:
+        pass
 
 
 def create_background_remover(

@@ -1,0 +1,14 @@
+{
+  "schema": {
+    "name": "negative-prompt-profile",
+    "version": "1.0"
+  },
+  "profile": {
+    "id": "empty_negative",
+    "revision": 1,
+    "display_name": "Empty Negative",
+    "description": "No baked-in negative terms. Use Additional Negative when testing.",
+    "tags": [],
+    "terms": []
+  }
+}

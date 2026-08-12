@@ -102,6 +102,7 @@ class ImageProcessingPipeline:
         alpha_params: AlphaCleanupParams,
         preserve_original: bool = True,
         tileable_params: TileableProcessingParams | None = None,
+        exclusive_vram: bool = False,
     ) -> ProcessingResult:
         """Apply transparency strategy, then optional tileable steps."""
         strategy = (transparency_strategy or TransparencyStrategy.NONE.value).strip().lower()
@@ -143,6 +144,15 @@ class ImageProcessingPipeline:
             bg_applied = True
             bg_impl = self._background_remover.implementation_id
             alpha_applied = True
+
+        if (
+            exclusive_vram
+            and bg_applied
+            and tileable.apply_seam_correction
+        ):
+            unload = getattr(self._background_remover, "unload_weights", None)
+            if callable(unload):
+                unload()
 
         tileable_result = apply_tileable_processing(
             working,

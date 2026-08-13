@@ -236,6 +236,17 @@ namespace UnityAiAssets.Editor.Api
         public int MaximumConcurrentGenerations;
     }
 
+    public sealed class JobSystemInfo
+    {
+        public bool Supported;
+        public string Persistence;
+        public List<string> States = new List<string>();
+        public int MaximumRetries;
+        public int MaximumConcurrentJobs;
+        public bool AutoRetry;
+        public string Progress;
+    }
+
     /// <summary>
     /// Typed, parsed form of GET /api/v1/capabilities. Built from <see cref="JsonNode"/>
     /// rather than JsonUtility because the payload contains string arrays nested inside
@@ -251,6 +262,7 @@ namespace UnityAiAssets.Editor.Api
         public OperationsInfo Operations;
         public PrecisionInfo Precision;
         public LimitsInfo Limits;
+        public JobSystemInfo Jobs;
 
         public SchemaVersion CapabilitiesSchemaVersion => SchemaVersion.Parse(Schemas.Capabilities);
 
@@ -291,6 +303,7 @@ namespace UnityAiAssets.Editor.Api
             var operationsNode = root.Get("operations");
             var precisionNode = root.Get("precision");
             var limitsNode = root.Get("limits");
+            var jobsNode = root.Get("jobs");
 
             return new CapabilityDocument
             {
@@ -336,6 +349,18 @@ namespace UnityAiAssets.Editor.Api
                 {
                     MaximumConcurrentGenerations = limitsNode.Get("maximum_concurrent_generations").AsInt(),
                 },
+                Jobs = jobsNode != null && jobsNode.IsObject
+                    ? new JobSystemInfo
+                    {
+                        Supported = jobsNode.Get("supported").AsBool(),
+                        Persistence = jobsNode.Get("persistence").AsString(),
+                        States = jobsNode.Get("states").AsStringList(),
+                        MaximumRetries = jobsNode.Get("maximum_retries").AsInt(),
+                        MaximumConcurrentJobs = jobsNode.Get("maximum_concurrent_jobs").AsInt(),
+                        AutoRetry = jobsNode.Get("auto_retry").AsBool(),
+                        Progress = jobsNode.Get("progress").AsString(),
+                    }
+                    : null,
             };
         }
 

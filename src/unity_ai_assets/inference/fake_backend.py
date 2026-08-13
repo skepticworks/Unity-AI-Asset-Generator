@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Callable
 
 from PIL import Image
 
-from unity_ai_assets.core.errors import InferenceError, OperationUnsupportedError
+from unity_ai_assets.core.errors import (
+    GenerationCancelledError,
+    InferenceError,
+    OperationUnsupportedError,
+)
 from unity_ai_assets.domain.capabilities import InferenceCapabilities
 from unity_ai_assets.domain.enums import AssetType, OperationType
 from unity_ai_assets.domain.generation import GeneratedImage, GenerationRequest
@@ -115,13 +120,28 @@ class FakeImageGenerationBackend:
         # White (255) regenerates; black (0) keeps the source. Soft gray is a blend.
         return Image.composite(blended, src, mask)
 
-    def generate(self, request: GenerationRequest) -> GeneratedImage:
+    def generate(
+        self,
+        request: GenerationRequest,
+        *,
+        cancel_event: threading.Event | None = None,
+        on_progress: Callable[[str, int | None, int | None], None] | None = None,
+    ) -> GeneratedImage:
         self.calls.append(request)
         if self._fail:
             raise InferenceError("Fake backend forced failure")
 
         started = time.perf_counter()
-        time.sleep(self._delay_seconds)
+        remaining = max(0.0, float(self._delay_seconds))
+        steps = max(1, request.steps)
+        slice_seconds = remaining / steps if remaining > 0 else 0.0
+        for index in range(steps):
+            if cancel_event is not None and cancel_event.is_set():
+                raise GenerationCancelledError("Fake backend cancelled during inference.")
+            if on_progress is not None:
+                on_progress("generating", index + 1, steps)
+            if slice_seconds > 0:
+                time.sleep(slice_seconds)
         color = self._color_factory(request)
         operation = request.operation or OperationType.TEXT_TO_IMAGE.value
         if operation == OperationType.INPAINTING.value:

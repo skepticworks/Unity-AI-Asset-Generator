@@ -152,6 +152,11 @@ namespace UnityAiAssets.Editor.Api
             return _kind == JsonNodeKind.Number ? (long)_numberValue : fallback;
         }
 
+        public long? AsNullableLong()
+        {
+            return _kind == JsonNodeKind.Number ? (long)_numberValue : (long?)null;
+        }
+
         public float AsFloat(float fallback = 0f)
         {
             return _kind == JsonNodeKind.Number ? (float)_numberValue : fallback;

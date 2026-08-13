@@ -8,7 +8,8 @@ Editor-only package that talks to the local FastAPI backend, downloads generated
 
 Generation starts with an asset type, generation profile, and subject. Unity resolves the
 profile's prompt template and negative prompt, applies explicit overrides, checks the effective
-settings against live backend capabilities, then submits constructed prompts with provenance.
+settings against live backend capabilities, then submits a generation job and polls until the
+result is ready. Provenance is stored on the job and the generation manifest.
 Built-ins are read from `Editor/Profiles/Builtin`; user profiles are atomically stored under
 `ProjectSettings/AIAssetGenerator/Profiles` and never under `Assets/`.
 

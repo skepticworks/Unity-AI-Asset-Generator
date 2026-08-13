@@ -92,6 +92,52 @@ class GenerationStatus(StrEnum):
     FAILED = "failed"
 
 
+class JobState(StrEnum):
+    """Persistent lifecycle states for queued generation jobs."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLING = "cancelling"
+    CANCELLED = "cancelled"
+    INTERRUPTED = "interrupted"
+
+
+JOB_ACTIVE_STATES: frozenset[str] = frozenset(
+    {JobState.QUEUED.value, JobState.RUNNING.value, JobState.CANCELLING.value}
+)
+JOB_TERMINAL_STATES: frozenset[str] = frozenset(
+    {
+        JobState.COMPLETED.value,
+        JobState.FAILED.value,
+        JobState.CANCELLED.value,
+        JobState.INTERRUPTED.value,
+    }
+)
+JOB_RETRYABLE_STATES: frozenset[str] = frozenset(
+    {JobState.FAILED.value, JobState.INTERRUPTED.value, JobState.CANCELLED.value}
+)
+JOB_CANCELLABLE_STATES: frozenset[str] = frozenset(
+    {JobState.QUEUED.value, JobState.RUNNING.value}
+)
+
+
+class JobProgressStage(StrEnum):
+    """Coarse, truthful pipeline stages. Not invented percentages."""
+
+    QUEUED = "queued"
+    VALIDATING = "validating"
+    GENERATING = "generating"
+    PROCESSING = "processing"
+    PERSISTING = "persisting"
+    CANCELLING = "cancelling"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    INTERRUPTED = "interrupted"
+
+
 class OutputKind(StrEnum):
     """Kinds of persisted generation outputs."""
 

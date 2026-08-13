@@ -81,6 +81,25 @@ class Settings(BaseSettings):
     max_negative_prompt_length: int = Field(default=2000, ge=0)
     max_output_name_length: int = Field(default=100, ge=1)
     max_concurrent_generations: int = Field(default=1, ge=1)
+    max_job_retries: int = Field(
+        default=2,
+        ge=0,
+        description="Maximum retry attempts after the initial run (0 disables retry).",
+    )
+    job_auto_retry: bool = Field(
+        default=True,
+        description="Automatically requeue transient job failures up to max_job_retries.",
+    )
+    job_directory: Path | None = Field(
+        default=None,
+        description="Directory for persistent job records. Defaults to {output_directory}/jobs.",
+    )
+    job_history_limit: int = Field(
+        default=100,
+        ge=1,
+        le=1000,
+        description="Default maximum number of jobs returned by history listings.",
+    )
     default_scheduler: str = Field(
         default="pndm",
         description="Stable public scheduler identifier used when selection is unsupported",
@@ -163,6 +182,13 @@ class Settings(BaseSettings):
             return None
         return value
 
+    @field_validator("job_directory", mode="before")
+    @classmethod
+    def _empty_job_dir_to_none(cls, value: object) -> object:
+        if value == "":
+            return None
+        return value
+
     @field_validator("seam_inpaint_model_revision", mode="before")
     @classmethod
     def _empty_inpaint_revision(cls, value: object) -> object:
@@ -220,6 +246,8 @@ class Settings(BaseSettings):
         )
         if not self.app_version:
             object.__setattr__(self, "app_version", APPLICATION_VERSION)
+        if self.job_directory is None:
+            object.__setattr__(self, "job_directory", self.output_directory / "jobs")
         return self
 
     @property

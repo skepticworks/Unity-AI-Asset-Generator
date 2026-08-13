@@ -307,6 +307,29 @@ class ConcurrencyLimits:
 
 
 @dataclass(frozen=True, slots=True)
+class JobSystemCapabilities:
+    """Local job queue advertised to clients. Execution backend is not exposed."""
+
+    supported: bool = True
+    persistence: str = "local_filesystem"
+    states: list[str] = field(
+        default_factory=lambda: [
+            "queued",
+            "running",
+            "completed",
+            "failed",
+            "cancelling",
+            "cancelled",
+            "interrupted",
+        ]
+    )
+    maximum_retries: int = 2
+    maximum_concurrent_jobs: int = 1
+    auto_retry: bool = True
+    progress: str = "stage"
+
+
+@dataclass(frozen=True, slots=True)
 class CapabilityDocument:
     """Complete versioned capability document (domain form)."""
 
@@ -318,6 +341,7 @@ class CapabilityDocument:
     operations: OperationsCapabilities
     precision: PrecisionCapabilities
     limits: ConcurrencyLimits
+    jobs: JobSystemCapabilities = field(default_factory=JobSystemCapabilities)
 
 
 @dataclass(frozen=True, slots=True)

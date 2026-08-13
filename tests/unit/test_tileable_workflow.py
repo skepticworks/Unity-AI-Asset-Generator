@@ -135,7 +135,7 @@ def test_profile_11_migrates_to_12_with_tileable_defaults() -> None:
 
 def test_capabilities_advertise_tileable_processing(tileable_client: TestClient) -> None:
     payload = tileable_client.get("/api/v1/capabilities").json()
-    assert payload["schemas"]["capabilities"] == "1.4"
+    assert payload["schemas"]["capabilities"] == "1.5"
     tileable = payload["operations"]["text_to_image"]["processing"]["tileable"]
     assert tileable["available"] is True
     assert tileable["seam_analysis"] is True

@@ -235,6 +235,52 @@ class PixelsPerUnitInvalidError(AppError):
         )
 
 
+class GenerationCancelledError(Exception):
+    """Raised at a safe pipeline interruption point when a job is cancelled."""
+
+
+class JobNotFoundError(AppError):
+    """Raised when a job ID does not resolve to a persisted record."""
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, code=AppErrorCode.JOB_NOT_FOUND)
+
+
+class JobStateConflictError(AppError):
+    """Raised when a requested job state transition is invalid."""
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, code=AppErrorCode.JOB_STATE_CONFLICT)
+
+
+class JobNotRetryableError(AppError):
+    """Raised when a job cannot be retried."""
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, code=AppErrorCode.JOB_NOT_RETRYABLE)
+
+
+class JobNotCancellableError(AppError):
+    """Raised when a job cannot be cancelled in its current state."""
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, code=AppErrorCode.JOB_NOT_CANCELLABLE)
+
+
+class JobCancelledError(AppError):
+    """Raised when a synchronous waiter observes a cancelled job."""
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, code=AppErrorCode.JOB_CANCELLED)
+
+
+class JobServiceUnavailableError(AppError):
+    """Raised when the job service is shutting down or not accepting work."""
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, code=AppErrorCode.JOB_SERVICE_UNAVAILABLE)
+
+
 @dataclass
 class ErrorEnvelope:
     """Public API error envelope builder helpers."""

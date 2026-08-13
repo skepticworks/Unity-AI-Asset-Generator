@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 
-from unity_ai_assets.api.routes import capabilities, generation, health
+from unity_ai_assets.api.routes import capabilities, generation, health, jobs
 from unity_ai_assets.core.config import Settings, get_settings
 from unity_ai_assets.core.exception_handlers import register_exception_handlers
 from unity_ai_assets.core.logging import configure_logging, get_logger
@@ -23,6 +23,9 @@ from unity_ai_assets.processing.pipeline import ImageProcessingPipeline
 from unity_ai_assets.processing.seam_inpaint import create_seam_inpainter
 from unity_ai_assets.services.capability_service import CapabilityService
 from unity_ai_assets.services.generation_service import GenerationService
+from unity_ai_assets.services.job_executor import LocalGenerationExecutor
+from unity_ai_assets.services.job_service import JobService
+from unity_ai_assets.services.job_store import JobStore
 from unity_ai_assets.services.output_service import OutputService
 
 logger = get_logger(__name__)
@@ -47,7 +50,7 @@ def create_app(
     policy = GenerationPolicy.from_settings(resolved_settings)
 
     @asynccontextmanager
-    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info(
             "Starting unity-ai-assets v%s (model_id=%s, device=%s)",
             resolved_settings.app_version or APPLICATION_VERSION,
@@ -55,8 +58,9 @@ def create_app(
             resolved_settings.device,
         )
         logger.info(
-            "Concurrency: generation requests are serialized with an in-process lock; "
-            "run a single Uvicorn worker for this milestone."
+            "Job queue: local JSON persistence; GPU work is serialized by "
+            "max_concurrent_generations=%s. Run a single Uvicorn worker.",
+            resolved_settings.max_concurrent_generations,
         )
         logger.info(
             "Background removal enabled=%s backend=%s model=%s",
@@ -71,8 +75,13 @@ def create_app(
             resolved_settings.exclusive_model_vram and not resolved_settings.enable_cpu_offload,
             resolved_settings.enable_cpu_offload,
         )
-        yield
-        logger.info("Shutting down unity-ai-assets")
+        job_service: JobService = app.state.job_service
+        job_service.start()
+        try:
+            yield
+        finally:
+            job_service.stop()
+            logger.info("Shutting down unity-ai-assets")
 
     app = FastAPI(
         title="Unity AI Asset Generator",
@@ -128,12 +137,24 @@ def create_app(
         background_remover=background_remover,
         seam_inpainter=seam_inpainter,
     )
+    job_directory = resolved_settings.job_directory or (
+        resolved_settings.output_directory / "jobs"
+    )
+    job_store = JobStore(job_directory)
+    job_executor = LocalGenerationExecutor(generation_service)
+    job_service = JobService(
+        store=job_store,
+        executor=job_executor,
+        settings=resolved_settings,
+    )
 
     app.state.settings = resolved_settings
     app.state.generation_policy = policy
     app.state.generation_service = generation_service
     app.state.output_service = output_service
     app.state.capability_service = capability_service
+    app.state.job_store = job_store
+    app.state.job_service = job_service
     app.state.background_remover = background_remover
     app.state.seam_inpainter = seam_inpainter
     app.state.processing_pipeline = processing_pipeline
@@ -143,6 +164,7 @@ def create_app(
 
     app.include_router(health.router)
     app.include_router(capabilities.router)
+    app.include_router(jobs.router)
     app.include_router(generation.router)
 
     return app

@@ -2,21 +2,16 @@
 
 Local, AI-assisted generation of Unity-ready **2D game assets** using pretrained generative models (Hugging Face Diffusers) plus an **editor-only Unity package**. No ComfyUI.
 
-## Current milestone scope (Milestone 8)
+## Current milestone scope (Milestone 9)
 
-1. Versioned capability reporting (`GET /api/v1/capabilities`) including processing, tileable, image-to-image, and **inpainting**
-2. Authoritative generation policy (single source of truth for limits, including denoising strength and source/mask uploads)
-3. Stable machine-readable API error envelope + request IDs
-4. Versioned generation manifests with integrity hashes, processing provenance, img2img source metadata, and **inpainting source/mask metadata**
-5. Unity capability cache, compatibility checks, and preflight validation
-6. Unity download integrity verification before import
-7. Texture, sprite, icon, tileable texture, img2img variation, and **masked inpainting** through one shared generation service
-8. Explicit transparency strategies with optional local background removal + alpha cleanup
-9. Tileable workflow: offset inspect, seam diagnostics, modular correction, tile preview, optional palette reduction
-10. Single-sprite Unity import with pixels-per-unit, pivot modes, and atlas-hint metadata
-11. Versioned built-in/user generation profiles with migration and profile provenance
-12. Image-to-image: source/init image upload, validation, denoising strength, capability gating (no silent txt2img fallback)
-13. Masked inpainting: source + mask upload, white=regenerate / black=keep convention, alignment, capability gating (no silent img2img/txt2img fallback)
+1. Persistent local job records for generation requests (JSON files, no external database)
+2. GPU work queued and serialized outside the HTTP request lifecycle
+3. Job states: queued, running, completed, failed, cancelling, cancelled, interrupted
+4. Job API: submit, status/progress, result metadata, cancel, history, retry
+5. Conservative retry for transient failures only; restart recovery for interrupted GPU work
+6. Unity submits a job, polls status, then downloads/imports the completed result
+7. Unity generation history: reopen/import completed jobs, retry failed jobs, cancel active jobs
+8. Existing text-to-image, img2img, inpainting, texture, sprite, icon, transparency, and tileable workflows submit through the same job abstraction
 
 Automated Python tests use a **fake inference backend** (and fake background remover when needed).
 They do **not** download diffusion or rembg weights.
@@ -28,7 +23,7 @@ They do **not** download diffusion or rembg weights.
 - ControlNet, IP-Adapter / reference-image conditioning, batching
 - Guaranteed perfectly seamless textures (correction is best-effort diagnostics + soft blending)
 - Database, Redis, Celery, Docker, auth, cloud storage
-- Model installation UI, distributed job system
+- Model installation UI, distributed/remote workers (RunPod), or an external database
 - Full material editor / per-request precision or scheduler selection
 
 ## System requirements
@@ -80,9 +75,9 @@ On low-VRAM GPUs, keep `ENABLE_CPU_OFFLOAD=false` and `EXCLUSIVE_MODEL_VRAM=true
 
 | Concern | Source | Notes |
 |---------|--------|-------|
-| Application semver | `pyproject.toml` / `core.version` | Currently `0.8.0` |
-| API major/minor | `core.version` | Independent of app semver; currently `1.2` |
-| Capabilities schema | `1.4` | Inpainting operation block is additive |
+| Application semver | `pyproject.toml` / `core.version` | Currently `0.9.0` |
+| API major/minor | `core.version` | Independent of app semver; currently `1.3` |
+| Capabilities schema | `1.5` | Job-system block is additive |
 | Generation manifest schema | `1.5` | Inpainting mask metadata is additive |
 | Generation profile schema | `1.2` | Tileable defaults are additive |
 
@@ -167,7 +162,29 @@ In Unity: **Tools → AI Asset Generator → Masked Inpainting**. Select or load
 from disk or paint one (white = regenerate), inspect the red overlay for alignment, then
 **Generate And Import**.
 
-## Generation
+## Generation jobs
+
+Submit work to the local queue. The HTTP request returns immediately; GPU execution happens on a worker thread.
+
+```powershell
+curl -X POST http://127.0.0.1:8000/api/v1/jobs `
+  -H "Content-Type: application/json" `
+  -d "{\"prompt\":\"seamless rusted metal plate\",\"width\":512,\"height\":512,\"asset_type\":\"texture\",\"tileable\":true,\"output_name\":\"metal_tile\"}"
+```
+
+```http
+GET  /api/v1/jobs
+GET  /api/v1/jobs/{job_id}
+GET  /api/v1/jobs/{job_id}/result
+POST /api/v1/jobs/{job_id}/cancel
+POST /api/v1/jobs/{job_id}/retry
+```
+
+`POST /api/v1/generations/textures` still accepts the same body and waits for the queued job to finish (curl/script compatibility). Unity uses the job endpoints and polls. Progress is reported as coarse stages (`queued`, `generating`, `processing`, `persisting`); step counts appear only when the pipeline reports them.
+
+Job records are JSON files under `{OUTPUT_DIRECTORY}/jobs/` and survive backend restarts. Running jobs interrupted by a crash are not assumed complete: they are requeued or marked `interrupted`.
+
+## Generation (compatibility wait)
 
 ```powershell
 curl -X POST http://127.0.0.1:8000/api/v1/generations/textures `

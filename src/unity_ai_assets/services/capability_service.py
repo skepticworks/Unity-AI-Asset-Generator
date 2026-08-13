@@ -21,6 +21,7 @@ from unity_ai_assets.domain.capabilities import (
     ImageToImageCapabilities,
     InferenceCapabilities,
     InpaintingCapabilities,
+    JobSystemCapabilities,
     MaskImageConstraints,
     ModelIdentity,
     NegativePromptConstraints,
@@ -337,5 +338,13 @@ class CapabilityService:
             ),
             limits=ConcurrencyLimits(
                 maximum_concurrent_generations=policy.maximum_concurrent_generations,
+            ),
+            jobs=JobSystemCapabilities(
+                supported=True,
+                persistence="local_filesystem",
+                maximum_retries=settings.max_job_retries,
+                maximum_concurrent_jobs=policy.maximum_concurrent_generations,
+                auto_retry=settings.job_auto_retry,
+                progress="stage",
             ),
         )

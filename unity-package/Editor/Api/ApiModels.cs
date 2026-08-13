@@ -253,6 +253,15 @@ namespace UnityAiAssets.Editor.Api
         public const string Health = "/health";
         public const string Capabilities = "/api/v1/capabilities";
         public const string GenerateTexture = "/api/v1/generations/textures";
+        public const string Jobs = "/api/v1/jobs";
+
+        public static string Job(string jobId) => $"/api/v1/jobs/{jobId}";
+
+        public static string JobResult(string jobId) => $"/api/v1/jobs/{jobId}/result";
+
+        public static string JobCancel(string jobId) => $"/api/v1/jobs/{jobId}/cancel";
+
+        public static string JobRetry(string jobId) => $"/api/v1/jobs/{jobId}/retry";
 
         public static string GenerationImage(string generationId) =>
             $"/api/v1/generations/{generationId}/image";

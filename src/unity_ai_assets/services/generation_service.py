@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import contextvars
+import inspect
 import math
 import re
 import secrets
 import threading
 import uuid
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from unity_ai_assets.core.config import Settings
 from unity_ai_assets.core.error_codes import FieldIssueCode
@@ -15,6 +18,7 @@ from unity_ai_assets.core.errors import (
     AssetTypeUnsupportedError,
     BackgroundRemovalUnavailableError,
     FieldIssue,
+    GenerationCancelledError,
     GenerationRequestInvalidError,
     OperationUnsupportedError,
     PivotInvalidError,
@@ -59,6 +63,24 @@ logger = get_logger(__name__)
 _PROFILE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 _ATLAS_HINT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 _SPRITE_ICON_TYPES = frozenset({AssetType.SPRITE.value, AssetType.ICON.value})
+ProgressHook = Callable[[str, int | None, int | None], None]
+_validation_only: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "generation_validation_only", default=False
+)
+
+
+class _ValidatedRequestError(Exception):
+    """Internal signal used to return a resolved seed without running inference."""
+
+    def __init__(self, seed: int) -> None:
+        super().__init__("validated")
+        self.seed = seed
+
+
+def raise_if_cancelled(cancel_event: threading.Event | None) -> None:
+    """Raise GenerationCancelledError when a job cancel event is set."""
+    if cancel_event is not None and cancel_event.is_set():
+        raise GenerationCancelledError("Generation cancelled at a safe interruption point.")
 
 
 def _validate_provenance(
@@ -134,6 +156,34 @@ class GenerationService:
             self._settings.enable_cpu_offload
         )
 
+    def validate_texture_request(self, **kwargs: Any) -> int:
+        """Validate generation parameters and return the resolved seed.
+
+        Does not acquire the GPU lock or persist outputs. Deterministic
+        validation failures raise the same AppError types as generate_texture.
+        """
+        kwargs.pop("cancel_event", None)
+        kwargs.pop("on_progress", None)
+        token = _validation_only.set(True)
+        try:
+            self.generate_texture(**kwargs)
+        except _ValidatedRequestError as validated:
+            return validated.seed
+        finally:
+            _validation_only.reset(token)
+        raise RuntimeError("Generation validation did not resolve a seed.")
+
+    @staticmethod
+    def _report_progress(
+        on_progress: ProgressHook | None,
+        stage: str,
+        *,
+        current_step: int | None = None,
+        total_steps: int | None = None,
+    ) -> None:
+        if on_progress is not None:
+            on_progress(stage, current_step, total_steps)
+
     def _unload_txt2img(self, *, reason: str) -> None:
         unload = getattr(self._backend, "unload_weights", None)
         if not callable(unload):
@@ -200,8 +250,12 @@ class GenerationService:
         mask_image_base64: str | None = None,
         mask_image_media_type: str | None = None,
         denoising_strength: float | None = None,
+        cancel_event: threading.Event | None = None,
+        on_progress: ProgressHook | None = None,
     ) -> GenerationResult:
         """Validate inputs against policy, run inference under a lock, and persist."""
+        raise_if_cancelled(cancel_event)
+        self._report_progress(on_progress, "validating")
         policy = self._policy
         settings = self._settings
         resolved_steps = policy.default_steps if steps is None else steps
@@ -704,7 +758,10 @@ class GenerationService:
             mask_image_meta=mask_meta,
             mask_convention=mask_convention,
         )
+        if _validation_only.get():
+            raise _ValidatedRequestError(request.seed)
 
+        raise_if_cancelled(cancel_event)
         logger.info(
             "Starting generation_id=%s request_id=%s operation=%s asset_type=%s strategy=%s "
             "tileable=%s apply_seam_correction=%s seed=%s size=%sx%s steps=%s "
@@ -731,18 +788,29 @@ class GenerationService:
         )
 
         with self._generation_lock:
+            raise_if_cancelled(cancel_event)
             if self.exclusive_model_vram:
                 # Ensure post-processing models are not occupying VRAM during txt2img.
                 self._unload_inpaint(reason="before txt2img")
                 self._unload_background_removal(reason="before txt2img")
 
-            generated = self._backend.generate(request)
+            self._report_progress(on_progress, "generating", total_steps=request.steps)
+            generate_kwargs: dict[str, Any] = {}
+            generate_params = inspect.signature(self._backend.generate).parameters
+            if "cancel_event" in generate_params:
+                generate_kwargs["cancel_event"] = cancel_event
+            if "on_progress" in generate_params:
+                generate_kwargs["on_progress"] = on_progress
+            generated = self._backend.generate(request, **generate_kwargs)
+            raise_if_cancelled(cancel_event)
 
             if self.exclusive_model_vram and needs_gpu_post_processing:
                 # Hand VRAM to the next GPU post-processing stage.
                 self._unload_txt2img(reason="before post-processing")
 
+            self._report_progress(on_progress, "processing")
             processing_result = self._apply_processing(generated, request)
+            raise_if_cancelled(cancel_event)
 
             if self.exclusive_model_vram:
                 if request.apply_seam_correction:
@@ -785,6 +853,8 @@ class GenerationService:
                 model_id=generated.model_id,
                 model_revision=generated.model_revision,
             )
+            self._report_progress(on_progress, "persisting")
+            raise_if_cancelled(cancel_event)
             return self._output_service.persist(
                 request,
                 processed_image,

@@ -86,6 +86,20 @@ class Settings(BaseSettings):
         description="Stable public scheduler identifier used when selection is unsupported",
     )
 
+    # Image-to-image (init/source image). Not reference-image conditioning.
+    min_denoising_strength: float = Field(default=0.0, ge=0.0, le=1.0)
+    max_denoising_strength: float = Field(default=1.0, ge=0.0, le=1.0)
+    default_denoising_strength: float = Field(default=0.75, ge=0.0, le=1.0)
+    max_source_image_bytes: int = Field(
+        default=10 * 1024 * 1024,
+        ge=1,
+        description="Maximum uploaded img2img source-image size in bytes",
+    )
+    supported_source_image_formats: tuple[str, ...] = Field(
+        default=("png", "jpeg", "webp"),
+        description="Pillow-normalized img2img source formats (init image, not IP-Adapter)",
+    )
+
     # Optional local background-removal post-processing (sprites/icons)
     background_removal_enabled: bool = Field(
         default=True,
@@ -189,6 +203,10 @@ class Settings(BaseSettings):
             max_negative_prompt_length=self.max_negative_prompt_length,
             max_output_name_length=self.max_output_name_length,
             max_concurrent_generations=self.max_concurrent_generations,
+            min_denoising_strength=self.min_denoising_strength,
+            max_denoising_strength=self.max_denoising_strength,
+            default_denoising_strength=self.default_denoising_strength,
+            max_source_image_bytes=self.max_source_image_bytes,
         )
         if not self.app_version:
             object.__setattr__(self, "app_version", APPLICATION_VERSION)

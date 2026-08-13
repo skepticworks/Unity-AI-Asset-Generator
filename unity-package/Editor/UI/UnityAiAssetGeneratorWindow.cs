@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using UnityAiAssets.Editor.Api;
 using UnityAiAssets.Editor.Capabilities;
@@ -29,6 +30,7 @@ namespace UnityAiAssets.Editor.UI
         bool _foldProfile = true;
         bool _foldPrompt = true;
         bool _foldGeneration = true;
+        bool _foldImg2Img = true;
         bool _foldProcessing = true;
         bool _foldImport = true;
         bool _foldTileable = true;
@@ -42,6 +44,7 @@ namespace UnityAiAssets.Editor.UI
         Texture2D _compareSource;
         Texture2D _previewCompare;
         Texture2D _previewCompareTiled;
+        bool _ownsSourceTexture;
         SeamAnalysisResult _seamDiagnostics;
         WrapDiscontinuityResult _wrapDiagnostics;
         string _workingTexturePath;
@@ -72,6 +75,7 @@ namespace UnityAiAssets.Editor.UI
         void OnDisable()
         {
             DestroyPreviewTextures();
+            DestroyOwnedSourceTexture();
         }
 
         void DestroyPreviewTextures()
@@ -165,6 +169,7 @@ namespace UnityAiAssets.Editor.UI
                 DrawProfileSection(progress);
                 DrawPromptSection(progress);
                 DrawGenerationSection(progress);
+                DrawImageToImageSection(progress);
                 DrawProcessingSection(progress);
                 DrawImportSection();
             }
@@ -449,6 +454,163 @@ namespace UnityAiAssets.Editor.UI
             }
 
             EditorGUILayout.EndFoldoutHeaderGroup();
+        }
+
+        void DrawImageToImageSection(GenerationProgress progress)
+        {
+            _foldImg2Img = EditorGUILayout.BeginFoldoutHeaderGroup(_foldImg2Img, "Image-to-Image Variation");
+            if (_foldImg2Img)
+            {
+                var i2i = progress.Capabilities?.Operations?.ImageToImage;
+                var supported = i2i?.Supported == true;
+                EditorGUILayout.LabelField(
+                    "Uses the selected image as the generation init/latent image and modifies it " +
+                    "according to denoising strength. This is not reference-image conditioning " +
+                    "(IP-Adapter / style / identity). Reference conditioning is a separate future workflow.",
+                    _sectionHelp);
+
+                using (new EditorGUI.DisabledScope(!supported && progress.Capabilities != null))
+                {
+                    _request.UseImageToImage = EditorGUILayout.Toggle(
+                        Tip(
+                            "Enable Image-to-Image",
+                            "When enabled, the source image is the starting latent. Denoising strength " +
+                            "controls how much it changes. Not a style/identity reference."),
+                        _request.UseImageToImage);
+
+                    using (new EditorGUI.DisabledScope(!_request.UseImageToImage))
+                    {
+                        var previous = _request.SourceTexture;
+                        var next = (Texture2D)EditorGUILayout.ObjectField(
+                            Tip(
+                                "Source Image",
+                                "Init/source image used as the starting latent. PNG/JPEG/WebP on disk " +
+                                "or a project Texture2D. Not a reference-conditioning image."),
+                            _request.SourceTexture,
+                            typeof(Texture2D),
+                            false);
+                        if (next != previous)
+                        {
+                            if (_ownsSourceTexture && previous != null)
+                                DestroyImmediate(previous);
+                            _ownsSourceTexture = false;
+                            _request.SourceTexture = next;
+                        }
+
+                        EditorGUILayout.BeginHorizontal();
+                        if (GUILayout.Button(
+                                Tip("Load From Disk…", "Open a PNG, JPEG, or WebP file as the img2img init image.")))
+                        {
+                            var path = EditorUtility.OpenFilePanel(
+                                "Select source image (init image)", "", "png,jpg,jpeg,webp");
+                            if (!string.IsNullOrEmpty(path))
+                                LoadSourceImageFromDisk(path);
+                        }
+
+                        using (new EditorGUI.DisabledScope(_request.SourceTexture == null))
+                        {
+                            if (GUILayout.Button("Clear Source"))
+                            {
+                                DestroyOwnedSourceTexture();
+                                _request.SourceTexture = null;
+                            }
+                        }
+
+                        EditorGUILayout.EndHorizontal();
+
+                        if (_request.SourceTexture != null)
+                        {
+                            var previewSize = Mathf.Min(160f, EditorGUIUtility.currentViewWidth - 48f);
+                            var rect = GUILayoutUtility.GetRect(
+                                previewSize, previewSize, GUILayout.ExpandWidth(false), GUILayout.ExpandHeight(false));
+                            EditorGUI.DrawPreviewTexture(rect, _request.SourceTexture, null, ScaleMode.ScaleToFit);
+                            EditorGUILayout.LabelField(
+                                $"{_request.SourceTexture.width}×{_request.SourceTexture.height}  {_request.SourceTexture.name}",
+                                _sectionHelp);
+                        }
+
+                        var minStrength = i2i?.DenoisingStrength != null ? i2i.DenoisingStrength.Minimum : 0f;
+                        var maxStrength = i2i?.DenoisingStrength != null ? i2i.DenoisingStrength.Maximum : 1f;
+                        if (maxStrength <= minStrength)
+                        {
+                            minStrength = 0f;
+                            maxStrength = 1f;
+                        }
+
+                        _request.DenoisingStrength = EditorGUILayout.Slider(
+                            Tip(
+                                "Denoising Strength",
+                                "How much the source init image is changed. 0 keeps it almost unchanged; " +
+                                "1 allows maximum change. This applies only to img2img, not reference conditioning."),
+                            _request.DenoisingStrength,
+                            minStrength,
+                            maxStrength);
+                    }
+                }
+
+                if (progress.Capabilities != null && !supported)
+                {
+                    EditorGUILayout.HelpBox(
+                        "The current model/backend does not support image_to_image. " +
+                        "Img2img is not silently converted to text-to-image.",
+                        MessageType.Warning);
+                    _request.UseImageToImage = false;
+                }
+                else if (_request.UseImageToImage && _request.SourceTexture == null)
+                {
+                    EditorGUILayout.HelpBox(
+                        "Select a source image (init image) before generating an image-to-image variation.",
+                        MessageType.Warning);
+                }
+                else if (_request.UseImageToImage)
+                {
+                    EditorGUILayout.HelpBox(
+                        "Generation will use image_to_image. Status and metadata will record the operation, " +
+                        "denoising strength, and source-image dimensions/format.",
+                        MessageType.Info);
+                }
+            }
+
+            EditorGUILayout.EndFoldoutHeaderGroup();
+        }
+
+        void LoadSourceImageFromDisk(string path)
+        {
+            try
+            {
+                var bytes = File.ReadAllBytes(path);
+                var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                if (!texture.LoadImage(bytes))
+                {
+                    DestroyImmediate(texture);
+                    EditorUtility.DisplayDialog(
+                        "Source Image",
+                        "Could not decode the selected file. Use a valid PNG, JPEG, or WebP image.",
+                        "OK");
+                    return;
+                }
+
+                texture.name = Path.GetFileName(path);
+                if (_ownsSourceTexture && _request.SourceTexture != null)
+                    DestroyImmediate(_request.SourceTexture);
+                _request.SourceTexture = texture;
+                _ownsSourceTexture = true;
+            }
+            catch (Exception ex)
+            {
+                EditorUtility.DisplayDialog("Source Image", "Failed to load the file: " + ex.Message, "OK");
+            }
+        }
+
+        void DestroyOwnedSourceTexture()
+        {
+            if (_ownsSourceTexture && _request != null && _request.SourceTexture != null)
+            {
+                DestroyImmediate(_request.SourceTexture);
+                _request.SourceTexture = null;
+            }
+
+            _ownsSourceTexture = false;
         }
 
         void DrawProcessingSection(GenerationProgress progress)
@@ -1065,6 +1227,18 @@ namespace UnityAiAssets.Editor.UI
                 canGenerate = false;
             }
 
+            if (canGenerate &&
+                _request.UseImageToImage &&
+                progress.Capabilities?.Operations?.ImageToImage?.Supported != true)
+            {
+                canGenerate = false;
+            }
+
+            if (canGenerate && _request.UseImageToImage && _request.SourceTexture == null)
+            {
+                canGenerate = false;
+            }
+
             EditorGUILayout.BeginHorizontal();
             using (new EditorGUI.DisabledScope(busy))
             {
@@ -1106,6 +1280,10 @@ namespace UnityAiAssets.Editor.UI
                     reason = progress.Capabilities?.Operations?.TextToImage?.Processing?.BackgroundRemoval?.UnavailableReason
                              ?? "Generate is disabled: background removal is unavailable.";
                 }
+                else if (_request.UseImageToImage && progress.Capabilities?.Operations?.ImageToImage?.Supported != true)
+                    reason = "Generate is disabled: the current model/backend does not support image_to_image.";
+                else if (_request.UseImageToImage && _request.SourceTexture == null)
+                    reason = "Generate is disabled: image-to-image requires a source init image.";
                 else if (profileCompatibility != null && !profileCompatibility.CanGenerate)
                     reason = string.Join("\n", profileCompatibility.Messages);
                 else if (string.IsNullOrWhiteSpace(_request.Subject))
@@ -1180,6 +1358,14 @@ namespace UnityAiAssets.Editor.UI
                         ? $"Reachable (device={progress.ResolvedDevice}, model_loaded={progress.ModelLoaded})"
                         : "Not confirmed / unreachable",
                     _sectionHelp);
+
+                if (!string.IsNullOrWhiteSpace(progress.Operation))
+                    EditorGUILayout.LabelField("Operation", progress.Operation, _sectionHelp);
+                if (progress.DenoisingStrength.HasValue)
+                    EditorGUILayout.LabelField(
+                        "Denoising Strength",
+                        progress.DenoisingStrength.Value.ToString("0.###"),
+                        _sectionHelp);
 
                 if (!string.IsNullOrWhiteSpace(progress.ProcessingSummary))
                     EditorGUILayout.HelpBox(progress.ProcessingSummary, MessageType.Info);

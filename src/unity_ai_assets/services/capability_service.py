@@ -18,6 +18,7 @@ from unity_ai_assets.domain.capabilities import (
     CapabilityDocument,
     ConcurrencyLimits,
     DimensionConstraints,
+    ImageToImageCapabilities,
     InferenceCapabilities,
     ModelIdentity,
     NegativePromptConstraints,
@@ -32,6 +33,7 @@ from unity_ai_assets.domain.capabilities import (
     SchedulerCapabilities,
     SchemaVersions,
     SeedConstraints,
+    SourceImageConstraints,
     SpriteImportCapabilities,
     TextToImageCapabilities,
     TileableProcessingCapabilities,
@@ -235,6 +237,30 @@ class CapabilityService:
             processing=processing,
         )
 
+        image_to_image = ImageToImageCapabilities(
+            supported=inference.image_to_image_supported,
+            asset_types=list(text_to_image.asset_types),
+            dimensions=text_to_image.dimensions,
+            steps=text_to_image.steps,
+            guidance_scale=text_to_image.guidance_scale,
+            seed=text_to_image.seed,
+            prompt=text_to_image.prompt,
+            negative_prompt=text_to_image.negative_prompt,
+            output_name=text_to_image.output_name,
+            schedulers=text_to_image.schedulers,
+            denoising_strength=NumericRangeFloat(
+                minimum=policy.minimum_denoising_strength,
+                maximum=policy.maximum_denoising_strength,
+                default=policy.default_denoising_strength,
+            ),
+            source_image=SourceImageConstraints(
+                supported_formats=list(policy.supported_source_image_formats),
+                maximum_byte_size=policy.maximum_source_image_bytes,
+                dimensions=text_to_image.dimensions,
+            ),
+            processing=processing,
+        )
+
         return CapabilityDocument(
             api=ApiVersionInfo(major=API_MAJOR_VERSION, minor=API_MINOR_VERSION),
             application=ApplicationIdentity(
@@ -260,7 +286,7 @@ class CapabilityService:
             ),
             operations=OperationsCapabilities(
                 text_to_image=text_to_image,
-                image_to_image=UnsupportedOperation(supported=inference.image_to_image_supported),
+                image_to_image=image_to_image,
                 inpainting=UnsupportedOperation(supported=inference.inpainting_supported),
             ),
             precision=PrecisionCapabilities(

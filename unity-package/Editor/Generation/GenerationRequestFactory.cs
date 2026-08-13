@@ -16,7 +16,7 @@ namespace UnityAiAssets.Editor.Generation
             var isSpriteOrIcon = string.Equals(resolved.AssetType, "sprite", StringComparison.OrdinalIgnoreCase)
                                  || string.Equals(resolved.AssetType, "icon", StringComparison.OrdinalIgnoreCase);
 
-            return new TextureGenerationRequestDto
+            var dto = new TextureGenerationRequestDto
             {
                 prompt = (resolved.ConstructedPrompt ?? string.Empty).Trim(),
                 negative_prompt = resolved.ConstructedNegativePrompt ?? string.Empty,
@@ -52,6 +52,21 @@ namespace UnityAiAssets.Editor.Generation
                 palette_reduction_enabled = resolved.PaletteReductionEnabled,
                 palette_color_count = resolved.PaletteColorCount
             };
+
+            if (request.UseImageToImage)
+            {
+                dto.operation = "image_to_image";
+                dto.denoising_strength = request.DenoisingStrength;
+                if (!SourceImageCodec.TryEncodePng(request.SourceTexture, out var png, out var encodeError))
+                    throw new InvalidOperationException(encodeError);
+                dto.source_image = new SourceImagePayloadDto
+                {
+                    content_base64 = Convert.ToBase64String(png),
+                    media_type = "image/png"
+                };
+            }
+
+            return dto;
         }
     }
 }

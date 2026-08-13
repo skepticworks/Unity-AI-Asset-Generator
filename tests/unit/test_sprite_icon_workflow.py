@@ -55,7 +55,7 @@ def sprite_client(sprite_settings: Settings) -> TestClient:
 
 def test_capabilities_report_sprite_icon_and_processing(sprite_client: TestClient) -> None:
     payload = sprite_client.get("/api/v1/capabilities").json()
-    assert payload["schemas"]["capabilities"] == "1.2"
+    assert payload["schemas"]["capabilities"] == "1.3"
     t2i = payload["operations"]["text_to_image"]
     assert "sprite" in t2i["asset_types"]
     assert "icon" in t2i["asset_types"]
@@ -98,7 +98,7 @@ def test_sprite_generation_with_background_removal(sprite_client: TestClient) ->
     assert image.size == (64, 64)
 
     manifest = sprite_client.get(f"/api/v1/generations/{generation_id}/manifest").json()
-    assert manifest["schema"]["version"] == "1.3"
+    assert manifest["schema"]["version"] == "1.4"
     assert manifest["request"]["transparency_strategy"] == "background_removal"
     assert manifest["request"]["pixels_per_unit"] == 100
     assert manifest["request"]["pivot_mode"] == "bottom_center"

@@ -37,6 +37,11 @@ class ModelManager:
         return self._settings.model_revision
 
     @property
+    def model_family(self) -> str:
+        """Configured model family used for capability reporting."""
+        return self._settings.resolved_model_family
+
+    @property
     def configured_device(self) -> str:
         """Configured device preference before resolution (auto/cuda/mps/cpu)."""
         return self._settings.device

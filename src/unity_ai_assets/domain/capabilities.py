@@ -205,6 +205,38 @@ class TextToImageCapabilities:
 
 
 @dataclass(frozen=True, slots=True)
+class SourceImageConstraints:
+    """Constraints for the img2img init/source image (not reference conditioning)."""
+
+    supported_formats: list[str]
+    maximum_byte_size: int
+    dimensions: DimensionConstraints | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ImageToImageCapabilities:
+    """Constraints for image-to-image (init-image) generation.
+
+    The source image is the generation latent starting point and is modified
+    according to denoising strength. This is not reference-image conditioning.
+    """
+
+    supported: bool
+    asset_types: list[str]
+    dimensions: DimensionConstraints
+    steps: NumericRangeInt
+    guidance_scale: NumericRangeFloat
+    seed: SeedConstraints
+    prompt: PromptConstraints
+    negative_prompt: NegativePromptConstraints
+    output_name: OutputNameConstraints
+    schedulers: SchedulerCapabilities
+    denoising_strength: NumericRangeFloat
+    source_image: SourceImageConstraints
+    processing: ProcessingCapabilities | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class UnsupportedOperation:
     """Minimal declaration for an unimplemented operation."""
 
@@ -216,7 +248,7 @@ class OperationsCapabilities:
     """Per-operation capability declarations."""
 
     text_to_image: TextToImageCapabilities
-    image_to_image: UnsupportedOperation
+    image_to_image: ImageToImageCapabilities
     inpainting: UnsupportedOperation
 
 

@@ -16,6 +16,7 @@ from unity_ai_assets.core.errors import (
     BackgroundRemovalUnavailableError,
     FieldIssue,
     GenerationRequestInvalidError,
+    OperationUnsupportedError,
     PivotInvalidError,
     PixelsPerUnitInvalidError,
     SeamInpaintUnavailableError,
@@ -25,6 +26,7 @@ from unity_ai_assets.core.logging import get_logger
 from unity_ai_assets.core.request_context import get_request_id
 from unity_ai_assets.domain.enums import (
     AssetType,
+    OperationType,
     PivotMode,
     TransparencyStrategy,
     is_known_pivot_mode,
@@ -32,6 +34,11 @@ from unity_ai_assets.domain.enums import (
 )
 from unity_ai_assets.domain.generation import GeneratedImage, GenerationRequest, GenerationResult
 from unity_ai_assets.domain.generation_policy import GenerationPolicy
+from unity_ai_assets.domain.source_image import (
+    decode_source_image_base64,
+    prepare_init_image,
+    validate_source_image,
+)
 from unity_ai_assets.processing.alpha_cleanup import AlphaCleanupParams
 from unity_ai_assets.processing.pipeline import ImageProcessingPipeline, ProcessingResult
 from unity_ai_assets.processing.tileable import TileableProcessingParams
@@ -179,6 +186,10 @@ class GenerationService:
         seam_blend_width: int | None = None,
         palette_reduction_enabled: bool | None = None,
         palette_color_count: int | None = None,
+        operation: str | None = None,
+        source_image_base64: str | None = None,
+        source_image_media_type: str | None = None,
+        denoising_strength: float | None = None,
     ) -> GenerationResult:
         """Validate inputs against policy, run inference under a lock, and persist."""
         policy = self._policy
@@ -195,6 +206,89 @@ class GenerationService:
         policy.validate_guidance_scale(resolved_guidance)
         policy.validate_seed(seed)
         policy.validate_output_name(output_name)
+        resolved_operation = (operation or OperationType.TEXT_TO_IMAGE.value).strip().lower()
+        if resolved_operation not in {
+            OperationType.TEXT_TO_IMAGE.value,
+            OperationType.IMAGE_TO_IMAGE.value,
+        }:
+            raise OperationUnsupportedError(
+                f"Operation '{resolved_operation}' is not supported."
+            )
+
+        inference_caps = self._backend.describe_capabilities()
+        if resolved_operation == OperationType.IMAGE_TO_IMAGE.value:
+            if not inference_caps.image_to_image_supported:
+                raise OperationUnsupportedError(
+                    "The current model/backend does not support image_to_image. "
+                    "The request was not converted to text-to-image."
+                )
+            if source_image_base64 is None:
+                raise GenerationRequestInvalidError(
+                    "source_image is required for image_to_image.",
+                    field_issues={
+                        "source_image": [
+                            FieldIssue(
+                                code=FieldIssueCode.FIELD_REQUIRED,
+                                message=(
+                                    "source_image is required when operation is "
+                                    "image_to_image. Provide the init/source image, "
+                                    "not a reference-conditioning image."
+                                ),
+                            )
+                        ]
+                    },
+                )
+            raw_bytes = decode_source_image_base64(source_image_base64)
+            validated_source = validate_source_image(
+                raw_bytes=raw_bytes,
+                policy=policy,
+                media_type=source_image_media_type,
+            )
+            resolved_strength = (
+                policy.default_denoising_strength
+                if denoising_strength is None
+                else float(denoising_strength)
+            )
+            policy.validate_denoising_strength(resolved_strength)
+            prepared_source = prepare_init_image(validated_source.image, width, height)
+            source_meta = validated_source.metadata
+        else:
+            if source_image_base64 is not None:
+                raise GenerationRequestInvalidError(
+                    "source_image is only valid for image_to_image.",
+                    field_issues={
+                        "source_image": [
+                            FieldIssue(
+                                code=FieldIssueCode.VALUE_INVALID,
+                                message=(
+                                    "source_image is the img2img init/latent image and is only "
+                                    "accepted when operation is image_to_image. It is not a "
+                                    "reference-conditioning input."
+                                ),
+                            )
+                        ]
+                    },
+                )
+            if denoising_strength is not None:
+                raise GenerationRequestInvalidError(
+                    "denoising_strength is only valid for image_to_image.",
+                    field_issues={
+                        "denoising_strength": [
+                            FieldIssue(
+                                code=FieldIssueCode.VALUE_INVALID,
+                                message=(
+                                    "denoising_strength applies only to image_to_image "
+                                    "init-image variation."
+                                ),
+                                actual=denoising_strength,
+                            )
+                        ]
+                    },
+                )
+            prepared_source = None
+            source_meta = None
+            resolved_strength = None
+
         _validate_provenance(
             identifiers={
                 "generation_profile_id": generation_profile_id,
@@ -210,7 +304,7 @@ class GenerationService:
             profile_origin=profile_origin,
         )
 
-        supported_types = set(self._backend.describe_capabilities().supported_asset_types)
+        supported_types = set(inference_caps.supported_asset_types)
         if asset_type not in supported_types:
             raise AssetTypeUnsupportedError(
                 f"Asset type '{asset_type}' is not supported by the current inference backend."
@@ -492,13 +586,19 @@ class GenerationService:
             seam_blend_width=resolved_seam_blend,
             palette_reduction_enabled=resolved_palette,
             palette_color_count=resolved_palette_colors,
+            operation=resolved_operation,
+            denoising_strength=resolved_strength,
+            source_image=prepared_source,
+            source_image_meta=source_meta,
         )
 
         logger.info(
-            "Starting generation_id=%s request_id=%s asset_type=%s strategy=%s "
-            "tileable=%s apply_seam_correction=%s seed=%s size=%sx%s steps=%s",
+            "Starting generation_id=%s request_id=%s operation=%s asset_type=%s strategy=%s "
+            "tileable=%s apply_seam_correction=%s seed=%s size=%sx%s steps=%s "
+            "denoising_strength=%s",
             request.generation_id,
             get_request_id(),
+            request.operation,
             request.asset_type,
             request.transparency_strategy,
             request.tileable,
@@ -507,6 +607,7 @@ class GenerationService:
             request.width,
             request.height,
             request.steps,
+            request.denoising_strength,
         )
 
         needs_background_removal = (

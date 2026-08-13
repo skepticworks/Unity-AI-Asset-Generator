@@ -2,6 +2,7 @@ using System;
 using UnityAiAssets.Editor.AssetTypes;
 using UnityAiAssets.Editor.Configuration;
 using UnityAiAssets.Editor.Importing;
+using UnityEngine;
 
 namespace UnityAiAssets.Editor.Generation
 {
@@ -46,6 +47,9 @@ namespace UnityAiAssets.Editor.Generation
         public int SeamBlendWidth = 64;
         public bool PaletteReductionEnabled;
         public int PaletteColorCount = 16;
+        public bool UseImageToImage;
+        public Texture2D SourceTexture;
+        public float DenoisingStrength = 0.75f;
         public string MaterialDestinationFolder = "Assets/Generated/Materials";
         public string ShaderName = "Universal Render Pipeline/Lit";
     }

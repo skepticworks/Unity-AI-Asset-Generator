@@ -144,5 +144,42 @@ namespace UnityAiAssets.Editor.Tests
                 "/api/v1/generations/abc/metadata",
                 ApiEndpoints.GenerationMetadata("abc"));
         }
+
+        [Test]
+        public void TextureGenerationRequest_SerializesImg2ImgFields()
+        {
+            var dto = new TextureGenerationRequestDto
+            {
+                prompt = "variation",
+                output_name = "var",
+                operation = "image_to_image",
+                denoising_strength = 0.4f,
+                source_image = new SourceImagePayloadDto
+                {
+                    content_base64 = "QUJD",
+                    media_type = "image/png"
+                }
+            };
+
+            var json = dto.ToJson();
+            StringAssert.Contains("\"operation\":\"image_to_image\"", json);
+            StringAssert.Contains("\"denoising_strength\":0.4", json);
+            StringAssert.Contains("\"source_image\":{", json);
+            StringAssert.Contains("\"content_base64\":\"QUJD\"", json);
+            StringAssert.Contains("\"media_type\":\"image/png\"", json);
+        }
+
+        [Test]
+        public void TextureGenerationRequest_OmitsImg2ImgFieldsForTxt2Img()
+        {
+            var json = new TextureGenerationRequestDto
+            {
+                prompt = "wall",
+                output_name = "wall"
+            }.ToJson();
+            Assert.That(json.Contains("\"operation\""), Is.False);
+            Assert.That(json.Contains("\"source_image\""), Is.False);
+            Assert.That(json.Contains("\"denoising_strength\""), Is.False);
+        }
     }
 }

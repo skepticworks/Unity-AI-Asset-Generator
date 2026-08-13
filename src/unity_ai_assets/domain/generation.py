@@ -6,6 +6,24 @@ from dataclasses import dataclass
 
 from PIL import Image
 
+from unity_ai_assets.domain.enums import OperationType
+
+
+@dataclass(frozen=True, slots=True)
+class SourceImageMetadata:
+    """Provenance for an img2img init/source image (pixels are not persisted).
+
+    This describes the uploaded init image used as the generation latent starting
+    point. It is not a reference-conditioning (IP-Adapter) descriptor.
+    """
+
+    format: str
+    media_type: str
+    original_width: int
+    original_height: int
+    byte_size: int
+    sha256: str
+
 
 @dataclass(frozen=True, slots=True)
 class GenerationRequest:
@@ -44,6 +62,10 @@ class GenerationRequest:
     seam_blend_width: int = 64
     palette_reduction_enabled: bool = False
     palette_color_count: int = 16
+    operation: str = OperationType.TEXT_TO_IMAGE.value
+    denoising_strength: float | None = None
+    source_image: Image.Image | None = None
+    source_image_meta: SourceImageMetadata | None = None
 
 
 @dataclass(frozen=True, slots=True)

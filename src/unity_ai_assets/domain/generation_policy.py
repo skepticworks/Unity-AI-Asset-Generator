@@ -41,6 +41,11 @@ class GenerationPolicy:
     default_scheduler: str
     negative_prompt_supported: bool = True
     seed_random_when_omitted: bool = True
+    minimum_denoising_strength: float = 0.0
+    maximum_denoising_strength: float = 1.0
+    default_denoising_strength: float = 0.75
+    maximum_source_image_bytes: int = 10 * 1024 * 1024
+    supported_source_image_formats: tuple[str, ...] = ("png", "jpeg", "webp")
 
     @classmethod
     def from_settings(cls, settings: Settings) -> GenerationPolicy:
@@ -65,6 +70,11 @@ class GenerationPolicy:
             maximum_output_name_length=settings.max_output_name_length,
             maximum_concurrent_generations=settings.max_concurrent_generations,
             default_scheduler=settings.default_scheduler,
+            minimum_denoising_strength=settings.min_denoising_strength,
+            maximum_denoising_strength=settings.max_denoising_strength,
+            default_denoising_strength=settings.default_denoising_strength,
+            maximum_source_image_bytes=settings.max_source_image_bytes,
+            supported_source_image_formats=tuple(settings.supported_source_image_formats),
         )
 
     def validate_prompt(self, prompt: str | None) -> None:
@@ -309,6 +319,43 @@ class GenerationPolicy:
         if field_issues:
             issues[field] = field_issues
 
+    def validate_denoising_strength(self, strength: float) -> None:
+        """Validate img2img denoising strength (init-image influence, not IP-Adapter)."""
+        if strength < self.minimum_denoising_strength:
+            raise GenerationRequestInvalidError(
+                "denoising_strength below minimum",
+                field_issues={
+                    "denoising_strength": [
+                        FieldIssue(
+                            code=FieldIssueCode.VALUE_BELOW_MINIMUM,
+                            message=(
+                                "Denoising strength must be at least "
+                                f"{self.minimum_denoising_strength}."
+                            ),
+                            actual=strength,
+                            minimum=self.minimum_denoising_strength,
+                        )
+                    ]
+                },
+            )
+        if strength > self.maximum_denoising_strength:
+            raise GenerationRequestInvalidError(
+                "denoising_strength above maximum",
+                field_issues={
+                    "denoising_strength": [
+                        FieldIssue(
+                            code=FieldIssueCode.VALUE_ABOVE_MAXIMUM,
+                            message=(
+                                "Denoising strength must be at most "
+                                f"{self.maximum_denoising_strength}."
+                            ),
+                            actual=strength,
+                            maximum=self.maximum_denoising_strength,
+                        )
+                    ]
+                },
+            )
+
 
 def validate_policy_settings(
     *,
@@ -330,6 +377,10 @@ def validate_policy_settings(
     max_negative_prompt_length: int,
     max_output_name_length: int,
     max_concurrent_generations: int,
+    min_denoising_strength: float = 0.0,
+    max_denoising_strength: float = 1.0,
+    default_denoising_strength: float = 0.75,
+    max_source_image_bytes: int = 10 * 1024 * 1024,
 ) -> None:
     """Reject invalid policy configuration combinations at startup."""
     errors: list[str] = []
@@ -376,6 +427,20 @@ def validate_policy_settings(
         errors.append("MAX_OUTPUT_NAME_LENGTH must be positive")
     if max_concurrent_generations < 1:
         errors.append("MAX_CONCURRENT_GENERATIONS must be at least 1")
+
+    if min_denoising_strength > max_denoising_strength:
+        errors.append("MIN_DENOISING_STRENGTH must not exceed MAX_DENOISING_STRENGTH")
+    if not (min_denoising_strength <= default_denoising_strength <= max_denoising_strength):
+        errors.append(
+            "DEFAULT_DENOISING_STRENGTH must be within "
+            "MIN_DENOISING_STRENGTH..MAX_DENOISING_STRENGTH"
+        )
+    if min_denoising_strength < 0.0:
+        errors.append("MIN_DENOISING_STRENGTH must be at least 0")
+    if max_denoising_strength > 1.0:
+        errors.append("MAX_DENOISING_STRENGTH must be at most 1")
+    if max_source_image_bytes < 1:
+        errors.append("MAX_SOURCE_IMAGE_BYTES must be positive")
 
     if errors:
         raise ValueError("; ".join(errors))

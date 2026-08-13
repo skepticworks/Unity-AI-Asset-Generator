@@ -56,6 +56,21 @@ class ModelFamily(StrEnum):
     UNKNOWN = "unknown"
 
 
+IMAGE_TO_IMAGE_MODEL_FAMILIES: frozenset[str] = frozenset(
+    {ModelFamily.SD15.value, ModelFamily.SDXL.value}
+)
+
+
+def model_family_supports_image_to_image(family: str | None) -> bool:
+    """Return whether the configured model family can run img2img (init-image) generation.
+
+    This is independent of reference-image conditioning (IP-Adapter and similar),
+    which is a separate future capability and must not be inferred from img2img support.
+    """
+    normalized = (family or "").strip().lower()
+    return normalized in IMAGE_TO_IMAGE_MODEL_FAMILIES
+
+
 class GenerationStatus(StrEnum):
     """Lifecycle status recorded in generation manifests."""
 

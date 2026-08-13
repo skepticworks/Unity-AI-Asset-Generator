@@ -6,13 +6,16 @@ Local FastAPI texture generation (Diffusers behind an inference protocol) plus a
 
 **ComfyUI is not used** in any form.
 
-Application/package version: **0.8.0** (Milestone 8 — masks and inpainting).
+Application/package version: **0.9.0** (Milestone 9 — local job system).
 
 ## Backend component responsibilities
 
 | Layer | Responsibility |
 |-------|----------------|
-| `api/routes` | HTTP transport: health, capabilities, generation, image/manifest retrieval |
+| `api/routes` | HTTP transport: health, capabilities, jobs, generation, image/manifest retrieval |
+| `services/job_service.py` | Job state machine, FIFO queue, worker loop, cancel/retry/restart recovery |
+| `services/job_store.py` | Atomic JSON job records on local disk |
+| `services/job_executor.py` | Execution-backend protocol; local GPU executor wraps `GenerationService` |
 | `api/schemas` | Versioned public Pydantic models (capabilities, generation, errors) |
 | `domain/generation_policy.py` | **Authoritative** generation limits and validation |
 | `domain/capabilities.py` | Capability domain models including processing support |
@@ -27,7 +30,7 @@ Application/package version: **0.8.0** (Milestone 8 — masks and inpainting).
 | `core/error_codes.py` | Stable application + field issue codes |
 | `core/exception_handlers.py` | Translate AppError / Pydantic errors into the public envelope |
 | `core/middleware.py` | `X-Request-ID` validation, generation, propagation |
-| `core/config.py` | Settings including policy and background-removal env vars |
+| `core/config.py` | Settings including policy, background-removal, and job-queue env vars |
 
 ## Unity package components
 
@@ -41,7 +44,7 @@ Application/package version: **0.8.0** (Milestone 8 — masks and inpainting).
 | `Editor/Generation/` | Request model/factory, state, `GenerationController` orchestration |
 | `Editor/Importing/` | Path utilities, import profiles, `GeneratedAssetImporter`, materials |
 | `Editor/Metadata/` | Manifest-aware ScriptableObject + importer |
-| `Editor/UI/` | `Tools > AI Asset Generator` window |
+| `Editor/UI/` | `Tools > AI Asset Generator` window, including generation history |
 | `Editor/Tileable/` | Offset/wrap, seam analysis/correction, palette reduction, tileable previews |
 | `Editor/Tests/` | Edit Mode tests (capabilities, errors, manifests, integrity, tileable) |
 | `Editor/AssetTypes/` | Asset type contracts |
@@ -170,13 +173,44 @@ sequenceDiagram
     Ctrl-->>Win: Progress (version, model, device, precision)
 ```
 
+## Local job queue
+
+```mermaid
+sequenceDiagram
+    participant UI as Unity / client
+    participant API as POST /api/v1/jobs
+    participant Store as JobStore JSON
+    participant Worker as Job worker
+    participant Gen as GenerationService
+
+    UI->>API: submit generation payload
+    API->>Gen: validate (no GPU)
+    API->>Store: persist queued job
+    API-->>UI: 202 job_id
+    loop poll
+        UI->>API: GET /jobs/{id}
+        API-->>UI: state + coarse stage
+    end
+    Worker->>Store: claim queued → running
+    Worker->>Gen: execute (cancel event + progress)
+    alt completed
+        Gen->>Worker: generation_id + artifacts
+        Worker->>Store: completed + result metadata
+    else cancelled or failed
+        Worker->>Store: cancelled / failed (retryable?)
+    end
+    UI->>API: GET result / image / manifest
+```
+
+Unity never sees whether the executor is a local GPU or a future remote worker.
+
 ## Generation preflight and authoritative validation
 
 ```mermaid
 sequenceDiagram
     participant UI as Editor UI
     participant Val as CapabilityValidator
-    participant API as POST /textures
+    participant API as POST /jobs
     participant Pol as GenerationPolicy
     participant Inf as InferenceBackend
 
@@ -184,15 +218,14 @@ sequenceDiagram
     alt preflight fails
         Val-->>UI: issues (no coercion)
     else preflight passes
-        UI->>API: submit request
+        UI->>API: submit job
         API->>Pol: authoritative validate
         alt policy rejects
             Pol-->>API: GENERATION_REQUEST_INVALID
             API-->>UI: stable error envelope
         else ok
-            API->>Inf: generate
-            Inf-->>API: image
-            API-->>UI: resources + seed
+            API-->>UI: 202 job_id queued
+            Note over API: GPU work runs on the job worker
         end
     end
 ```

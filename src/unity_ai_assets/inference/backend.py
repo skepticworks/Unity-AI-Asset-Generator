@@ -6,18 +6,33 @@ The rest of the application depends only on this protocol so Diffusers
 
 from __future__ import annotations
 
+import threading
+from collections.abc import Callable
 from typing import Protocol, runtime_checkable
 
 from unity_ai_assets.domain.capabilities import InferenceCapabilities
 from unity_ai_assets.domain.generation import GeneratedImage, GenerationRequest
+
+ProgressHook = Callable[[str, int | None, int | None], None]
 
 
 @runtime_checkable
 class ImageGenerationBackend(Protocol):
     """Contract for text-to-image inference engines."""
 
-    def generate(self, request: GenerationRequest) -> GeneratedImage:
-        """Generate a single image for the given request."""
+    def generate(
+        self,
+        request: GenerationRequest,
+        *,
+        cancel_event: threading.Event | None = None,
+        on_progress: ProgressHook | None = None,
+    ) -> GeneratedImage:
+        """Generate a single image for the given request.
+
+        Optional ``cancel_event`` should be checked at the safest available
+        interruption point. ``on_progress`` may report truthful step counts
+        when the pipeline provides them; do not invent percentages.
+        """
         ...
 
     def describe_capabilities(self) -> InferenceCapabilities:

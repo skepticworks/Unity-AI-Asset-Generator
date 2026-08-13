@@ -8,17 +8,25 @@ is reused; the mask + source alignment and Diffusers inpaint call live here.
 
 from __future__ import annotations
 
+import threading
 import time
+from collections.abc import Callable
 from typing import Protocol, runtime_checkable
 
 import torch
 from PIL import Image
 
-from unity_ai_assets.core.errors import InferenceError, ModelLoadError, OperationUnsupportedError
+from unity_ai_assets.core.errors import (
+    GenerationCancelledError,
+    InferenceError,
+    ModelLoadError,
+    OperationUnsupportedError,
+)
 from unity_ai_assets.core.logging import get_logger
 from unity_ai_assets.domain.enums import model_family_supports_inpainting
 from unity_ai_assets.domain.generation import GeneratedImage, GenerationRequest
 from unity_ai_assets.domain.mask_image import MASK_CONVENTION_ID, prepare_inpaint_mask
+from unity_ai_assets.inference.cancel import pipeline_call_kwargs, raise_if_cancelled
 from unity_ai_assets.inference.model_manager import ModelManager
 
 logger = get_logger(__name__)
@@ -50,7 +58,14 @@ class DiffusersInpaintingPipeline:
     def supported(self) -> bool:
         return model_family_supports_inpainting(self._model_manager.model_family)
 
-    def inpaint(self, request: GenerationRequest) -> GeneratedImage:
+    def inpaint(
+        self,
+        request: GenerationRequest,
+        *,
+        cancel_event: threading.Event | None = None,
+        on_progress: Callable[[str, int | None, int | None], None] | None = None,
+    ) -> GeneratedImage:
+        raise_if_cancelled(cancel_event)
         if not self.supported():
             raise OperationUnsupportedError(
                 "The current model does not support inpainting. "
@@ -121,8 +136,15 @@ class DiffusersInpaintingPipeline:
                     guidance_scale=request.guidance_scale,
                     strength=strength,
                     generator=generator,
+                    **pipeline_call_kwargs(
+                        cancel_event=cancel_event,
+                        on_progress=on_progress,
+                        total_steps=request.steps,
+                    ),
                 )
             image = result.images[0]
+        except GenerationCancelledError:
+            raise
         except OperationUnsupportedError:
             raise
         except ModelLoadError:

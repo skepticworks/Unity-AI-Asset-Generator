@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import threading
 import time
+from collections.abc import Callable
 
 import torch
 
-from unity_ai_assets.core.errors import InferenceError, ModelLoadError, OperationUnsupportedError
+from unity_ai_assets.core.errors import (
+    GenerationCancelledError,
+    InferenceError,
+    ModelLoadError,
+    OperationUnsupportedError,
+)
 from unity_ai_assets.core.logging import get_logger
 from unity_ai_assets.domain.capabilities import InferenceCapabilities
 from unity_ai_assets.domain.enums import (
@@ -16,6 +23,7 @@ from unity_ai_assets.domain.enums import (
     model_family_supports_inpainting,
 )
 from unity_ai_assets.domain.generation import GeneratedImage, GenerationRequest
+from unity_ai_assets.inference.cancel import pipeline_call_kwargs, raise_if_cancelled
 from unity_ai_assets.inference.inpainting import DiffusersInpaintingPipeline
 from unity_ai_assets.inference.model_manager import ModelManager
 
@@ -71,15 +79,34 @@ class DiffusersBackend:
             resolved_precision=precision,
         )
 
-    def generate(self, request: GenerationRequest) -> GeneratedImage:
+    def generate(
+        self,
+        request: GenerationRequest,
+        *,
+        cancel_event: threading.Event | None = None,
+        on_progress: Callable[[str, int | None, int | None], None] | None = None,
+    ) -> GeneratedImage:
+        raise_if_cancelled(cancel_event)
         operation = request.operation or OperationType.TEXT_TO_IMAGE.value
         if operation == OperationType.INPAINTING.value:
-            return DiffusersInpaintingPipeline(self._model_manager).inpaint(request)
+            return DiffusersInpaintingPipeline(self._model_manager).inpaint(
+                request, cancel_event=cancel_event, on_progress=on_progress
+            )
         if operation == OperationType.IMAGE_TO_IMAGE.value:
-            return self._generate_image_to_image(request)
-        return self._generate_text_to_image(request)
+            return self._generate_image_to_image(
+                request, cancel_event=cancel_event, on_progress=on_progress
+            )
+        return self._generate_text_to_image(
+            request, cancel_event=cancel_event, on_progress=on_progress
+        )
 
-    def _generate_text_to_image(self, request: GenerationRequest) -> GeneratedImage:
+    def _generate_text_to_image(
+        self,
+        request: GenerationRequest,
+        *,
+        cancel_event: threading.Event | None = None,
+        on_progress: Callable[[str, int | None, int | None], None] | None = None,
+    ) -> GeneratedImage:
         try:
             pipeline = self._model_manager.get_pipeline()
         except ModelLoadError:
@@ -120,8 +147,15 @@ class DiffusersBackend:
                     num_inference_steps=request.steps,
                     guidance_scale=request.guidance_scale,
                     generator=generator,
+                    **pipeline_call_kwargs(
+                        cancel_event=cancel_event,
+                        on_progress=on_progress,
+                        total_steps=request.steps,
+                    ),
                 )
             image = result.images[0]
+        except GenerationCancelledError:
+            raise
         except ModelLoadError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -149,7 +183,13 @@ class DiffusersBackend:
             model_revision=self._model_manager.model_revision,
         )
 
-    def _generate_image_to_image(self, request: GenerationRequest) -> GeneratedImage:
+    def _generate_image_to_image(
+        self,
+        request: GenerationRequest,
+        *,
+        cancel_event: threading.Event | None = None,
+        on_progress: Callable[[str, int | None, int | None], None] | None = None,
+    ) -> GeneratedImage:
         if not model_family_supports_image_to_image(self._model_manager.model_family):
             raise OperationUnsupportedError(
                 "The current model does not support image_to_image. "
@@ -212,8 +252,15 @@ class DiffusersBackend:
                     guidance_scale=request.guidance_scale,
                     strength=strength,
                     generator=generator,
+                    **pipeline_call_kwargs(
+                        cancel_event=cancel_event,
+                        on_progress=on_progress,
+                        total_steps=request.steps,
+                    ),
                 )
             image = result.images[0]
+        except GenerationCancelledError:
+            raise
         except OperationUnsupportedError:
             raise
         except ModelLoadError:

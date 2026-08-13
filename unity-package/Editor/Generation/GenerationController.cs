@@ -23,8 +23,12 @@ namespace UnityAiAssets.Editor.Generation
 
         public bool ModelLoaded;
         public string GenerationId;
+        public string JobId;
+        public string JobState;
+        public string JobStage;
         public long? Seed;
         public float? ElapsedSeconds;
+        public List<JobDocument> History = new List<JobDocument>();
         public string ImportedTexturePath;
         public string ImportedMaterialPath;
         public string MetadataAssetPath;
@@ -122,6 +126,26 @@ namespace UnityAiAssets.Editor.Generation
         public void CancelLocalWait()
         {
             _cts?.Cancel();
+        }
+
+        public async Task CancelActiveJobAsync()
+        {
+            var jobId = Progress.JobId;
+            _cts?.Cancel();
+            if (string.IsNullOrWhiteSpace(jobId))
+            {
+                return;
+            }
+
+            try
+            {
+                using var client = CreateClient();
+                await client.CancelJobAsync(jobId, CancellationToken.None).ConfigureAwait(true);
+            }
+            catch (Exception)
+            {
+                // Local wait is already cancelled; backend cancel is best-effort.
+            }
         }
 
         /// <summary>
@@ -238,6 +262,9 @@ namespace UnityAiAssets.Editor.Generation
             Progress.ImportedMaterialPath = null;
             Progress.MetadataAssetPath = null;
             Progress.GenerationId = null;
+            Progress.JobId = null;
+            Progress.JobState = null;
+            Progress.JobStage = null;
             Progress.Seed = null;
             Progress.ElapsedSeconds = null;
             Progress.ValidationIssues = new List<CapabilityValidationIssue>();
@@ -338,29 +365,35 @@ namespace UnityAiAssets.Editor.Generation
                     return;
                 }
 
-                SetState(GenerationState.Submitting, "Submitting texture generation request…");
+                SetState(GenerationState.Submitting, "Submitting generation job…");
                 var dto = GenerationRequestFactory.FromResolved(resolved, request);
+                var job = await client.SubmitJobAsync(dto, token).ConfigureAwait(true);
+                ApplyJobProgress(job);
+                Progress.RequestId = client.LastRequestId ?? Progress.RequestId;
 
-                SetState(GenerationState.Generating, "Waiting for backend generation…");
-                var generateTask = client.GenerateTextureAsync(dto, token);
-                var startedUtc = DateTime.UtcNow;
-                while (!generateTask.IsCompleted)
+                SetState(GenerationState.Generating, FormatJobStatus(job));
+                job = await WaitForJobAsync(client, job.JobId, token).ConfigureAwait(true);
+                if (job.State == "cancelled")
                 {
-                    var waited = (DateTime.UtcNow - startedUtc).TotalSeconds;
-                    Progress.StatusMessage =
-                        $"Waiting for backend generation… {waited:0}s elapsed " +
-                        $"(timeout {settings.ApiTimeoutSeconds}s). Watch the Python console.";
-                    try
-                    {
-                        await Task.WhenAny(generateTask, Task.Delay(500, token)).ConfigureAwait(true);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        throw;
-                    }
+                    Progress.State = GenerationState.Cancelled;
+                    Progress.StatusMessage = "Job cancelled. Nothing was imported.";
+                    Progress.ErrorMessage = Progress.StatusMessage;
+                    await RefreshHistorySilentAsync(client, token).ConfigureAwait(true);
+                    return;
                 }
 
-                var response = await generateTask.ConfigureAwait(true);
+                if (job.State != "completed" || job.Result == null)
+                {
+                    Progress.State = GenerationState.Failed;
+                    Progress.ErrorMessage = job.Error != null
+                        ? $"{job.Error.Code}: {job.Error.Message}"
+                        : $"Job ended in state {job.State}.";
+                    Progress.StatusMessage = "Failed: " + Progress.ErrorMessage;
+                    await RefreshHistorySilentAsync(client, token).ConfigureAwait(true);
+                    return;
+                }
+
+                var response = ToGenerationResponse(job);
                 Progress.GenerationId = response.generation_id;
                 Progress.Seed = response.seed;
                 Progress.ElapsedSeconds = response.elapsed_seconds;
@@ -456,6 +489,7 @@ namespace UnityAiAssets.Editor.Generation
                     Progress.ImportedMaterialPath = UnityEditor.AssetDatabase.GetAssetPath(material);
                 }
 
+                await RefreshHistorySilentAsync(client, token).ConfigureAwait(true);
                 SetState(
                     GenerationState.Completed,
                     BuildCompletionStatus(import.AssetPath));
@@ -464,7 +498,7 @@ namespace UnityAiAssets.Editor.Generation
             {
                 Progress.State = GenerationState.Cancelled;
                 Progress.StatusMessage =
-                    "Local wait cancelled. Backend generation may still complete; nothing was imported.";
+                    "Cancelled. If the job was still queued or running, the backend was asked to stop.";
                 Progress.ErrorMessage = Progress.StatusMessage;
             }
             catch (Exception ex)
@@ -732,6 +766,354 @@ namespace UnityAiAssets.Editor.Generation
                 Progress.ErrorMessage = ex.Message;
                 Progress.StatusMessage = "Failed: " + ex.Message;
             }
+        }
+
+        public async Task RefreshHistoryAsync()
+        {
+            if (IsBusy)
+            {
+                return;
+            }
+
+            _cts?.Cancel();
+            _cts = new CancellationTokenSource();
+            try
+            {
+                using var client = CreateClient();
+                SetState(GenerationState.CheckingConnection, "Loading generation history…");
+                await RefreshHistorySilentAsync(client, _cts.Token).ConfigureAwait(true);
+                SetState(GenerationState.Idle, $"Loaded {Progress.History.Count} recent jobs.");
+            }
+            catch (Exception ex)
+            {
+                Fail(ex);
+            }
+        }
+
+        public async Task ImportHistoryJobAsync(string jobId, TextureGenerationRequestModel request)
+        {
+            if (request == null)
+            {
+                throw new ArgumentNullException(nameof(request));
+            }
+
+            if (IsBusy || string.IsNullOrWhiteSpace(jobId))
+            {
+                return;
+            }
+
+            _cts?.Cancel();
+            _cts = new CancellationTokenSource();
+            var token = _cts.Token;
+            try
+            {
+                using var client = CreateClient();
+                SetState(GenerationState.Downloading, "Loading completed job…");
+                var job = await client.GetJobAsync(jobId, token).ConfigureAwait(true);
+                ApplyJobProgress(job);
+                if (!job.CanImport)
+                {
+                    Progress.State = GenerationState.Failed;
+                    Progress.ErrorMessage = "That job has no completed result to import.";
+                    Progress.StatusMessage = Progress.ErrorMessage;
+                    return;
+                }
+
+                await ImportCompletedJobAsync(client, job, request, token).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                Progress.State = GenerationState.Cancelled;
+                Progress.StatusMessage = "Import cancelled.";
+                Progress.ErrorMessage = Progress.StatusMessage;
+            }
+            catch (Exception ex)
+            {
+                Fail(ex);
+            }
+        }
+
+        public async Task RetryHistoryJobAsync(string jobId, TextureGenerationRequestModel request)
+        {
+            if (request == null)
+            {
+                throw new ArgumentNullException(nameof(request));
+            }
+
+            if (IsBusy || string.IsNullOrWhiteSpace(jobId))
+            {
+                return;
+            }
+
+            _cts?.Cancel();
+            _cts = new CancellationTokenSource();
+            var token = _cts.Token;
+            try
+            {
+                using var client = CreateClient();
+                SetState(GenerationState.Submitting, "Retrying failed job…");
+                var job = await client.RetryJobAsync(jobId, token).ConfigureAwait(true);
+                ApplyJobProgress(job);
+                SetState(GenerationState.Generating, FormatJobStatus(job));
+                job = await WaitForJobAsync(client, job.JobId, token).ConfigureAwait(true);
+                if (job.State != "completed" || job.Result == null)
+                {
+                    Progress.State = job.State == "cancelled" ? GenerationState.Cancelled : GenerationState.Failed;
+                    Progress.ErrorMessage = job.Error != null
+                        ? $"{job.Error.Code}: {job.Error.Message}"
+                        : $"Retry ended in state {job.State}.";
+                    Progress.StatusMessage = Progress.ErrorMessage;
+                    await RefreshHistorySilentAsync(client, token).ConfigureAwait(true);
+                    return;
+                }
+
+                await ImportCompletedJobAsync(client, job, request, token).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                Progress.State = GenerationState.Cancelled;
+                Progress.StatusMessage = "Retry cancelled.";
+                Progress.ErrorMessage = Progress.StatusMessage;
+            }
+            catch (Exception ex)
+            {
+                Fail(ex);
+            }
+        }
+
+        public async Task CancelHistoryJobAsync(string jobId)
+        {
+            if (string.IsNullOrWhiteSpace(jobId))
+            {
+                return;
+            }
+
+            try
+            {
+                using var client = CreateClient();
+                var job = await client.CancelJobAsync(jobId, CancellationToken.None).ConfigureAwait(true);
+                ApplyJobProgress(job);
+                await RefreshHistorySilentAsync(client, CancellationToken.None).ConfigureAwait(true);
+                if (!IsBusy)
+                {
+                    SetState(GenerationState.Idle, $"Job {job.State}: {job.PromptSummary}");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!IsBusy)
+                {
+                    Fail(ex);
+                }
+            }
+        }
+
+        async Task ImportCompletedJobAsync(
+            IGenerationApiClient client,
+            JobDocument job,
+            TextureGenerationRequestModel request,
+            CancellationToken token)
+        {
+            var response = ToGenerationResponse(job);
+            Progress.GenerationId = response.generation_id;
+            Progress.Seed = response.seed;
+            Progress.ElapsedSeconds = response.elapsed_seconds;
+            Progress.Operation = response.operation;
+            SetState(GenerationState.Downloading, "Downloading generated PNG and manifest…");
+            var png = await client
+                .DownloadGenerationImageAsync(response.generation_id, response.resources?.image, token)
+                .ConfigureAwait(true);
+
+            GenerationManifestDocument manifest = null;
+            BackendMetadataDto legacyMetadata = null;
+            try
+            {
+                manifest = await client
+                    .DownloadGenerationManifestAsync(response.generation_id, response.resources?.manifest, token)
+                    .ConfigureAwait(true);
+            }
+            catch (ApiException)
+            {
+                try
+                {
+                    legacyMetadata = await client
+                        .DownloadGenerationMetadataAsync(response.generation_id, token)
+                        .ConfigureAwait(true);
+                }
+                catch (ApiException)
+                {
+                }
+            }
+
+            token.ThrowIfCancellationRequested();
+            VerifyImageIntegrityOrThrow(png, manifest);
+            ApplyProcessingProvenance(request, manifest);
+
+            SetState(GenerationState.Importing, "Importing texture into the Unity project…");
+            var settings = UnityAiAssetSettings.instance;
+            var selectedProfile = _profileRegistry.Get(request.SelectedProfileId);
+            var capabilities = Progress.Capabilities;
+            ResolvedGenerationSettings resolved = null;
+            try
+            {
+                if (capabilities != null)
+                {
+                    resolved = _profileResolver.Resolve(selectedProfile, new UserProfileOverrides
+                    {
+                        Subject = request.Subject,
+                        DestinationFolder = request.DestinationFolder,
+                        ImportProfileId = request.ImportProfileId,
+                        OutputName = request.OutputName,
+                        CreateMaterial = request.CreateMaterial,
+                    }, capabilities);
+                }
+            }
+            catch (Exception)
+            {
+                resolved = null;
+            }
+
+            var profile = !string.IsNullOrWhiteSpace(request.ImportProfileId)
+                ? _catalog.GetImportProfile(request.ImportProfileId)
+                : _catalog.FromLegacyKind(request.ImportProfile);
+            profile = profile.Copy();
+            if (resolved != null && (request.AssetType == "sprite" || request.AssetType == "icon"))
+            {
+                profile.PixelsPerUnit = resolved.PixelsPerUnit;
+                profile.PivotMode = resolved.PivotMode;
+                profile.CustomPivotX = resolved.CustomPivotX;
+                profile.CustomPivotY = resolved.CustomPivotY;
+            }
+
+            var import = _assetImporter.ImportPng(
+                png,
+                request.DestinationFolder,
+                request.OutputName,
+                profile);
+            Progress.ImportedTexturePath = import.AssetPath;
+
+            var imageUrl = !string.IsNullOrWhiteSpace(response.resources?.image)
+                ? response.resources.image
+                : ApiEndpoints.GenerationImage(response.generation_id);
+            var manifestUrl = !string.IsNullOrWhiteSpace(response.resources?.manifest)
+                ? response.resources.manifest
+                : ApiEndpoints.GenerationManifest(response.generation_id);
+
+            var metadataAsset = _metadataImporter.Create(
+                import.Texture,
+                import.AssetPath,
+                settings.BackendBaseUrl,
+                response,
+                manifest,
+                legacyMetadata,
+                imageUrl,
+                manifestUrl,
+                Progress.RequestId);
+            Progress.MetadataAssetPath = UnityEditor.AssetDatabase.GetAssetPath(metadataAsset);
+
+            if (request.CreateMaterial)
+            {
+                var material = _materialFactory.CreateMaterial(
+                    import.Texture,
+                    request.MaterialDestinationFolder,
+                    request.OutputName,
+                    request.ShaderName);
+                Progress.ImportedMaterialPath = UnityEditor.AssetDatabase.GetAssetPath(material);
+            }
+
+            await RefreshHistorySilentAsync(client, token).ConfigureAwait(true);
+            SetState(GenerationState.Completed, BuildCompletionStatus(import.AssetPath));
+        }
+
+        async Task<JobDocument> WaitForJobAsync(
+            IGenerationApiClient client, string jobId, CancellationToken token)
+        {
+            var startedUtc = DateTime.UtcNow;
+            while (true)
+            {
+                token.ThrowIfCancellationRequested();
+                var job = await client.GetJobAsync(jobId, token).ConfigureAwait(true);
+                ApplyJobProgress(job);
+                if (job.IsTerminal)
+                {
+                    return job;
+                }
+
+                var waited = (DateTime.UtcNow - startedUtc).TotalSeconds;
+                Progress.StatusMessage = FormatJobStatus(job) + $" ({waited:0}s)";
+                await Task.Delay(400, token).ConfigureAwait(true);
+            }
+        }
+
+        async Task RefreshHistorySilentAsync(IGenerationApiClient client, CancellationToken token)
+        {
+            try
+            {
+                var list = await client.ListJobsAsync(token).ConfigureAwait(true);
+                Progress.History = list.Jobs ?? new List<JobDocument>();
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                // History is best-effort and must not fail generation/import.
+            }
+        }
+
+        void ApplyJobProgress(JobDocument job)
+        {
+            if (job == null)
+            {
+                return;
+            }
+
+            Progress.JobId = job.JobId;
+            Progress.JobState = job.State;
+            Progress.JobStage = job.Progress != null ? job.Progress.Stage : job.State;
+            if (job.Seed.HasValue)
+            {
+                Progress.Seed = job.Seed;
+            }
+
+            if (job.Result != null)
+            {
+                Progress.GenerationId = job.Result.GenerationId;
+                Progress.ElapsedSeconds = job.Result.ElapsedSeconds;
+                Progress.Operation = job.Result.Operation;
+            }
+        }
+
+        static string FormatJobStatus(JobDocument job)
+        {
+            var stage = job.Progress != null && !string.IsNullOrWhiteSpace(job.Progress.Message)
+                ? job.Progress.Message
+                : job.State;
+            if (job.Progress != null && job.Progress.CurrentStep.HasValue && job.Progress.TotalSteps.HasValue)
+            {
+                return $"{stage} ({job.Progress.CurrentStep}/{job.Progress.TotalSteps})";
+            }
+
+            return stage;
+        }
+
+        static TextureGenerationResponseDto ToGenerationResponse(JobDocument job)
+        {
+            var result = job.Result;
+            return new TextureGenerationResponseDto
+            {
+                generation_id = result.GenerationId,
+                status = result.Status,
+                operation = result.Operation,
+                asset_type = result.AssetType,
+                seed = result.Seed,
+                width = result.Width,
+                height = result.Height,
+                elapsed_seconds = result.ElapsedSeconds,
+                resources = result.Resources,
+                schema_versions = result.SchemaVersions,
+            };
         }
 
         static void ValidateRequestStructure(TextureGenerationRequestModel request)

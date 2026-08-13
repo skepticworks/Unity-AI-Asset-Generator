@@ -36,6 +36,7 @@ namespace UnityAiAssets.Editor.UI
         bool _foldImport = true;
         bool _foldTileable = true;
         bool _foldStatus = true;
+        bool _foldHistory = true;
 
         Texture2D _previewOriginal;
         Texture2D _previewOffset;
@@ -165,7 +166,7 @@ namespace UnityAiAssets.Editor.UI
             EditorGUILayout.LabelField("Local AI Asset Generation", EditorStyles.boldLabel);
             EditorGUILayout.LabelField(
                 "Requires the Python FastAPI backend. Default SD 1.5 is trained at 512×512. " +
-                "Cancel Wait only stops Unity waiting — GPU work may continue.",
+                "Generate submits a job and polls status; Cancel asks the backend to stop queued or running work.",
                 _sectionHelp);
 
             EditorGUILayout.Space(4);
@@ -185,6 +186,7 @@ namespace UnityAiAssets.Editor.UI
             DrawActions(progress, busy);
             MaybeAutoLoadImportedTexture(progress);
             DrawTileableWorkflowSection(progress);
+            DrawHistory(progress, busy);
             DrawStatus(progress);
             EditorGUILayout.EndScrollView();
         }
@@ -1707,18 +1709,18 @@ namespace UnityAiAssets.Editor.UI
                 using (new EditorGUI.DisabledScope(!canGenerate))
                 {
                     if (GUILayout.Button(
-                            Tip("Generate And Import", "Submit generation, download PNG+manifest, verify, and import."),
+                            Tip("Generate And Import", "Submit a job, poll until it finishes, then download and import."),
                             GUILayout.Height(28)))
                         RunSafe(() => _controller.GenerateAndImportAsync(_request));
                 }
             }
 
-            using (new EditorGUI.DisabledScope(!busy))
+            using (new EditorGUI.DisabledScope(!busy && string.IsNullOrWhiteSpace(progress.JobId)))
             {
                 if (GUILayout.Button(
-                        Tip("Cancel Wait", "Stops waiting in Unity only; backend work may continue."),
+                        Tip("Cancel Job", "Cancel the active queued or running backend job and stop waiting in Unity."),
                         GUILayout.Height(28)))
-                    _controller.CancelLocalWait();
+                    RunSafe(() => _controller.CancelActiveJobAsync());
             }
 
             EditorGUILayout.EndHorizontal();
@@ -1861,6 +1863,15 @@ namespace UnityAiAssets.Editor.UI
                         _sectionHelp);
                 }
 
+                if (!string.IsNullOrWhiteSpace(progress.JobId))
+                    EditorGUILayout.LabelField("Job ID", progress.JobId, _sectionHelp);
+                if (!string.IsNullOrWhiteSpace(progress.JobState))
+                    EditorGUILayout.LabelField(
+                        "Job",
+                        string.IsNullOrWhiteSpace(progress.JobStage)
+                            ? progress.JobState
+                            : $"{progress.JobState} / {progress.JobStage}",
+                        _sectionHelp);
                 if (!string.IsNullOrWhiteSpace(progress.GenerationId))
                     EditorGUILayout.LabelField("Generation ID", progress.GenerationId, _sectionHelp);
                 if (progress.Seed.HasValue)
@@ -1886,6 +1897,82 @@ namespace UnityAiAssets.Editor.UI
                     EditorGUILayout.HelpBox(progress.ErrorMessage, MessageType.Error);
 
                 RepaintIfBusy(progress);
+            }
+
+            EditorGUILayout.EndFoldoutHeaderGroup();
+        }
+
+        void DrawHistory(GenerationProgress progress, bool busy)
+        {
+            _foldHistory = EditorGUILayout.BeginFoldoutHeaderGroup(_foldHistory, "Generation History");
+            if (_foldHistory)
+            {
+                EditorGUILayout.LabelField(
+                    "Recent jobs from the local backend queue. Completed jobs can be re-imported; " +
+                    "failed jobs can be retried; queued or running jobs can be cancelled.",
+                    _sectionHelp);
+
+                EditorGUILayout.BeginHorizontal();
+                using (new EditorGUI.DisabledScope(busy))
+                {
+                    if (GUILayout.Button("Refresh History", GUILayout.Height(22)))
+                        RunSafe(() => _controller.RefreshHistoryAsync());
+                }
+                EditorGUILayout.EndHorizontal();
+
+                var jobs = progress.History;
+                if (jobs == null || jobs.Count == 0)
+                {
+                    EditorGUILayout.HelpBox("No jobs loaded yet. Refresh history after the backend is running.", MessageType.Info);
+                }
+                else
+                {
+                    var shown = Math.Min(jobs.Count, 12);
+                    for (var i = 0; i < shown; i++)
+                    {
+                        var job = jobs[i];
+                        if (job == null)
+                            continue;
+
+                        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                        EditorGUILayout.LabelField(
+                            $"{job.State} · {job.GenerationType} · {job.AssetType}",
+                            EditorStyles.boldLabel);
+                        if (!string.IsNullOrWhiteSpace(job.PromptSummary))
+                            EditorGUILayout.LabelField("Prompt", job.PromptSummary, _sectionHelp);
+                        var meta = job.CreatedAt ?? string.Empty;
+                        if (job.Seed.HasValue)
+                            meta += (string.IsNullOrEmpty(meta) ? string.Empty : " · ") + "seed " + job.Seed.Value;
+                        if (job.Result != null)
+                            meta += " · result " + job.Result.Status;
+                        if (!string.IsNullOrEmpty(meta))
+                            EditorGUILayout.LabelField(meta, _sectionHelp);
+                        if (job.Error != null && !string.IsNullOrWhiteSpace(job.Error.Message))
+                            EditorGUILayout.LabelField("Error", job.Error.Code + ": " + job.Error.Message, _sectionHelp);
+
+                        EditorGUILayout.BeginHorizontal();
+                        using (new EditorGUI.DisabledScope(busy || !job.CanImport))
+                        {
+                            if (GUILayout.Button(Tip("Import", "Download and import this completed result into the current destination folder.")))
+                                RunSafe(() => _controller.ImportHistoryJobAsync(job.JobId, _request));
+                        }
+
+                        using (new EditorGUI.DisabledScope(busy || !job.IsRetryable))
+                        {
+                            if (GUILayout.Button(Tip("Retry", "Requeue this failed, interrupted, or cancelled job.")))
+                                RunSafe(() => _controller.RetryHistoryJobAsync(job.JobId, _request));
+                        }
+
+                        using (new EditorGUI.DisabledScope(!job.IsCancellable))
+                        {
+                            if (GUILayout.Button(Tip("Cancel", "Cancel this queued or running job on the backend.")))
+                                RunSafe(() => _controller.CancelHistoryJobAsync(job.JobId));
+                        }
+
+                        EditorGUILayout.EndHorizontal();
+                        EditorGUILayout.EndVertical();
+                    }
+                }
             }
 
             EditorGUILayout.EndFoldoutHeaderGroup();

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.0 — Milestone 9 local job system
+
+- Generation is submitted as a persistent local job. Unity receives a job ID, polls status/progress,
+  then downloads and imports the completed result instead of holding the original HTTP request open.
+- History panel lists recent jobs with mode, prompt summary, timestamps, seed, and result status.
+  Completed jobs can be re-imported; failed/interrupted/cancelled jobs can be retried; queued/running
+  jobs can be cancelled.
+- Cancel asks the backend to drop queued work or stop a running job at the next safe pipeline point.
+- Capabilities schema 1.5 advertises the job system (`jobs.supported`, persistence, states, retry
+  limits) without exposing the execution backend.
+
 ## 0.8.0 — Milestone 8 masks and inpainting
 
 - Masked inpainting is a distinct operation (`inpainting`), not a mode of img2img or

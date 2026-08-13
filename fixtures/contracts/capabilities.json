@@ -1,14 +1,14 @@
 {
   "api": {
     "major": 1,
-    "minor": 2
+    "minor": 3
   },
   "application": {
     "name": "unity-ai-asset-generator",
     "version": "0.3.0"
   },
     "schemas": {
-    "capabilities": "1.4",
+    "capabilities": "1.5",
     "generation_manifest": "1.5"
   },
   "runtime": {
@@ -299,5 +299,22 @@
   },
   "limits": {
     "maximum_concurrent_generations": 1
+  },
+  "jobs": {
+    "supported": true,
+    "persistence": "local_filesystem",
+    "states": [
+      "queued",
+      "running",
+      "completed",
+      "failed",
+      "cancelling",
+      "cancelled",
+      "interrupted"
+    ],
+    "maximum_retries": 2,
+    "maximum_concurrent_jobs": 1,
+    "auto_retry": true,
+    "progress": "stage"
   }
 }

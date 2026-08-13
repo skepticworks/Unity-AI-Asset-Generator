@@ -38,6 +38,10 @@ def test_capability_document_construction() -> None:
     assert document.operations.inpainting.mask_image.must_match_source_dimensions is True
     assert document.operations.text_to_image.schedulers.selection_supported is False
     assert document.precision.user_selectable is False
+    assert document.jobs.supported is True
+    assert document.jobs.persistence == "local_filesystem"
+    assert "queued" in document.jobs.states
+    assert document.jobs.progress == "stage"
     assert backend.calls == []
 
 
@@ -59,6 +63,11 @@ def test_capability_serialization() -> None:
     assert inpaint["mask_image"]["white_means"] == "regenerate"
     assert inpaint["mask_image"]["black_means"] == "keep"
     assert "png" in inpaint["mask_image"]["supported_formats"]
+    jobs = payload["jobs"]
+    assert jobs["supported"] is True
+    assert jobs["persistence"] == "local_filesystem"
+    assert jobs["progress"] == "stage"
+    assert "queued" in jobs["states"]
     assert "diffusers" not in str(payload).lower()
     assert "C:\\" not in str(payload)
     assert "huggingface" not in str(payload).lower() or "model" in str(payload).lower()

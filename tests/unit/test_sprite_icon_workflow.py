@@ -55,7 +55,7 @@ def sprite_client(sprite_settings: Settings) -> TestClient:
 
 def test_capabilities_report_sprite_icon_and_processing(sprite_client: TestClient) -> None:
     payload = sprite_client.get("/api/v1/capabilities").json()
-    assert payload["schemas"]["capabilities"] == "1.4"
+    assert payload["schemas"]["capabilities"] == "1.5"
     t2i = payload["operations"]["text_to_image"]
     assert "sprite" in t2i["asset_types"]
     assert "icon" in t2i["asset_types"]

@@ -34,6 +34,13 @@ class AppErrorCode(StrEnum):
     SPRITE_IMPORT_FAILED = "SPRITE_IMPORT_FAILED"
     PIVOT_INVALID = "PIVOT_INVALID"
     PIXELS_PER_UNIT_INVALID = "PIXELS_PER_UNIT_INVALID"
+    JOB_NOT_FOUND = "JOB_NOT_FOUND"
+    JOB_STATE_CONFLICT = "JOB_STATE_CONFLICT"
+    JOB_NOT_RETRYABLE = "JOB_NOT_RETRYABLE"
+    JOB_NOT_CANCELLABLE = "JOB_NOT_CANCELLABLE"
+    JOB_CANCELLED = "JOB_CANCELLED"
+    JOB_INTERRUPTED = "JOB_INTERRUPTED"
+    JOB_SERVICE_UNAVAILABLE = "JOB_SERVICE_UNAVAILABLE"
     INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
 
 
@@ -82,6 +89,13 @@ DEFAULT_MESSAGES: dict[AppErrorCode, str] = {
     AppErrorCode.SPRITE_IMPORT_FAILED: "Sprite import failed.",
     AppErrorCode.PIVOT_INVALID: "The requested sprite pivot is invalid.",
     AppErrorCode.PIXELS_PER_UNIT_INVALID: "The requested pixels-per-unit value is invalid.",
+    AppErrorCode.JOB_NOT_FOUND: "The requested generation job was not found.",
+    AppErrorCode.JOB_STATE_CONFLICT: "The job cannot transition to the requested state.",
+    AppErrorCode.JOB_NOT_RETRYABLE: "The job is not eligible for retry.",
+    AppErrorCode.JOB_NOT_CANCELLABLE: "The job cannot be cancelled in its current state.",
+    AppErrorCode.JOB_CANCELLED: "The generation job was cancelled.",
+    AppErrorCode.JOB_INTERRUPTED: "The generation job was interrupted by a backend restart.",
+    AppErrorCode.JOB_SERVICE_UNAVAILABLE: "The job service is not accepting new work.",
     AppErrorCode.INTERNAL_SERVER_ERROR: "An unexpected server error occurred.",
 }
 
@@ -110,5 +124,12 @@ HTTP_STATUS_BY_CODE: dict[AppErrorCode, int] = {
     AppErrorCode.SPRITE_IMPORT_FAILED: 500,
     AppErrorCode.PIVOT_INVALID: 422,
     AppErrorCode.PIXELS_PER_UNIT_INVALID: 422,
+    AppErrorCode.JOB_NOT_FOUND: 404,
+    AppErrorCode.JOB_STATE_CONFLICT: 409,
+    AppErrorCode.JOB_NOT_RETRYABLE: 409,
+    AppErrorCode.JOB_NOT_CANCELLABLE: 409,
+    AppErrorCode.JOB_CANCELLED: 409,
+    AppErrorCode.JOB_INTERRUPTED: 500,
+    AppErrorCode.JOB_SERVICE_UNAVAILABLE: 503,
     AppErrorCode.INTERNAL_SERVER_ERROR: 500,
 }

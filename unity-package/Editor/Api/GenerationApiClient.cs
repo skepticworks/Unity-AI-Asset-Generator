@@ -21,6 +21,18 @@ namespace UnityAiAssets.Editor.Api
             TextureGenerationRequestDto request,
             CancellationToken cancellationToken);
 
+        Task<JobDocument> SubmitJobAsync(
+            TextureGenerationRequestDto request,
+            CancellationToken cancellationToken);
+
+        Task<JobDocument> GetJobAsync(string jobId, CancellationToken cancellationToken);
+
+        Task<JobListDocument> ListJobsAsync(CancellationToken cancellationToken, int limit = 50);
+
+        Task<JobDocument> CancelJobAsync(string jobId, CancellationToken cancellationToken);
+
+        Task<JobDocument> RetryJobAsync(string jobId, CancellationToken cancellationToken);
+
         Task<byte[]> DownloadGenerationImageAsync(string generationId, CancellationToken cancellationToken);
 
         /// <summary>
@@ -117,6 +129,79 @@ namespace UnityAiAssets.Editor.Api
                 ApiEndpoints.GenerateTexture, requestDto.ToJson(), _timeoutSeconds, cancellationToken)
                 .ConfigureAwait(true);
             return Deserialize<TextureGenerationResponseDto>(body);
+        }
+
+        public async Task<JobDocument> SubmitJobAsync(
+            TextureGenerationRequestDto requestDto,
+            CancellationToken cancellationToken)
+        {
+            if (requestDto == null)
+            {
+                throw new ArgumentNullException(nameof(requestDto));
+            }
+
+            var body = await PostJsonAsync(
+                ApiEndpoints.Jobs, requestDto.ToJson(), Math.Min(30, _timeoutSeconds), cancellationToken)
+                .ConfigureAwait(true);
+            return ParseJob(body);
+        }
+
+        public async Task<JobDocument> GetJobAsync(string jobId, CancellationToken cancellationToken)
+        {
+            ValidateJobId(jobId);
+            var body = await GetStringAsync(
+                ApiEndpoints.Job(jobId), Math.Min(30, _timeoutSeconds), cancellationToken)
+                .ConfigureAwait(true);
+            return ParseJob(body);
+        }
+
+        public async Task<JobListDocument> ListJobsAsync(
+            CancellationToken cancellationToken, int limit = 50)
+        {
+            var path = ApiEndpoints.Jobs + "?limit=" + Math.Max(1, Math.Min(200, limit));
+            var body = await GetStringAsync(
+                path, Math.Min(30, _timeoutSeconds), cancellationToken)
+                .ConfigureAwait(true);
+            if (!JobListDocument.TryParse(body, out var document) || document == null)
+            {
+                throw new ApiException(
+                    "Failed to parse the job history returned by the backend.",
+                    ApiFailureKind.Deserialization,
+                    requestId: LastRequestId);
+            }
+
+            return document;
+        }
+
+        public async Task<JobDocument> CancelJobAsync(string jobId, CancellationToken cancellationToken)
+        {
+            ValidateJobId(jobId);
+            var body = await PostJsonAsync(
+                ApiEndpoints.JobCancel(jobId), "{}", Math.Min(30, _timeoutSeconds), cancellationToken)
+                .ConfigureAwait(true);
+            return ParseJob(body);
+        }
+
+        public async Task<JobDocument> RetryJobAsync(string jobId, CancellationToken cancellationToken)
+        {
+            ValidateJobId(jobId);
+            var body = await PostJsonAsync(
+                ApiEndpoints.JobRetry(jobId), "{}", Math.Min(30, _timeoutSeconds), cancellationToken)
+                .ConfigureAwait(true);
+            return ParseJob(body);
+        }
+
+        JobDocument ParseJob(string body)
+        {
+            if (!JobDocument.TryParse(body, out var document) || document == null)
+            {
+                throw new ApiException(
+                    "Failed to parse the job record returned by the backend.",
+                    ApiFailureKind.Deserialization,
+                    requestId: LastRequestId);
+            }
+
+            return document;
         }
 
         public async Task<byte[]> DownloadGenerationImageAsync(
@@ -420,16 +505,26 @@ namespace UnityAiAssets.Editor.Api
 
         static void ValidateGenerationId(string generationId)
         {
-            if (string.IsNullOrWhiteSpace(generationId))
+            ValidateId(generationId, "generation_id");
+        }
+
+        static void ValidateJobId(string jobId)
+        {
+            ValidateId(jobId, "job_id");
+        }
+
+        static void ValidateId(string value, string fieldName)
+        {
+            if (string.IsNullOrWhiteSpace(value))
             {
-                throw new ApiException("generation_id is required.", ApiFailureKind.Validation);
+                throw new ApiException(fieldName + " is required.", ApiFailureKind.Validation);
             }
 
-            if (generationId.IndexOf("..", StringComparison.Ordinal) >= 0 ||
-                generationId.IndexOf('/') >= 0 ||
-                generationId.IndexOf('\\') >= 0)
+            if (value.IndexOf("..", StringComparison.Ordinal) >= 0 ||
+                value.IndexOf('/') >= 0 ||
+                value.IndexOf('\\') >= 0)
             {
-                throw new ApiException("generation_id is invalid.", ApiFailureKind.Validation);
+                throw new ApiException(fieldName + " is invalid.", ApiFailureKind.Validation);
             }
         }
     }

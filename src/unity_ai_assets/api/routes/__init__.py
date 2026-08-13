@@ -1,5 +1,5 @@
 """API route package."""
 
-from unity_ai_assets.api.routes import capabilities, generation, health
+from unity_ai_assets.api.routes import capabilities, generation, health, jobs
 
-__all__ = ["capabilities", "generation", "health"]
+__all__ = ["capabilities", "generation", "health", "jobs"]

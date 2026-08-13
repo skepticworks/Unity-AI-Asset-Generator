@@ -285,6 +285,21 @@ class LimitsSchema(BaseModel):
     maximum_concurrent_generations: int
 
 
+class JobSystemSchema(BaseModel):
+    """Local job-queue capabilities. Does not describe the execution backend."""
+
+    supported: bool = True
+    persistence: str = "local_filesystem"
+    states: list[str]
+    maximum_retries: int = 2
+    maximum_concurrent_jobs: int = 1
+    auto_retry: bool = True
+    progress: str = Field(
+        default="stage",
+        description="Progress is reported as coarse stages, not invented percentages",
+    )
+
+
 class CapabilitiesResponse(BaseModel):
     """Versioned public capability document."""
 
@@ -296,6 +311,7 @@ class CapabilitiesResponse(BaseModel):
     operations: OperationsSchema
     precision: PrecisionSchema
     limits: LimitsSchema
+    jobs: JobSystemSchema
 
     @classmethod
     def from_domain(cls, document: CapabilityDocument) -> CapabilitiesResponse:
@@ -453,6 +469,15 @@ class CapabilitiesResponse(BaseModel):
             ),
             limits=LimitsSchema(
                 maximum_concurrent_generations=document.limits.maximum_concurrent_generations,
+            ),
+            jobs=JobSystemSchema(
+                supported=document.jobs.supported,
+                persistence=document.jobs.persistence,
+                states=list(document.jobs.states),
+                maximum_retries=document.jobs.maximum_retries,
+                maximum_concurrent_jobs=document.jobs.maximum_concurrent_jobs,
+                auto_retry=document.jobs.auto_retry,
+                progress=document.jobs.progress,
             ),
         )
 

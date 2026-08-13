@@ -180,6 +180,34 @@ namespace UnityAiAssets.Editor.Tests
             Assert.That(json.Contains("\"operation\""), Is.False);
             Assert.That(json.Contains("\"source_image\""), Is.False);
             Assert.That(json.Contains("\"denoising_strength\""), Is.False);
+            Assert.That(json.Contains("\"mask_image\""), Is.False);
+        }
+
+        [Test]
+        public void TextureGenerationRequest_SerializesInpaintingFields()
+        {
+            var dto = new TextureGenerationRequestDto
+            {
+                prompt = "inpaint",
+                output_name = "patch",
+                operation = "inpainting",
+                denoising_strength = 0.5f,
+                source_image = new SourceImagePayloadDto
+                {
+                    content_base64 = "QUJD",
+                    media_type = "image/png"
+                },
+                mask_image = new SourceImagePayloadDto
+                {
+                    content_base64 = "TUFTSw==",
+                    media_type = "image/png"
+                }
+            };
+
+            var json = dto.ToJson();
+            StringAssert.Contains("\"operation\":\"inpainting\"", json);
+            StringAssert.Contains("\"mask_image\":{", json);
+            StringAssert.Contains("\"content_base64\":\"TUFTSw==\"", json);
         }
     }
 }

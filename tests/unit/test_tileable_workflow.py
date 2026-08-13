@@ -135,7 +135,7 @@ def test_profile_11_migrates_to_12_with_tileable_defaults() -> None:
 
 def test_capabilities_advertise_tileable_processing(tileable_client: TestClient) -> None:
     payload = tileable_client.get("/api/v1/capabilities").json()
-    assert payload["schemas"]["capabilities"] == "1.3"
+    assert payload["schemas"]["capabilities"] == "1.4"
     tileable = payload["operations"]["text_to_image"]["processing"]["tileable"]
     assert tileable["available"] is True
     assert tileable["seam_analysis"] is True
@@ -177,7 +177,7 @@ def test_tileable_generation_with_optional_correction(tileable_client: TestClien
     assert image.size == (512, 512)
 
     manifest = tileable_client.get(f"/api/v1/generations/{generation_id}/manifest").json()
-    assert manifest["schema"]["version"] == "1.4"
+    assert manifest["schema"]["version"] == "1.5"
     assert manifest["request"]["tileable"] is True
     assert manifest["request"]["apply_seam_correction"] is True
     processing = manifest["processing"]

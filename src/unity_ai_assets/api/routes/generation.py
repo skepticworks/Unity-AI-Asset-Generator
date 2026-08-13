@@ -73,6 +73,12 @@ async def generate_texture(
         source_image_media_type=(
             None if payload.source_image is None else payload.source_image.media_type
         ),
+        mask_image_base64=(
+            None if payload.mask_image is None else payload.mask_image.content_base64
+        ),
+        mask_image_media_type=(
+            None if payload.mask_image is None else payload.mask_image.media_type
+        ),
         denoising_strength=payload.denoising_strength,
     )
     resources = _resources(result.generation_id)

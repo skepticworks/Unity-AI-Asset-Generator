@@ -51,7 +51,7 @@ namespace UnityAiAssets.Editor.Tests
                         },
                     },
                     ImageToImage = new ImageToImageCapabilities { Supported = false },
-                    Inpainting = new UnsupportedOperationInfo { Supported = false },
+                    Inpainting = new InpaintingCapabilities { Supported = false },
                 },
                 Precision = new PrecisionInfo
                 {

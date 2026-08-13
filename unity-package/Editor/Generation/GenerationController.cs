@@ -60,7 +60,8 @@ namespace UnityAiAssets.Editor.Generation
         public bool CanGenerate =>
             CapabilitiesUsable && Capabilities != null &&
             (Capabilities.Operations?.TextToImage?.Supported == true ||
-             Capabilities.Operations?.ImageToImage?.Supported == true);
+             Capabilities.Operations?.ImageToImage?.Supported == true ||
+             Capabilities.Operations?.Inpainting?.Supported == true);
     }
 
     /// <summary>
@@ -365,8 +366,12 @@ namespace UnityAiAssets.Editor.Generation
                 Progress.ElapsedSeconds = response.elapsed_seconds;
                 Progress.Operation = !string.IsNullOrWhiteSpace(response.operation)
                     ? response.operation
-                    : (request.UseImageToImage ? "image_to_image" : "text_to_image");
-                Progress.DenoisingStrength = request.UseImageToImage ? request.DenoisingStrength : (float?)null;
+                    : (request.UseInpainting
+                        ? "inpainting"
+                        : (request.UseImageToImage ? "image_to_image" : "text_to_image"));
+                Progress.DenoisingStrength = request.UseInpainting || request.UseImageToImage
+                    ? request.DenoisingStrength
+                    : (float?)null;
                 Progress.RequestId = client.LastRequestId ?? Progress.RequestId;
 
                 SetState(GenerationState.Downloading, "Downloading generated PNG and manifest…");
@@ -492,7 +497,28 @@ namespace UnityAiAssets.Editor.Generation
             Progress.BackgroundRemovalImplementation = processing.BackgroundRemovalImplementation;
 
             var parts = new List<string>();
-            if (request.UseImageToImage)
+            if (request.UseInpainting)
+            {
+                var operation = manifest?.Generation?.Operation ?? "inpainting";
+                var strength = request.DenoisingStrength.ToString("0.###");
+                var sourceMeta = manifest?.Request?.SourceImage;
+                var maskMeta = manifest?.Request?.MaskImage;
+                var convention = manifest?.Request?.MaskConvention ?? MaskBrushUtility.ConventionId;
+                var sourceDetail = sourceMeta == null
+                    ? string.Empty
+                    : $" Source {sourceMeta.Width}×{sourceMeta.Height} {sourceMeta.Format}.";
+                var maskDetail = maskMeta == null
+                    ? string.Empty
+                    : $" Mask {maskMeta.Width}×{maskMeta.Height} {maskMeta.Format}" +
+                      (string.IsNullOrEmpty(maskMeta.Sha256)
+                          ? "."
+                          : $", sha256={maskMeta.Sha256.Substring(0, Math.Min(8, maskMeta.Sha256.Length))}….");
+                parts.Add(
+                    $"Operation: {operation} (masked inpainting, not img2img or reference conditioning). " +
+                    $"Convention: {convention} (white regenerates, black is kept). " +
+                    $"Denoising strength: {strength}.{sourceDetail}{maskDetail}");
+            }
+            else if (request.UseImageToImage)
             {
                 var operation = manifest?.Generation?.Operation ?? "image_to_image";
                 var strength = request.DenoisingStrength.ToString("0.###");

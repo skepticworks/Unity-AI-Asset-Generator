@@ -59,6 +59,9 @@ class ModelFamily(StrEnum):
 IMAGE_TO_IMAGE_MODEL_FAMILIES: frozenset[str] = frozenset(
     {ModelFamily.SD15.value, ModelFamily.SDXL.value}
 )
+INPAINTING_MODEL_FAMILIES: frozenset[str] = frozenset(
+    {ModelFamily.SD15.value, ModelFamily.SDXL.value}
+)
 
 
 def model_family_supports_image_to_image(family: str | None) -> bool:
@@ -69,6 +72,17 @@ def model_family_supports_image_to_image(family: str | None) -> bool:
     """
     normalized = (family or "").strip().lower()
     return normalized in IMAGE_TO_IMAGE_MODEL_FAMILIES
+
+
+def model_family_supports_inpainting(family: str | None) -> bool:
+    """Return whether the configured model family can run masked inpainting.
+
+    Inpainting is a distinct operation from img2img and from reference-image
+    conditioning. Support is not inferred from img2img alone at request time —
+    the inference backend must also advertise inpainting_supported.
+    """
+    normalized = (family or "").strip().lower()
+    return normalized in INPAINTING_MODEL_FAMILIES
 
 
 class GenerationStatus(StrEnum):

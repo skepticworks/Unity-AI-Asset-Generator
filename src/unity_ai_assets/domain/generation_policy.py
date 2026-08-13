@@ -46,6 +46,8 @@ class GenerationPolicy:
     default_denoising_strength: float = 0.75
     maximum_source_image_bytes: int = 10 * 1024 * 1024
     supported_source_image_formats: tuple[str, ...] = ("png", "jpeg", "webp")
+    maximum_mask_image_bytes: int = 10 * 1024 * 1024
+    supported_mask_image_formats: tuple[str, ...] = ("png", "jpeg", "webp")
 
     @classmethod
     def from_settings(cls, settings: Settings) -> GenerationPolicy:
@@ -75,6 +77,8 @@ class GenerationPolicy:
             default_denoising_strength=settings.default_denoising_strength,
             maximum_source_image_bytes=settings.max_source_image_bytes,
             supported_source_image_formats=tuple(settings.supported_source_image_formats),
+            maximum_mask_image_bytes=settings.max_mask_image_bytes,
+            supported_mask_image_formats=tuple(settings.supported_mask_image_formats),
         )
 
     def validate_prompt(self, prompt: str | None) -> None:
@@ -381,6 +385,7 @@ def validate_policy_settings(
     max_denoising_strength: float = 1.0,
     default_denoising_strength: float = 0.75,
     max_source_image_bytes: int = 10 * 1024 * 1024,
+    max_mask_image_bytes: int = 10 * 1024 * 1024,
 ) -> None:
     """Reject invalid policy configuration combinations at startup."""
     errors: list[str] = []
@@ -441,6 +446,8 @@ def validate_policy_settings(
         errors.append("MAX_DENOISING_STRENGTH must be at most 1")
     if max_source_image_bytes < 1:
         errors.append("MAX_SOURCE_IMAGE_BYTES must be positive")
+    if max_mask_image_bytes < 1:
+        errors.append("MAX_MASK_IMAGE_BYTES must be positive")
 
     if errors:
         raise ValueError("; ".join(errors))

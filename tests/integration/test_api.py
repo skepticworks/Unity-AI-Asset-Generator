@@ -237,7 +237,9 @@ def test_capabilities_endpoint(
     assert payload["operations"]["image_to_image"]["supported"] is True
     assert payload["operations"]["image_to_image"]["denoising_strength"]["default"] == 0.75
     assert "png" in payload["operations"]["image_to_image"]["source_image"]["supported_formats"]
-    assert payload["operations"]["inpainting"]["supported"] is False
+    assert payload["operations"]["inpainting"]["supported"] is True
+    assert payload["operations"]["inpainting"]["mask_image"]["convention"] == "white_inpaints"
+    assert payload["api"]["minor"] == 2
     assert payload["operations"]["text_to_image"]["dimensions"]["maximum_width"] == 1024
     assert payload["operations"]["text_to_image"]["schedulers"]["selection_supported"] is False
     assert payload["precision"]["user_selectable"] is False
@@ -307,6 +309,94 @@ def test_img2img_missing_source_rejected(client: TestClient) -> None:
     assert response.status_code == 422
     error = response.json()["error"]
     assert error["code"] in {"REQUEST_BODY_INVALID", "GENERATION_REQUEST_INVALID"}
+
+
+def _mask_base64(width: int = 64, height: int = 64) -> str:
+    mask = Image.new("L", (width, height), color=0)
+    for x in range(width // 2):
+        for y in range(height):
+            mask.putpixel((x, y), 255)
+    buffer = io.BytesIO()
+    mask.save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
+def test_inpainting_generation_request(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/generations/textures",
+        json={
+            "prompt": "replace the damaged region",
+            "width": 64,
+            "height": 64,
+            "steps": 5,
+            "seed": 42,
+            "output_name": "inpaint_wall",
+            "operation": "inpainting",
+            "denoising_strength": 0.35,
+            "source_image": {
+                "content_base64": _png_base64(),
+                "media_type": "image/png",
+            },
+            "mask_image": {
+                "content_base64": _mask_base64(),
+                "media_type": "image/png",
+            },
+        },
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["operation"] == "inpainting"
+    assert payload["seed"] == 42
+    manifest = client.get(payload["resources"]["manifest"]).json()
+    assert manifest["generation"]["operation"] == "inpainting"
+    assert manifest["request"]["denoising_strength"] == 0.35
+    assert manifest["request"]["mask_convention"] == "white_inpaints"
+    assert manifest["request"]["source_image"]["format"] == "png"
+    assert manifest["request"]["mask_image"]["format"] == "png"
+    assert manifest["request"]["mask_image"]["width"] == 64
+    assert manifest["request"]["mask_image"]["sha256"]
+
+
+def test_inpainting_missing_mask_rejected(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/generations/textures",
+        json={
+            "prompt": "missing mask",
+            "width": 64,
+            "height": 64,
+            "operation": "inpainting",
+            "source_image": {
+                "content_base64": _png_base64(),
+                "media_type": "image/png",
+            },
+            "output_name": "missing",
+        },
+    )
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert error["code"] in {"REQUEST_BODY_INVALID", "GENERATION_REQUEST_INVALID"}
+
+
+def test_img2img_with_mask_rejected(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/generations/textures",
+        json={
+            "prompt": "should not accept mask",
+            "width": 64,
+            "height": 64,
+            "operation": "image_to_image",
+            "source_image": {
+                "content_base64": _png_base64(),
+                "media_type": "image/png",
+            },
+            "mask_image": {
+                "content_base64": _mask_base64(),
+                "media_type": "image/png",
+            },
+            "output_name": "nope",
+        },
+    )
+    assert response.status_code == 422
 
 
 def test_txt2img_with_source_image_rejected(client: TestClient) -> None:

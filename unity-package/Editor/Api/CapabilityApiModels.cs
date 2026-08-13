@@ -181,6 +181,36 @@ namespace UnityAiAssets.Editor.Api
         public ProcessingCapabilities Processing;
     }
 
+    public sealed class MaskImageConstraints
+    {
+        public List<string> SupportedFormats = new List<string>();
+        public long MaximumByteSize;
+        public DimensionConstraints Dimensions;
+        public bool MustMatchSourceDimensions = true;
+        public string Convention = "white_inpaints";
+        public string WhiteMeans = "regenerate";
+        public string BlackMeans = "keep";
+        public bool AlphaIgnored = true;
+    }
+
+    public sealed class InpaintingCapabilities
+    {
+        public bool Supported;
+        public List<string> AssetTypes = new List<string>();
+        public DimensionConstraints Dimensions;
+        public IntRange Steps;
+        public FloatRange GuidanceScale;
+        public SeedConstraints Seed;
+        public PromptConstraints Prompt;
+        public NegativePromptConstraints NegativePrompt;
+        public OutputNameConstraints OutputName;
+        public SchedulerCapabilities Schedulers;
+        public FloatRange DenoisingStrength;
+        public SourceImageConstraints SourceImage;
+        public MaskImageConstraints MaskImage;
+        public ProcessingCapabilities Processing;
+    }
+
     public sealed class UnsupportedOperationInfo
     {
         public bool Supported;
@@ -190,7 +220,7 @@ namespace UnityAiAssets.Editor.Api
     {
         public TextToImageCapabilities TextToImage;
         public ImageToImageCapabilities ImageToImage;
-        public UnsupportedOperationInfo Inpainting;
+        public InpaintingCapabilities Inpainting;
     }
 
     public sealed class PrecisionInfo
@@ -420,10 +450,7 @@ namespace UnityAiAssets.Editor.Api
             {
                 TextToImage = textToImage,
                 ImageToImage = ParseImageToImage(operationsNode.Get("image_to_image")),
-                Inpainting = new UnsupportedOperationInfo
-                {
-                    Supported = operationsNode.Get("inpainting").Get("supported").AsBool(),
-                },
+                Inpainting = ParseInpainting(operationsNode.Get("inpainting")),
             };
         }
 
@@ -520,6 +547,134 @@ namespace UnityAiAssets.Editor.Api
                             WidthMultiple = sourceNode.Get("dimensions").Get("width_multiple").AsInt(1),
                             HeightMultiple = sourceNode.Get("dimensions").Get("height_multiple").AsInt(1),
                             SupportedAspectRatios = sourceNode.Get("dimensions").Get("supported_aspect_ratios").AsStringList(),
+                        }
+                        : null,
+                };
+            }
+
+            return parsed;
+        }
+
+        static InpaintingCapabilities ParseInpainting(JsonNode node)
+        {
+            var parsed = new InpaintingCapabilities
+            {
+                Supported = node.Get("supported").AsBool(),
+                AssetTypes = node.Get("asset_types").AsStringList(),
+            };
+            if (node.Get("dimensions").IsObject)
+            {
+                var dimensionsNode = node.Get("dimensions");
+                parsed.Dimensions = new DimensionConstraints
+                {
+                    MinimumWidth = dimensionsNode.Get("minimum_width").AsInt(),
+                    MaximumWidth = dimensionsNode.Get("maximum_width").AsInt(),
+                    MinimumHeight = dimensionsNode.Get("minimum_height").AsInt(),
+                    MaximumHeight = dimensionsNode.Get("maximum_height").AsInt(),
+                    WidthMultiple = dimensionsNode.Get("width_multiple").AsInt(1),
+                    HeightMultiple = dimensionsNode.Get("height_multiple").AsInt(1),
+                    SupportedAspectRatios = dimensionsNode.Get("supported_aspect_ratios").AsStringList(),
+                };
+            }
+
+            if (node.Get("steps").IsObject)
+                parsed.Steps = ParseIntRange(node.Get("steps"));
+            if (node.Get("guidance_scale").IsObject)
+                parsed.GuidanceScale = ParseFloatRange(node.Get("guidance_scale"));
+            if (node.Get("seed").IsObject)
+            {
+                var seedNode = node.Get("seed");
+                parsed.Seed = new SeedConstraints
+                {
+                    Minimum = seedNode.Get("minimum").AsLong(),
+                    Maximum = seedNode.Get("maximum").AsLong(),
+                    RandomWhenOmitted = seedNode.Get("random_when_omitted").AsBool(true),
+                };
+            }
+
+            if (node.Get("prompt").IsObject)
+            {
+                parsed.Prompt = new PromptConstraints
+                {
+                    MaximumLength = node.Get("prompt").Get("maximum_length").AsInt(),
+                };
+            }
+
+            if (node.Get("negative_prompt").IsObject)
+            {
+                parsed.NegativePrompt = new NegativePromptConstraints
+                {
+                    Supported = node.Get("negative_prompt").Get("supported").AsBool(),
+                    MaximumLength = node.Get("negative_prompt").Get("maximum_length").AsInt(),
+                };
+            }
+
+            if (node.Get("output_name").IsObject)
+            {
+                parsed.OutputName = new OutputNameConstraints
+                {
+                    MaximumLength = node.Get("output_name").Get("maximum_length").AsInt(),
+                };
+            }
+
+            if (node.Get("schedulers").IsObject)
+            {
+                var schedulersNode = node.Get("schedulers");
+                parsed.Schedulers = new SchedulerCapabilities
+                {
+                    SelectionSupported = schedulersNode.Get("selection_supported").AsBool(),
+                    Default = schedulersNode.Get("default").AsString(),
+                    Available = schedulersNode.Get("available").AsStringList(),
+                };
+            }
+
+            if (node.Get("denoising_strength").IsObject)
+                parsed.DenoisingStrength = ParseFloatRange(node.Get("denoising_strength"));
+
+            if (node.Get("source_image").IsObject)
+            {
+                var sourceNode = node.Get("source_image");
+                parsed.SourceImage = new SourceImageConstraints
+                {
+                    SupportedFormats = sourceNode.Get("supported_formats").AsStringList(),
+                    MaximumByteSize = sourceNode.Get("maximum_byte_size").AsLong(),
+                    Dimensions = sourceNode.Get("dimensions").IsObject
+                        ? new DimensionConstraints
+                        {
+                            MinimumWidth = sourceNode.Get("dimensions").Get("minimum_width").AsInt(),
+                            MaximumWidth = sourceNode.Get("dimensions").Get("maximum_width").AsInt(),
+                            MinimumHeight = sourceNode.Get("dimensions").Get("minimum_height").AsInt(),
+                            MaximumHeight = sourceNode.Get("dimensions").Get("maximum_height").AsInt(),
+                            WidthMultiple = sourceNode.Get("dimensions").Get("width_multiple").AsInt(1),
+                            HeightMultiple = sourceNode.Get("dimensions").Get("height_multiple").AsInt(1),
+                            SupportedAspectRatios = sourceNode.Get("dimensions").Get("supported_aspect_ratios").AsStringList(),
+                        }
+                        : null,
+                };
+            }
+
+            if (node.Get("mask_image").IsObject)
+            {
+                var maskNode = node.Get("mask_image");
+                parsed.MaskImage = new MaskImageConstraints
+                {
+                    SupportedFormats = maskNode.Get("supported_formats").AsStringList(),
+                    MaximumByteSize = maskNode.Get("maximum_byte_size").AsLong(),
+                    MustMatchSourceDimensions = maskNode.Get("must_match_source_dimensions").AsBool(true),
+                    Convention = maskNode.Get("convention").AsString("white_inpaints"),
+                    WhiteMeans = maskNode.Get("white_means").AsString("regenerate"),
+                    BlackMeans = maskNode.Get("black_means").AsString("keep"),
+                    AlphaIgnored = maskNode.Get("alpha_ignored").AsBool(true),
+                    Dimensions = maskNode.Get("dimensions").IsObject
+                        ? new DimensionConstraints
+                        {
+                            MinimumWidth = maskNode.Get("dimensions").Get("minimum_width").AsInt(),
+                            MaximumWidth = maskNode.Get("dimensions").Get("maximum_width").AsInt(),
+                            MinimumHeight = maskNode.Get("dimensions").Get("minimum_height").AsInt(),
+                            MaximumHeight = maskNode.Get("dimensions").Get("maximum_height").AsInt(),
+                            WidthMultiple = maskNode.Get("dimensions").Get("width_multiple").AsInt(1),
+                            HeightMultiple = maskNode.Get("dimensions").Get("height_multiple").AsInt(1),
+                            SupportedAspectRatios = maskNode.Get("dimensions").Get("supported_aspect_ratios").AsStringList(),
                         }
                         : null,
                 };

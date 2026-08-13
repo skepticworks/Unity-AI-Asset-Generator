@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from unity_ai_assets.domain.capabilities import CapabilityDocument, ImageToImageCapabilities
+from unity_ai_assets.domain.capabilities import (
+    CapabilityDocument,
+    ImageToImageCapabilities,
+    InpaintingCapabilities,
+)
 
 
 class ApiVersionSchema(BaseModel):
@@ -210,6 +214,48 @@ class ImageToImageCapabilitiesSchema(BaseModel):
     processing: ProcessingCapabilitiesSchema | None = None
 
 
+class MaskImageConstraintsSchema(BaseModel):
+    """Inpainting mask constraints and explicit white/black semantics."""
+
+    supported_formats: list[str]
+    maximum_byte_size: int
+    dimensions: DimensionConstraintsSchema | None = None
+    must_match_source_dimensions: bool = True
+    convention: str = Field(
+        default="white_inpaints",
+        description="Stable mask convention id: white pixels are regenerated",
+    )
+    white_means: str = Field(default="regenerate")
+    black_means: str = Field(default="keep")
+    alpha_ignored: bool = Field(
+        default=True,
+        description="Mask alpha is ignored and never treated as the inpaint region",
+    )
+
+
+class InpaintingCapabilitiesSchema(BaseModel):
+    """Masked inpainting operation capabilities.
+
+    Distinct from image_to_image (full-frame init variation) and from
+    reference-image conditioning. White mask = regenerate; black = keep.
+    """
+
+    supported: bool
+    asset_types: list[str]
+    dimensions: DimensionConstraintsSchema
+    steps: IntRangeSchema
+    guidance_scale: FloatRangeSchema
+    seed: SeedConstraintsSchema
+    prompt: PromptConstraintsSchema
+    negative_prompt: NegativePromptConstraintsSchema
+    output_name: OutputNameConstraintsSchema
+    schedulers: SchedulerCapabilitiesSchema
+    denoising_strength: FloatRangeSchema
+    source_image: SourceImageConstraintsSchema
+    mask_image: MaskImageConstraintsSchema
+    processing: ProcessingCapabilitiesSchema | None = None
+
+
 class UnsupportedOperationSchema(BaseModel):
     """Unsupported operation marker."""
 
@@ -221,7 +267,7 @@ class OperationsSchema(BaseModel):
 
     text_to_image: TextToImageCapabilitiesSchema
     image_to_image: ImageToImageCapabilitiesSchema
-    inpainting: UnsupportedOperationSchema
+    inpainting: InpaintingCapabilitiesSchema
 
 
 class PrecisionSchema(BaseModel):
@@ -394,8 +440,9 @@ class CapabilitiesResponse(BaseModel):
                     document.operations.image_to_image,
                     processing_schema,
                 ),
-                inpainting=UnsupportedOperationSchema(
-                    supported=document.operations.inpainting.supported,
+                inpainting=_inpainting_schema(
+                    document.operations.inpainting,
+                    processing_schema,
                 ),
             ),
             precision=PrecisionSchema(
@@ -484,6 +531,99 @@ def _image_to_image_schema(
             supported_formats=list(source.supported_formats),
             maximum_byte_size=source.maximum_byte_size,
             dimensions=source_dimensions,
+        ),
+        processing=processing_schema,
+    )
+
+
+def _dimension_schema(dimensions: object) -> DimensionConstraintsSchema | None:
+    if dimensions is None:
+        return None
+    return DimensionConstraintsSchema(
+        minimum_width=dimensions.minimum_width,  # type: ignore[attr-defined]
+        maximum_width=dimensions.maximum_width,  # type: ignore[attr-defined]
+        minimum_height=dimensions.minimum_height,  # type: ignore[attr-defined]
+        maximum_height=dimensions.maximum_height,  # type: ignore[attr-defined]
+        width_multiple=dimensions.width_multiple,  # type: ignore[attr-defined]
+        height_multiple=dimensions.height_multiple,  # type: ignore[attr-defined]
+        supported_aspect_ratios=dimensions.supported_aspect_ratios,  # type: ignore[attr-defined]
+    )
+
+
+def _inpainting_schema(
+    inpaint: InpaintingCapabilities,
+    processing_schema: ProcessingCapabilitiesSchema | None,
+) -> InpaintingCapabilitiesSchema:
+    """Map domain inpainting capabilities to the public schema."""
+    source = inpaint.source_image
+    mask = inpaint.mask_image
+    return InpaintingCapabilitiesSchema(
+        supported=inpaint.supported,
+        asset_types=list(inpaint.asset_types),
+        dimensions=DimensionConstraintsSchema(
+            minimum_width=inpaint.dimensions.minimum_width,
+            maximum_width=inpaint.dimensions.maximum_width,
+            minimum_height=inpaint.dimensions.minimum_height,
+            maximum_height=inpaint.dimensions.maximum_height,
+            width_multiple=inpaint.dimensions.width_multiple,
+            height_multiple=inpaint.dimensions.height_multiple,
+            supported_aspect_ratios=inpaint.dimensions.supported_aspect_ratios,
+        ),
+        steps=IntRangeSchema(
+            minimum=inpaint.steps.minimum,
+            maximum=inpaint.steps.maximum,
+            default=inpaint.steps.default or inpaint.steps.minimum,
+        ),
+        guidance_scale=FloatRangeSchema(
+            minimum=inpaint.guidance_scale.minimum,
+            maximum=inpaint.guidance_scale.maximum,
+            default=(
+                inpaint.guidance_scale.default
+                if inpaint.guidance_scale.default is not None
+                else inpaint.guidance_scale.minimum
+            ),
+        ),
+        seed=SeedConstraintsSchema(
+            minimum=inpaint.seed.minimum,
+            maximum=inpaint.seed.maximum,
+            random_when_omitted=inpaint.seed.random_when_omitted,
+        ),
+        prompt=PromptConstraintsSchema(maximum_length=inpaint.prompt.maximum_length),
+        negative_prompt=NegativePromptConstraintsSchema(
+            supported=inpaint.negative_prompt.supported,
+            maximum_length=inpaint.negative_prompt.maximum_length,
+        ),
+        output_name=OutputNameConstraintsSchema(
+            maximum_length=inpaint.output_name.maximum_length,
+        ),
+        schedulers=SchedulerCapabilitiesSchema(
+            selection_supported=inpaint.schedulers.selection_supported,
+            default=inpaint.schedulers.default,
+            available=list(inpaint.schedulers.available),
+        ),
+        denoising_strength=FloatRangeSchema(
+            minimum=inpaint.denoising_strength.minimum,
+            maximum=inpaint.denoising_strength.maximum,
+            default=(
+                inpaint.denoising_strength.default
+                if inpaint.denoising_strength.default is not None
+                else inpaint.denoising_strength.minimum
+            ),
+        ),
+        source_image=SourceImageConstraintsSchema(
+            supported_formats=list(source.supported_formats),
+            maximum_byte_size=source.maximum_byte_size,
+            dimensions=_dimension_schema(source.dimensions),
+        ),
+        mask_image=MaskImageConstraintsSchema(
+            supported_formats=list(mask.supported_formats),
+            maximum_byte_size=mask.maximum_byte_size,
+            dimensions=_dimension_schema(mask.dimensions),
+            must_match_source_dimensions=mask.must_match_source_dimensions,
+            convention=mask.convention,
+            white_means=mask.white_means,
+            black_means=mask.black_means,
+            alpha_ignored=mask.alpha_ignored,
         ),
         processing=processing_schema,
     )

@@ -14,7 +14,7 @@ _ATLAS_HINT_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
 
 
 class SourceImagePayload(BaseModel):
-    """Uploaded img2img init/source image.
+    """Uploaded img2img/inpainting init/source image.
 
     This is the generation starting image (latent/init image), not a
     reference-conditioning or IP-Adapter input.
@@ -23,7 +23,25 @@ class SourceImagePayload(BaseModel):
     content_base64: str = Field(
         ...,
         min_length=1,
-        description="Base64-encoded PNG, JPEG, or WebP bytes used as the img2img init image",
+        description="Base64-encoded PNG, JPEG, or WebP bytes used as the init/source image",
+    )
+    media_type: str | None = Field(
+        default=None,
+        description="Optional IANA media type (image/png, image/jpeg, image/webp)",
+    )
+
+
+class MaskImagePayload(BaseModel):
+    """Uploaded inpainting mask.
+
+    Convention: white (255) regenerates; black (0) is kept from the source.
+    Alpha is ignored and must not be used as the inpaint region.
+    """
+
+    content_base64: str = Field(
+        ...,
+        min_length=1,
+        description="Base64-encoded PNG, JPEG, or WebP mask (white=inpaint, black=keep)",
     )
     media_type: str | None = Field(
         default=None,
@@ -82,12 +100,19 @@ class TextureGenerationRequest(BaseModel):
     seam_blend_width: int | None = Field(default=None, ge=8, le=128)
     palette_reduction_enabled: bool | None = None
     palette_color_count: int | None = Field(default=None, ge=2, le=256)
-    operation: Literal["text_to_image", "image_to_image"] = "text_to_image"
+    operation: Literal["text_to_image", "image_to_image", "inpainting"] = "text_to_image"
     source_image: SourceImagePayload | None = Field(
         default=None,
         description=(
-            "Init/source image for image_to_image. Required when operation is "
-            "image_to_image. Not a reference-conditioning input."
+            "Init/source image for image_to_image or inpainting. Required when "
+            "operation is image_to_image or inpainting. Not a reference-conditioning input."
+        ),
+    )
+    mask_image: MaskImagePayload | None = Field(
+        default=None,
+        description=(
+            "Inpainting mask. Required when operation is inpainting. White pixels "
+            "are regenerated; black pixels are kept. Not valid for image_to_image."
         ),
     )
     denoising_strength: float | None = Field(
@@ -96,7 +121,7 @@ class TextureGenerationRequest(BaseModel):
         le=1.0,
         description=(
             "How strongly the source init image is denoised (0 keeps it, 1 allows "
-            "maximum change). Only valid for image_to_image."
+            "maximum change). Valid for image_to_image and inpainting."
         ),
     )
 
@@ -128,14 +153,34 @@ class TextureGenerationRequest(BaseModel):
                     "source_image is required when operation is image_to_image "
                     "(init/source image, not reference conditioning)"
                 )
+            if self.mask_image is not None:
+                raise ValueError(
+                    "mask_image is only valid for inpainting. "
+                    "Image-to-image is full-frame init variation, not masked inpainting."
+                )
+        elif self.operation == "inpainting":
+            if self.source_image is None:
+                raise ValueError(
+                    "source_image is required when operation is inpainting "
+                    "(the image to keep outside the mask, not a reference-conditioning input)"
+                )
+            if self.mask_image is None:
+                raise ValueError(
+                    "mask_image is required when operation is inpainting. "
+                    "White regenerates; black is kept from the source."
+                )
         else:
             if self.source_image is not None:
                 raise ValueError(
-                    "source_image is only valid for image_to_image. "
+                    "source_image is only valid for image_to_image or inpainting. "
                     "It is the init/latent image, not a reference-conditioning input."
                 )
+            if self.mask_image is not None:
+                raise ValueError("mask_image is only valid for inpainting")
             if self.denoising_strength is not None:
-                raise ValueError("denoising_strength is only valid for image_to_image")
+                raise ValueError(
+                    "denoising_strength is only valid for image_to_image or inpainting"
+                )
         return self
 
 

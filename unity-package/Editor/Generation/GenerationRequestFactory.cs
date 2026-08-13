@@ -53,7 +53,26 @@ namespace UnityAiAssets.Editor.Generation
                 palette_color_count = resolved.PaletteColorCount
             };
 
-            if (request.UseImageToImage)
+            if (request.UseInpainting)
+            {
+                dto.operation = "inpainting";
+                dto.denoising_strength = request.DenoisingStrength;
+                if (!SourceImageCodec.TryEncodePng(request.SourceTexture, out var sourcePng, out var sourceError))
+                    throw new InvalidOperationException(sourceError);
+                dto.source_image = new SourceImagePayloadDto
+                {
+                    content_base64 = Convert.ToBase64String(sourcePng),
+                    media_type = "image/png"
+                };
+                if (!SourceImageCodec.TryEncodePng(request.MaskTexture, out var maskPng, out var maskError))
+                    throw new InvalidOperationException(maskError);
+                dto.mask_image = new SourceImagePayloadDto
+                {
+                    content_base64 = Convert.ToBase64String(maskPng),
+                    media_type = "image/png"
+                };
+            }
+            else if (request.UseImageToImage)
             {
                 dto.operation = "image_to_image";
                 dto.denoising_strength = request.DenoisingStrength;

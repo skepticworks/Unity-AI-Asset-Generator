@@ -63,6 +63,7 @@ namespace UnityAiAssets.Editor.Api
         public int? palette_color_count;
         public string operation;
         public SourceImagePayloadDto source_image;
+        public SourceImagePayloadDto mask_image;
         public float? denoising_strength;
 
         public string ToJson()
@@ -115,6 +116,14 @@ namespace UnityAiAssets.Editor.Api
                 AppendString(sb, "content_base64", source_image.content_base64, first: true);
                 if (!string.IsNullOrWhiteSpace(source_image.media_type))
                     AppendString(sb, "media_type", source_image.media_type, first: false);
+                sb.Append('}');
+            }
+            if (mask_image != null && !string.IsNullOrEmpty(mask_image.content_base64))
+            {
+                sb.Append(",\"mask_image\":{");
+                AppendString(sb, "content_base64", mask_image.content_base64, first: true);
+                if (!string.IsNullOrWhiteSpace(mask_image.media_type))
+                    AppendString(sb, "media_type", mask_image.media_type, first: false);
                 sb.Append('}');
             }
             sb.Append('}');

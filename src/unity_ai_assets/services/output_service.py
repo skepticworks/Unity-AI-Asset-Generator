@@ -514,6 +514,19 @@ class OutputService:
                             sha256=request.source_image_meta.sha256,
                         )
                     ),
+                    mask_image=(
+                        None
+                        if request.mask_image_meta is None
+                        else ManifestSourceImageInfo(
+                            format=request.mask_image_meta.format,
+                            media_type=request.mask_image_meta.media_type,
+                            width=request.mask_image_meta.original_width,
+                            height=request.mask_image_meta.original_height,
+                            byte_size=request.mask_image_meta.byte_size,
+                            sha256=request.mask_image_meta.sha256,
+                        )
+                    ),
+                    mask_convention=request.mask_convention,
                 ),
                 profile=ManifestProfileInfo(
                     generation_profile_id=request.generation_profile_id,

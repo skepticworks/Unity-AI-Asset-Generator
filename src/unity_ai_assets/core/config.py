@@ -99,6 +99,15 @@ class Settings(BaseSettings):
         default=("png", "jpeg", "webp"),
         description="Pillow-normalized img2img source formats (init image, not IP-Adapter)",
     )
+    max_mask_image_bytes: int = Field(
+        default=10 * 1024 * 1024,
+        ge=1,
+        description="Maximum uploaded inpainting mask size in bytes",
+    )
+    supported_mask_image_formats: tuple[str, ...] = Field(
+        default=("png", "jpeg", "webp"),
+        description="Pillow-normalized inpainting mask formats (white=inpaint, black=keep)",
+    )
 
     # Optional local background-removal post-processing (sprites/icons)
     background_removal_enabled: bool = Field(
@@ -207,6 +216,7 @@ class Settings(BaseSettings):
             max_denoising_strength=self.max_denoising_strength,
             default_denoising_strength=self.default_denoising_strength,
             max_source_image_bytes=self.max_source_image_bytes,
+            max_mask_image_bytes=self.max_mask_image_bytes,
         )
         if not self.app_version:
             object.__setattr__(self, "app_version", APPLICATION_VERSION)

@@ -68,6 +68,11 @@ Do **not** store Hugging Face tokens here.
 
 **Tools → AI Asset Generator**
 
+**Tools → AI Asset Generator → Batch Generation** expands multiple prompts, seeds, and
+variations into the same persistent job queue. Apply a generation profile to the whole batch,
+preview the job count and seed list, then monitor, cancel, retry failed jobs, and import
+successful outputs without treating a single failure as a failed batch.
+
 ## Generate and import a texture
 
 1. Click **Refresh Capabilities** (also happens automatically before the first generate).

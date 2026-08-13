@@ -254,8 +254,16 @@ namespace UnityAiAssets.Editor.Api
         public const string Capabilities = "/api/v1/capabilities";
         public const string GenerateTexture = "/api/v1/generations/textures";
         public const string Jobs = "/api/v1/jobs";
+        public const string Batches = "/api/v1/batches";
+        public const string BatchPreview = "/api/v1/batches/preview";
 
         public static string Job(string jobId) => $"/api/v1/jobs/{jobId}";
+
+        public static string Batch(string batchId) => $"/api/v1/batches/{batchId}";
+
+        public static string BatchCancel(string batchId) => $"/api/v1/batches/{batchId}/cancel";
+
+        public static string BatchRetryFailed(string batchId) => $"/api/v1/batches/{batchId}/retry-failed";
 
         public static string JobResult(string jobId) => $"/api/v1/jobs/{jobId}/result";
 

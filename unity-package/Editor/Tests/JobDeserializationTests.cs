@@ -115,6 +115,7 @@ namespace UnityAiAssets.Editor.Tests
             Assert.AreEqual("/api/v1/jobs/abc/result", ApiEndpoints.JobResult("abc"));
             Assert.AreEqual("/api/v1/jobs/abc/cancel", ApiEndpoints.JobCancel("abc"));
             Assert.AreEqual("/api/v1/jobs/abc/retry", ApiEndpoints.JobRetry("abc"));
+            Assert.AreEqual("/api/v1/batches", ApiEndpoints.Batches);
         }
     }
 }

@@ -28,6 +28,7 @@ class FakeImageGenerationBackend:
         model_id: str = "fake/test-model",
         model_revision: str | None = "test-revision",
         fail: bool = False,
+        fail_if: Callable[[GenerationRequest], bool] | None = None,
         delay_seconds: float = 0.01,
         color_factory: Callable[[GenerationRequest], tuple[int, int, int]] | None = None,
         model_loaded: bool = True,
@@ -40,6 +41,7 @@ class FakeImageGenerationBackend:
         self._model_id = model_id
         self._model_revision = model_revision
         self._fail = fail
+        self._fail_if = fail_if
         self._delay_seconds = delay_seconds
         self._color_factory = color_factory or self._default_color
         self._loaded = model_loaded
@@ -128,7 +130,7 @@ class FakeImageGenerationBackend:
         on_progress: Callable[[str, int | None, int | None], None] | None = None,
     ) -> GeneratedImage:
         self.calls.append(request)
-        if self._fail:
+        if self._fail or (self._fail_if is not None and self._fail_if(request)):
             raise InferenceError("Fake backend forced failure")
 
         started = time.perf_counter()

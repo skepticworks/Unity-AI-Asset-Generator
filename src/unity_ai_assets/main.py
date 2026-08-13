@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 
-from unity_ai_assets.api.routes import capabilities, generation, health, jobs
+from unity_ai_assets.api.routes import batches, capabilities, generation, health, jobs
 from unity_ai_assets.core.config import Settings, get_settings
 from unity_ai_assets.core.exception_handlers import register_exception_handlers
 from unity_ai_assets.core.logging import configure_logging, get_logger
@@ -21,6 +21,8 @@ from unity_ai_assets.inference.model_manager import ModelManager
 from unity_ai_assets.processing.background_removal import create_background_remover
 from unity_ai_assets.processing.pipeline import ImageProcessingPipeline
 from unity_ai_assets.processing.seam_inpaint import create_seam_inpainter
+from unity_ai_assets.services.batch_service import BatchService
+from unity_ai_assets.services.batch_store import BatchStore
 from unity_ai_assets.services.capability_service import CapabilityService
 from unity_ai_assets.services.generation_service import GenerationService
 from unity_ai_assets.services.job_executor import LocalGenerationExecutor
@@ -147,6 +149,15 @@ def create_app(
         executor=job_executor,
         settings=resolved_settings,
     )
+    batch_directory = resolved_settings.batch_directory or (
+        resolved_settings.output_directory / "batches"
+    )
+    batch_store = BatchStore(batch_directory)
+    batch_service = BatchService(
+        store=batch_store,
+        job_service=job_service,
+        settings=resolved_settings,
+    )
 
     app.state.settings = resolved_settings
     app.state.generation_policy = policy
@@ -155,6 +166,8 @@ def create_app(
     app.state.capability_service = capability_service
     app.state.job_store = job_store
     app.state.job_service = job_service
+    app.state.batch_store = batch_store
+    app.state.batch_service = batch_service
     app.state.background_remover = background_remover
     app.state.seam_inpainter = seam_inpainter
     app.state.processing_pipeline = processing_pipeline
@@ -165,6 +178,7 @@ def create_app(
     app.include_router(health.router)
     app.include_router(capabilities.router)
     app.include_router(jobs.router)
+    app.include_router(batches.router)
     app.include_router(generation.router)
 
     return app

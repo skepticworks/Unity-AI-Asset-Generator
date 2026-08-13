@@ -1725,6 +1725,11 @@ namespace UnityAiAssets.Editor.UI
 
             EditorGUILayout.EndHorizontal();
 
+            if (GUILayout.Button(
+                    Tip("Open Batch Generation", "Configure multiple prompts, seeds, and variations on the existing job queue."),
+                    GUILayout.Height(22)))
+                BatchGenerationWindow.Open();
+
             if (!canGenerate && !busy)
             {
                 string reason;

@@ -123,6 +123,29 @@ JOB_CANCELLABLE_STATES: frozenset[str] = frozenset(
 )
 
 
+class BatchSeedMode(StrEnum):
+    """How a batch assigns seeds to expanded jobs."""
+
+    FIXED = "fixed"
+    RANDOM = "random"
+    SEQUENTIAL = "sequential"
+
+
+KNOWN_BATCH_SEED_MODES: frozenset[str] = frozenset(item.value for item in BatchSeedMode)
+
+
+class BatchState(StrEnum):
+    """Aggregated batch lifecycle derived from member job states."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    CANCELLING = "cancelling"
+    COMPLETED = "completed"
+    PARTIAL_SUCCESS = "partial_success"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
 class JobProgressStage(StrEnum):
     """Coarse, truthful pipeline stages. Not invented percentages."""
 

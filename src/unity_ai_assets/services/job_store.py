@@ -175,6 +175,7 @@ class JobStore:
         self,
         *,
         state: JobState | None = None,
+        batch_id: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[JobRecord], int]:
@@ -183,6 +184,8 @@ class JobStore:
         records.sort(key=lambda item: item.created_at, reverse=True)
         if state is not None:
             records = [item for item in records if item.state is state]
+        if batch_id is not None:
+            records = [item for item in records if item.batch_id == batch_id]
         total = len(records)
         sliced = records[offset : offset + limit]
         return sliced, total

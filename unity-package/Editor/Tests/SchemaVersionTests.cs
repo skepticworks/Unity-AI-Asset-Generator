@@ -90,7 +90,7 @@ namespace UnityAiAssets.Editor.Tests
         [Test]
         public void PackageSupportsManifest11ByMajor()
         {
-            Assert.AreEqual("0.9.0", ClientCompatibility.PackageVersion);
+            Assert.AreEqual("0.10.0", ClientCompatibility.PackageVersion);
             Assert.IsTrue(SchemaVersion.Parse("1.1").HasSameMajor(ClientCompatibility.SupportedManifestSchemaMajor));
         }
     }

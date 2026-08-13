@@ -42,6 +42,7 @@ def test_service_root_endpoint(client: TestClient) -> None:
     assert payload["endpoints"]["health"] == "/health"
     assert payload["endpoints"]["capabilities"] == "/api/v1/capabilities"
     assert payload["endpoints"]["jobs"] == "/api/v1/jobs"
+    assert payload["endpoints"]["batches"] == "/api/v1/batches"
     # CDP discovery probes must not be faked as Chrome DevTools.
     cdp = client.get("/json/version")
     assert cdp.status_code == 404
@@ -240,7 +241,8 @@ def test_capabilities_endpoint(
     assert "png" in payload["operations"]["image_to_image"]["source_image"]["supported_formats"]
     assert payload["operations"]["inpainting"]["supported"] is True
     assert payload["operations"]["inpainting"]["mask_image"]["convention"] == "white_inpaints"
-    assert payload["api"]["minor"] == 3
+    assert payload["api"]["minor"] == 4
+    assert payload["batches"]["supported"] is True
     assert payload["operations"]["text_to_image"]["dimensions"]["maximum_width"] == 1024
     assert payload["operations"]["text_to_image"]["schedulers"]["selection_supported"] is False
     assert payload["precision"]["user_selectable"] is False

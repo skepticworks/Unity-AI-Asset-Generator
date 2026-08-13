@@ -70,6 +70,9 @@ REQUIRED_CAPABILITY_PATHS = [
     ("operations", "inpainting", "mask_image", "must_match_source_dimensions"),
     ("precision", "user_selectable"),
     ("limits", "maximum_concurrent_generations"),
+    ("jobs", "supported"),
+    ("batches", "supported"),
+    ("batches", "maximum_jobs"),
 ]
 
 REQUIRED_GENERATION_RESPONSE_KEYS = [

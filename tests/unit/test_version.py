@@ -9,25 +9,29 @@ from unity_ai_assets.core.version import (
     APPLICATION_NAME,
     APPLICATION_VERSION,
     APPLICATION_VERSION_FALLBACK,
+    BATCH_RECORD_SCHEMA_VERSION,
     CAPABILITIES_SCHEMA_VERSION,
     GENERATION_MANIFEST_SCHEMA_VERSION,
+    JOB_RECORD_SCHEMA_VERSION,
     resolve_application_version,
 )
 
 
 def test_api_version_constants() -> None:
     assert API_MAJOR_VERSION == 1
-    assert API_MINOR_VERSION == 3
+    assert API_MINOR_VERSION == 4
 
 
 def test_schema_versions() -> None:
-    assert CAPABILITIES_SCHEMA_VERSION == "1.5"
+    assert CAPABILITIES_SCHEMA_VERSION == "1.6"
     assert GENERATION_MANIFEST_SCHEMA_VERSION == "1.5"
+    assert JOB_RECORD_SCHEMA_VERSION == "1.1"
+    assert BATCH_RECORD_SCHEMA_VERSION == "1.0"
 
 
 def test_application_identity() -> None:
     assert APPLICATION_NAME == "unity-ai-asset-generator"
-    assert APPLICATION_VERSION_FALLBACK == "0.9.0"
+    assert APPLICATION_VERSION_FALLBACK == "0.10.0"
     assert APPLICATION_VERSION
     resolved = resolve_application_version()
     assert resolved == APPLICATION_VERSION
@@ -35,5 +39,5 @@ def test_application_identity() -> None:
 
 
 def test_version_module_is_single_source() -> None:
-    assert version_module.CAPABILITIES_SCHEMA_VERSION == "1.5"
+    assert version_module.CAPABILITIES_SCHEMA_VERSION == "1.6"
     assert version_module.GENERATION_MANIFEST_SCHEMA_VERSION == "1.5"

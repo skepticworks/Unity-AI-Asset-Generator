@@ -42,6 +42,9 @@ def test_capability_document_construction() -> None:
     assert document.jobs.persistence == "local_filesystem"
     assert "queued" in document.jobs.states
     assert document.jobs.progress == "stage"
+    assert document.batches.supported is True
+    assert document.batches.maximum_jobs == 32
+    assert "sequential" in document.batches.seed_modes
     assert backend.calls == []
 
 
@@ -68,6 +71,10 @@ def test_capability_serialization() -> None:
     assert jobs["persistence"] == "local_filesystem"
     assert jobs["progress"] == "stage"
     assert "queued" in jobs["states"]
+    batches = payload["batches"]
+    assert batches["supported"] is True
+    assert batches["maximum_jobs"] == 32
+    assert "fixed" in batches["seed_modes"]
     assert "diffusers" not in str(payload).lower()
     assert "C:\\" not in str(payload)
     assert "huggingface" not in str(payload).lower() or "model" in str(payload).lower()

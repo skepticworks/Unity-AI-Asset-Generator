@@ -131,7 +131,15 @@ class JobService:
         self._threads.clear()
         logger.info("Job service stopped")
 
-    def submit(self, payload: dict[str, Any]) -> JobRecord:
+    def submit(
+        self,
+        payload: dict[str, Any],
+        *,
+        batch_id: str | None = None,
+        batch_index: int | None = None,
+        prompt_index: int | None = None,
+        variation_index: int | None = None,
+    ) -> JobRecord:
         """Validate, persist, and enqueue a generation job."""
         with self._lock:
             if not self._accepting:
@@ -158,6 +166,10 @@ class JobService:
             max_retries=self._max_retries,
             prompt_summary=prompt_summary(str(payload.get("prompt") or "")),
             seed=resolved_seed,
+            batch_id=batch_id,
+            batch_index=batch_index,
+            prompt_index=prompt_index,
+            variation_index=variation_index,
         )
         with self._lock:
             if not self._accepting:
@@ -182,10 +194,13 @@ class JobService:
         self,
         *,
         state: JobState | None = None,
+        batch_id: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[JobRecord], int]:
-        return self._store.list_records(state=state, limit=limit, offset=offset)
+        return self._store.list_records(
+            state=state, batch_id=batch_id, limit=limit, offset=offset
+        )
 
     def cancel(self, job_id: str) -> JobRecord:
         job_id = validate_job_id(job_id)

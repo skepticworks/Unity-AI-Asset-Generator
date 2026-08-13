@@ -2,16 +2,18 @@
 
 Local, AI-assisted generation of Unity-ready **2D game assets** using pretrained generative models (Hugging Face Diffusers) plus an **editor-only Unity package**. No ComfyUI.
 
-## Current milestone scope (Milestone 9)
+## Current milestone scope (Milestone 10)
 
-1. Persistent local job records for generation requests (JSON files, no external database)
-2. GPU work queued and serialized outside the HTTP request lifecycle
-3. Job states: queued, running, completed, failed, cancelling, cancelled, interrupted
-4. Job API: submit, status/progress, result metadata, cancel, history, retry
-5. Conservative retry for transient failures only; restart recovery for interrupted GPU work
-6. Unity submits a job, polls status, then downloads/imports the completed result
-7. Unity generation history: reopen/import completed jobs, retry failed jobs, cancel active jobs
-8. Existing text-to-image, img2img, inpainting, texture, sprite, icon, transparency, and tileable workflows submit through the same job abstraction
+1. Batch generation UI in Unity over the Milestone 9 persistent job queue (not a second executor)
+2. Multiple prompts per batch with add/remove/duplicate/edit and preserved order
+3. Fixed, random, and sequential seed modes with a pre-submit seed preview
+4. Variation count expands with prompts and seeds into ordinary generation jobs
+5. Preset/profile applied to the whole batch; batch fields override seed/prompt/variation
+6. Batch ID grouping metadata on jobs; batch state aggregated from real job states
+7. Queue visualization, per-job status, cancel, retry, retry-failed, and partial-failure handling
+8. Import all or selected successful outputs with collision-safe names and duplicate-import prevention
+9. Batch records persist beside job JSON so the Unity window can recover after close or backend restart
+10. Existing single-generation, img2img, inpainting, texture, sprite, icon, and tileable workflows remain unchanged
 
 Automated Python tests use a **fake inference backend** (and fake background remover when needed).
 They do **not** download diffusion or rembg weights.
@@ -20,7 +22,7 @@ They do **not** download diffusion or rembg weights.
 
 - ComfyUI, ComfyUI APIs, workflows, or custom nodes
 - Sprite sheets, animation frame extraction, automatic SpriteAtlas creation, Addressables
-- ControlNet, IP-Adapter / reference-image conditioning, batching
+- ControlNet, IP-Adapter / reference-image conditioning
 - Guaranteed perfectly seamless textures (correction is best-effort diagnostics + soft blending)
 - Database, Redis, Celery, Docker, auth, cloud storage
 - Model installation UI, distributed/remote workers (RunPod), or an external database
@@ -75,9 +77,9 @@ On low-VRAM GPUs, keep `ENABLE_CPU_OFFLOAD=false` and `EXCLUSIVE_MODEL_VRAM=true
 
 | Concern | Source | Notes |
 |---------|--------|-------|
-| Application semver | `pyproject.toml` / `core.version` | Currently `0.9.0` |
-| API major/minor | `core.version` | Independent of app semver; currently `1.3` |
-| Capabilities schema | `1.5` | Job-system block is additive |
+| Application semver | `pyproject.toml` / `core.version` | Currently `0.10.0` |
+| API major/minor | `core.version` | Independent of app semver; currently `1.4` |
+| Capabilities schema | `1.6` | Batch-generation block is additive |
 | Generation manifest schema | `1.5` | Inpainting mask metadata is additive |
 | Generation profile schema | `1.2` | Tileable defaults are additive |
 
@@ -183,6 +185,24 @@ POST /api/v1/jobs/{job_id}/retry
 `POST /api/v1/generations/textures` still accepts the same body and waits for the queued job to finish (curl/script compatibility). Unity uses the job endpoints and polls. Progress is reported as coarse stages (`queued`, `generating`, `processing`, `persisting`); step counts appear only when the pipeline reports them.
 
 Job records are JSON files under `{OUTPUT_DIRECTORY}/jobs/` and survive backend restarts. Running jobs interrupted by a crash are not assumed complete: they are requeued or marked `interrupted`.
+
+## Batch generation
+
+A batch expands prompts, seed mode, and variation count into individual jobs on the same queue.
+
+```powershell
+curl -X POST http://127.0.0.1:8000/api/v1/batches/preview -H "Content-Type: application/json" -d "{\"prompts\":[\"rusted metal\",\"mossy brick\"],\"variation_count\":2,\"seed_mode\":\"fixed\",\"seed\":11,\"request\":{\"prompt\":\"placeholder\",\"width\":512,\"height\":512,\"output_name\":\"batch\"}}"
+```
+
+```http
+POST /api/v1/batches
+GET  /api/v1/batches
+GET  /api/v1/batches/{batch_id}
+POST /api/v1/batches/{batch_id}/cancel
+POST /api/v1/batches/{batch_id}/retry-failed
+```
+
+Batch state is aggregated from member jobs (`completed`, `partial_success`, `failed`, `cancelled`, or active). One failed job does not fail the batch. In Unity: **Tools → AI Asset Generator → Batch Generation**.
 
 ## Generation (compatibility wait)
 

@@ -226,6 +226,10 @@ class JobRecord:
     worker_id: str | None = None
     prompt_summary: str = ""
     seed: int | None = None
+    batch_id: str | None = None
+    batch_index: int | None = None
+    prompt_index: int | None = None
+    variation_index: int | None = None
     schema_version: str = JOB_RECORD_SCHEMA_VERSION
 
     @property
@@ -282,6 +286,10 @@ class JobRecord:
             "worker_id": self.worker_id,
             "prompt_summary": self.prompt_summary,
             "seed": self.seed,
+            "batch_id": self.batch_id,
+            "batch_index": self.batch_index,
+            "prompt_index": self.prompt_index,
+            "variation_index": self.variation_index,
         }
 
     @classmethod
@@ -311,5 +319,9 @@ class JobRecord:
             worker_id=payload.get("worker_id"),
             prompt_summary=str(payload.get("prompt_summary") or ""),
             seed=payload.get("seed"),
+            batch_id=payload.get("batch_id"),
+            batch_index=payload.get("batch_index"),
+            prompt_index=payload.get("prompt_index"),
+            variation_index=payload.get("variation_index"),
             schema_version=str(payload.get("schema_version") or JOB_RECORD_SCHEMA_VERSION),
         )

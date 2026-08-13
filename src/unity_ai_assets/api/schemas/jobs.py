@@ -69,6 +69,10 @@ class JobResponse(BaseModel):
     asset_type: str
     prompt_summary: str
     seed: int | None = None
+    batch_id: str | None = None
+    batch_index: int | None = None
+    prompt_index: int | None = None
+    variation_index: int | None = None
     created_at: str
     updated_at: str
     started_at: str | None = None
@@ -132,6 +136,10 @@ class JobResponse(BaseModel):
             asset_type=record.asset_type,
             prompt_summary=record.prompt_summary,
             seed=record.seed,
+            batch_id=record.batch_id,
+            batch_index=record.batch_index,
+            prompt_index=record.prompt_index,
+            variation_index=record.variation_index,
             created_at=record.created_at,
             updated_at=record.updated_at,
             started_at=record.started_at,

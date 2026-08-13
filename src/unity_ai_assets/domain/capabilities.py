@@ -330,6 +330,30 @@ class JobSystemCapabilities:
 
 
 @dataclass(frozen=True, slots=True)
+class BatchGenerationCapabilities:
+    """Batch orchestration over the local job queue. Not a second executor."""
+
+    supported: bool = True
+    maximum_jobs: int = 32
+    maximum_prompts: int = 50
+    maximum_variations: int = 16
+    seed_modes: list[str] = field(
+        default_factory=lambda: ["fixed", "random", "sequential"]
+    )
+    states: list[str] = field(
+        default_factory=lambda: [
+            "queued",
+            "running",
+            "cancelling",
+            "completed",
+            "partial_success",
+            "failed",
+            "cancelled",
+        ]
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class CapabilityDocument:
     """Complete versioned capability document (domain form)."""
 
@@ -342,6 +366,7 @@ class CapabilityDocument:
     precision: PrecisionCapabilities
     limits: ConcurrencyLimits
     jobs: JobSystemCapabilities = field(default_factory=JobSystemCapabilities)
+    batches: BatchGenerationCapabilities = field(default_factory=BatchGenerationCapabilities)
 
 
 @dataclass(frozen=True, slots=True)

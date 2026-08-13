@@ -15,6 +15,7 @@ from unity_ai_assets.domain.capabilities import (
     ApiVersionInfo,
     ApplicationIdentity,
     BackgroundRemovalCapabilities,
+    BatchGenerationCapabilities,
     CapabilityDocument,
     ConcurrencyLimits,
     DimensionConstraints,
@@ -346,5 +347,11 @@ class CapabilityService:
                 maximum_concurrent_jobs=policy.maximum_concurrent_generations,
                 auto_retry=settings.job_auto_retry,
                 progress="stage",
+            ),
+            batches=BatchGenerationCapabilities(
+                supported=True,
+                maximum_jobs=settings.max_batch_jobs,
+                maximum_prompts=settings.max_batch_prompts,
+                maximum_variations=settings.max_batch_variations,
             ),
         )

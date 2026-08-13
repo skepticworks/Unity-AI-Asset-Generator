@@ -45,6 +45,12 @@ namespace UnityAiAssets.Editor.Api
         public string AssetType;
         public string PromptSummary;
         public long? Seed;
+        public string BatchId;
+        public int? BatchIndex;
+        public int? PromptIndex;
+        public int? VariationIndex;
+        public string RequestOutputName;
+        public string RequestProfileId;
         public string CreatedAt;
         public string UpdatedAt;
         public string StartedAt;
@@ -116,6 +122,16 @@ namespace UnityAiAssets.Editor.Api
                 AssetType = root.Get("asset_type").AsString(),
                 PromptSummary = root.Get("prompt_summary").AsString() ?? string.Empty,
                 Seed = root.Get("seed").AsNullableLong(),
+                BatchId = root.Get("batch_id").AsString(),
+                BatchIndex = root.Get("batch_index").Kind == JsonNodeKind.Number
+                    ? root.Get("batch_index").AsInt()
+                    : (int?)null,
+                PromptIndex = root.Get("prompt_index").Kind == JsonNodeKind.Number
+                    ? root.Get("prompt_index").AsInt()
+                    : (int?)null,
+                VariationIndex = root.Get("variation_index").Kind == JsonNodeKind.Number
+                    ? root.Get("variation_index").AsInt()
+                    : (int?)null,
                 CreatedAt = root.Get("created_at").AsString(),
                 UpdatedAt = root.Get("updated_at").AsString(),
                 StartedAt = root.Get("started_at").AsString(),
@@ -172,6 +188,13 @@ namespace UnityAiAssets.Editor.Api
                     if (item != null && item.IsObject)
                         document.RetryHistory.Add(ParseError(item));
                 }
+            }
+
+            var requestNode = root.Get("request");
+            if (requestNode != null && requestNode.IsObject)
+            {
+                document.RequestOutputName = requestNode.Get("output_name").AsString();
+                document.RequestProfileId = requestNode.Get("generation_profile_id").AsString();
             }
 
             return document;

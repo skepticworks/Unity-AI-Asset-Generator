@@ -6,15 +6,18 @@ Local FastAPI texture generation (Diffusers behind an inference protocol) plus a
 
 **ComfyUI is not used** in any form.
 
-Application/package version: **0.9.0** (Milestone 9 — local job system).
+Application/package version: **0.10.0** (Milestone 10 — batch generation UI over the local job system).
 
 ## Backend component responsibilities
 
 | Layer | Responsibility |
 |-------|----------------|
-| `api/routes` | HTTP transport: health, capabilities, jobs, generation, image/manifest retrieval |
+| `api/routes` | HTTP transport: health, capabilities, jobs, batches, generation, image/manifest retrieval |
 | `services/job_service.py` | Job state machine, FIFO queue, worker loop, cancel/retry/restart recovery |
 | `services/job_store.py` | Atomic JSON job records on local disk |
+| `services/batch_expansion.py` | Deterministic prompt/seed/variation expansion into ordinary jobs |
+| `services/batch_service.py` | Batch persist/submit/cancel/retry-failed; state is aggregated from member jobs |
+| `services/batch_store.py` | Atomic JSON batch records on local disk |
 | `services/job_executor.py` | Execution-backend protocol; local GPU executor wraps `GenerationService` |
 | `api/schemas` | Versioned public Pydantic models (capabilities, generation, errors) |
 | `domain/generation_policy.py` | **Authoritative** generation limits and validation |
@@ -44,7 +47,7 @@ Application/package version: **0.9.0** (Milestone 9 — local job system).
 | `Editor/Generation/` | Request model/factory, state, `GenerationController` orchestration |
 | `Editor/Importing/` | Path utilities, import profiles, `GeneratedAssetImporter`, materials |
 | `Editor/Metadata/` | Manifest-aware ScriptableObject + importer |
-| `Editor/UI/` | `Tools > AI Asset Generator` window, including generation history |
+| `Editor/UI/` | `Tools > AI Asset Generator` window, generation history, and batch generation |
 | `Editor/Tileable/` | Offset/wrap, seam analysis/correction, palette reduction, tileable previews |
 | `Editor/Tests/` | Edit Mode tests (capabilities, errors, manifests, integrity, tileable) |
 | `Editor/AssetTypes/` | Asset type contracts |
@@ -404,3 +407,27 @@ Milestone 5 retains the common path through `GenerationController`: resolve a ge
 profile, construct a wire DTO, validate capabilities, submit, download by `generation_id`,
 verify, and record metadata. Asset-specific behavior begins after verification for Unity
 import (sprite PPU/pivot/alpha settings). Icons reuse the sprite pipeline via profiles.
+
+## Milestone 10 batch generation
+
+A batch is an orchestration layer over Milestone 9 jobs, not a second queue or inference path.
+
+```mermaid
+flowchart LR
+  UI[Batch window] --> Expand[Prompt x seed x variation expansion]
+  Expand --> API[POST /api/v1/batches]
+  API --> Jobs[Existing job queue]
+  Jobs --> Rec[Job JSON + batch JSON]
+  Rec --> Agg[Aggregate queued/running/completed/failed/cancelled]
+  Agg --> UI
+```
+
+- Expansion is deterministic: sequential ranges use a stride so variations cannot collide
+  with the requested seed range.
+- Each expanded item is `JobService.submit(...)` with `batch_id` / indexes.
+- Batch state is always recomputed from member jobs so Unity can recover after a window close
+  or backend restart.
+- Partial failure is a first-class `partial_success` state: completed results stay importable;
+  failed jobs keep their errors and can be retried individually or via retry-failed.
+- Unity imports through existing texture/sprite/icon profiles and records imported generation
+  IDs so a UI refresh cannot reimport the same result.

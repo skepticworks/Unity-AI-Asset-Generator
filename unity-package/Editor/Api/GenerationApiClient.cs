@@ -33,6 +33,20 @@ namespace UnityAiAssets.Editor.Api
 
         Task<JobDocument> RetryJobAsync(string jobId, CancellationToken cancellationToken);
 
+        Task<BatchPreviewDocument> PreviewBatchAsync(
+            BatchSubmitRequestDto request, CancellationToken cancellationToken);
+
+        Task<BatchDocument> SubmitBatchAsync(
+            BatchSubmitRequestDto request, CancellationToken cancellationToken);
+
+        Task<BatchDocument> GetBatchAsync(string batchId, CancellationToken cancellationToken);
+
+        Task<BatchListDocument> ListBatchesAsync(CancellationToken cancellationToken, int limit = 50);
+
+        Task<BatchDocument> CancelBatchAsync(string batchId, CancellationToken cancellationToken);
+
+        Task<BatchDocument> RetryFailedBatchAsync(string batchId, CancellationToken cancellationToken);
+
         Task<byte[]> DownloadGenerationImageAsync(string generationId, CancellationToken cancellationToken);
 
         /// <summary>
@@ -197,6 +211,97 @@ namespace UnityAiAssets.Editor.Api
             {
                 throw new ApiException(
                     "Failed to parse the job record returned by the backend.",
+                    ApiFailureKind.Deserialization,
+                    requestId: LastRequestId);
+            }
+
+            return document;
+        }
+
+        public async Task<BatchPreviewDocument> PreviewBatchAsync(
+            BatchSubmitRequestDto requestDto,
+            CancellationToken cancellationToken)
+        {
+            if (requestDto == null)
+                throw new ArgumentNullException(nameof(requestDto));
+            var body = await PostJsonAsync(
+                ApiEndpoints.BatchPreview, requestDto.ToJson(), Math.Min(30, _timeoutSeconds), cancellationToken)
+                .ConfigureAwait(true);
+            if (!BatchPreviewDocument.TryParse(body, out var document) || document == null)
+            {
+                throw new ApiException(
+                    "Failed to parse the batch preview returned by the backend.",
+                    ApiFailureKind.Deserialization,
+                    requestId: LastRequestId);
+            }
+
+            return document;
+        }
+
+        public async Task<BatchDocument> SubmitBatchAsync(
+            BatchSubmitRequestDto requestDto,
+            CancellationToken cancellationToken)
+        {
+            if (requestDto == null)
+                throw new ArgumentNullException(nameof(requestDto));
+            var body = await PostJsonAsync(
+                ApiEndpoints.Batches, requestDto.ToJson(), Math.Min(30, _timeoutSeconds), cancellationToken)
+                .ConfigureAwait(true);
+            return ParseBatch(body);
+        }
+
+        public async Task<BatchDocument> GetBatchAsync(string batchId, CancellationToken cancellationToken)
+        {
+            ValidateBatchId(batchId);
+            var body = await GetStringAsync(
+                ApiEndpoints.Batch(batchId), Math.Min(30, _timeoutSeconds), cancellationToken)
+                .ConfigureAwait(true);
+            return ParseBatch(body);
+        }
+
+        public async Task<BatchListDocument> ListBatchesAsync(
+            CancellationToken cancellationToken, int limit = 50)
+        {
+            var path = ApiEndpoints.Batches + "?limit=" + Math.Max(1, Math.Min(200, limit));
+            var body = await GetStringAsync(
+                path, Math.Min(30, _timeoutSeconds), cancellationToken)
+                .ConfigureAwait(true);
+            if (!BatchListDocument.TryParse(body, out var document) || document == null)
+            {
+                throw new ApiException(
+                    "Failed to parse the batch history returned by the backend.",
+                    ApiFailureKind.Deserialization,
+                    requestId: LastRequestId);
+            }
+
+            return document;
+        }
+
+        public async Task<BatchDocument> CancelBatchAsync(string batchId, CancellationToken cancellationToken)
+        {
+            ValidateBatchId(batchId);
+            var body = await PostJsonAsync(
+                ApiEndpoints.BatchCancel(batchId), "{}", Math.Min(30, _timeoutSeconds), cancellationToken)
+                .ConfigureAwait(true);
+            return ParseBatch(body);
+        }
+
+        public async Task<BatchDocument> RetryFailedBatchAsync(
+            string batchId, CancellationToken cancellationToken)
+        {
+            ValidateBatchId(batchId);
+            var body = await PostJsonAsync(
+                ApiEndpoints.BatchRetryFailed(batchId), "{}", Math.Min(30, _timeoutSeconds), cancellationToken)
+                .ConfigureAwait(true);
+            return ParseBatch(body);
+        }
+
+        BatchDocument ParseBatch(string body)
+        {
+            if (!BatchDocument.TryParse(body, out var document) || document == null)
+            {
+                throw new ApiException(
+                    "Failed to parse the batch record returned by the backend.",
                     ApiFailureKind.Deserialization,
                     requestId: LastRequestId);
             }
@@ -511,6 +616,11 @@ namespace UnityAiAssets.Editor.Api
         static void ValidateJobId(string jobId)
         {
             ValidateId(jobId, "job_id");
+        }
+
+        static void ValidateBatchId(string batchId)
+        {
+            ValidateId(batchId, "batch_id");
         }
 
         static void ValidateId(string value, string fieldName)

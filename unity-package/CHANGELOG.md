@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.10.0 — Milestone 10 batch generation UI
+
+- Dedicated **Tools → AI Asset Generator → Batch Generation** window configures prompts, seed
+  mode (fixed / random / sequential), and variation count, then expands them into ordinary
+  Milestone 9 jobs.
+- Backend persists batch records and `batch_id` on jobs. Unity reconstructs queue state after
+  the window closes or the backend restarts. Progress is finished/completed job counts plus
+  coarse pipeline stages — not invented percentages.
+- Partial success, batch cancel, retry-failed, and import-all / import-selected reuse existing
+  job cancel/retry semantics and Unity import profiles. Already-imported generation IDs are
+  skipped on refresh.
+- Capabilities schema 1.6 advertises `batches` (max jobs/prompts/variations, seed modes).
+  API minor 1.4.
+
 ## 0.9.0 — Milestone 9 local job system
 
 - Generation is submitted as a persistent local job. Unity receives a job ID, polls status/progress,

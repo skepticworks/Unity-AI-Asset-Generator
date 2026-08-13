@@ -25,6 +25,7 @@ def submit_job(payload: TextureGenerationRequest, request: Request) -> JobRespon
 def list_jobs(
     request: Request,
     state: JobState | None = Query(default=None),
+    batch_id: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> JobListResponse:
@@ -32,7 +33,9 @@ def list_jobs(
     job_service = request.app.state.job_service
     settings = request.app.state.settings
     resolved_limit = min(limit, int(settings.job_history_limit))
-    records, total = job_service.list_jobs(state=state, limit=resolved_limit, offset=offset)
+    records, total = job_service.list_jobs(
+        state=state, batch_id=batch_id, limit=resolved_limit, offset=offset
+    )
     return JobListResponse(
         jobs=[JobResponse.from_record(item) for item in records],
         total=total,

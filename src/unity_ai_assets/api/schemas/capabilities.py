@@ -300,6 +300,29 @@ class JobSystemSchema(BaseModel):
     )
 
 
+class BatchGenerationSchema(BaseModel):
+    """Batch orchestration over the existing job queue."""
+
+    supported: bool = True
+    maximum_jobs: int = 32
+    maximum_prompts: int = 50
+    maximum_variations: int = 16
+    seed_modes: list[str] = Field(
+        default_factory=lambda: ["fixed", "random", "sequential"]
+    )
+    states: list[str] = Field(
+        default_factory=lambda: [
+            "queued",
+            "running",
+            "cancelling",
+            "completed",
+            "partial_success",
+            "failed",
+            "cancelled",
+        ]
+    )
+
+
 class CapabilitiesResponse(BaseModel):
     """Versioned public capability document."""
 
@@ -312,6 +335,7 @@ class CapabilitiesResponse(BaseModel):
     precision: PrecisionSchema
     limits: LimitsSchema
     jobs: JobSystemSchema
+    batches: BatchGenerationSchema
 
     @classmethod
     def from_domain(cls, document: CapabilityDocument) -> CapabilitiesResponse:
@@ -478,6 +502,14 @@ class CapabilitiesResponse(BaseModel):
                 maximum_concurrent_jobs=document.jobs.maximum_concurrent_jobs,
                 auto_retry=document.jobs.auto_retry,
                 progress=document.jobs.progress,
+            ),
+            batches=BatchGenerationSchema(
+                supported=document.batches.supported,
+                maximum_jobs=document.batches.maximum_jobs,
+                maximum_prompts=document.batches.maximum_prompts,
+                maximum_variations=document.batches.maximum_variations,
+                seed_modes=list(document.batches.seed_modes),
+                states=list(document.batches.states),
             ),
         )
 

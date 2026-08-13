@@ -28,6 +28,7 @@ def service_root(request: Request) -> JSONResponse:
                 "health": "/health",
                 "capabilities": "/api/v1/capabilities",
                 "jobs": "/api/v1/jobs",
+                "batches": "/api/v1/batches",
                 "docs": "/docs",
                 "openapi": "/openapi.json",
             },

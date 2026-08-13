@@ -247,6 +247,16 @@ namespace UnityAiAssets.Editor.Api
         public string Progress;
     }
 
+    public sealed class BatchGenerationInfo
+    {
+        public bool Supported;
+        public int MaximumJobs = 32;
+        public int MaximumPrompts = 50;
+        public int MaximumVariations = 16;
+        public List<string> SeedModes = new List<string>();
+        public List<string> States = new List<string>();
+    }
+
     /// <summary>
     /// Typed, parsed form of GET /api/v1/capabilities. Built from <see cref="JsonNode"/>
     /// rather than JsonUtility because the payload contains string arrays nested inside
@@ -263,6 +273,7 @@ namespace UnityAiAssets.Editor.Api
         public PrecisionInfo Precision;
         public LimitsInfo Limits;
         public JobSystemInfo Jobs;
+        public BatchGenerationInfo Batches;
 
         public SchemaVersion CapabilitiesSchemaVersion => SchemaVersion.Parse(Schemas.Capabilities);
 
@@ -304,6 +315,7 @@ namespace UnityAiAssets.Editor.Api
             var precisionNode = root.Get("precision");
             var limitsNode = root.Get("limits");
             var jobsNode = root.Get("jobs");
+            var batchesNode = root.Get("batches");
 
             return new CapabilityDocument
             {
@@ -359,6 +371,17 @@ namespace UnityAiAssets.Editor.Api
                         MaximumConcurrentJobs = jobsNode.Get("maximum_concurrent_jobs").AsInt(),
                         AutoRetry = jobsNode.Get("auto_retry").AsBool(),
                         Progress = jobsNode.Get("progress").AsString(),
+                    }
+                    : null,
+                Batches = batchesNode != null && batchesNode.IsObject
+                    ? new BatchGenerationInfo
+                    {
+                        Supported = batchesNode.Get("supported").AsBool(),
+                        MaximumJobs = Math.Max(1, batchesNode.Get("maximum_jobs").AsInt(32)),
+                        MaximumPrompts = Math.Max(1, batchesNode.Get("maximum_prompts").AsInt(50)),
+                        MaximumVariations = Math.Max(1, batchesNode.Get("maximum_variations").AsInt(16)),
+                        SeedModes = batchesNode.Get("seed_modes").AsStringList(),
+                        States = batchesNode.Get("states").AsStringList(),
                     }
                     : null,
             };

@@ -41,6 +41,9 @@ class AppErrorCode(StrEnum):
     JOB_CANCELLED = "JOB_CANCELLED"
     JOB_INTERRUPTED = "JOB_INTERRUPTED"
     JOB_SERVICE_UNAVAILABLE = "JOB_SERVICE_UNAVAILABLE"
+    BATCH_NOT_FOUND = "BATCH_NOT_FOUND"
+    BATCH_REQUEST_INVALID = "BATCH_REQUEST_INVALID"
+    BATCH_TOO_LARGE = "BATCH_TOO_LARGE"
     INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
 
 
@@ -96,6 +99,9 @@ DEFAULT_MESSAGES: dict[AppErrorCode, str] = {
     AppErrorCode.JOB_CANCELLED: "The generation job was cancelled.",
     AppErrorCode.JOB_INTERRUPTED: "The generation job was interrupted by a backend restart.",
     AppErrorCode.JOB_SERVICE_UNAVAILABLE: "The job service is not accepting new work.",
+    AppErrorCode.BATCH_NOT_FOUND: "The requested generation batch was not found.",
+    AppErrorCode.BATCH_REQUEST_INVALID: "The batch generation request is invalid.",
+    AppErrorCode.BATCH_TOO_LARGE: "The batch would create more jobs than the configured maximum.",
     AppErrorCode.INTERNAL_SERVER_ERROR: "An unexpected server error occurred.",
 }
 
@@ -131,5 +137,8 @@ HTTP_STATUS_BY_CODE: dict[AppErrorCode, int] = {
     AppErrorCode.JOB_CANCELLED: 409,
     AppErrorCode.JOB_INTERRUPTED: 500,
     AppErrorCode.JOB_SERVICE_UNAVAILABLE: 503,
+    AppErrorCode.BATCH_NOT_FOUND: 404,
+    AppErrorCode.BATCH_REQUEST_INVALID: 422,
+    AppErrorCode.BATCH_TOO_LARGE: 422,
     AppErrorCode.INTERNAL_SERVER_ERROR: 500,
 }

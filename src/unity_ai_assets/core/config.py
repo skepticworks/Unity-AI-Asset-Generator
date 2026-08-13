@@ -100,6 +100,28 @@ class Settings(BaseSettings):
         le=1000,
         description="Default maximum number of jobs returned by history listings.",
     )
+    batch_directory: Path | None = Field(
+        default=None,
+        description="Batch JSON directory. Defaults to {output_directory}/batches.",
+    )
+    max_batch_jobs: int = Field(
+        default=32,
+        ge=1,
+        le=256,
+        description="Maximum number of generation jobs a single batch may expand into.",
+    )
+    max_batch_prompts: int = Field(
+        default=50,
+        ge=1,
+        le=256,
+        description="Maximum prompt entries allowed in a single batch.",
+    )
+    max_batch_variations: int = Field(
+        default=16,
+        ge=1,
+        le=64,
+        description="Maximum variation count per prompt/seed combination.",
+    )
     default_scheduler: str = Field(
         default="pndm",
         description="Stable public scheduler identifier used when selection is unsupported",
@@ -182,7 +204,7 @@ class Settings(BaseSettings):
             return None
         return value
 
-    @field_validator("job_directory", mode="before")
+    @field_validator("job_directory", "batch_directory", mode="before")
     @classmethod
     def _empty_job_dir_to_none(cls, value: object) -> object:
         if value == "":
@@ -248,6 +270,8 @@ class Settings(BaseSettings):
             object.__setattr__(self, "app_version", APPLICATION_VERSION)
         if self.job_directory is None:
             object.__setattr__(self, "job_directory", self.output_directory / "jobs")
+        if self.batch_directory is None:
+            object.__setattr__(self, "batch_directory", self.output_directory / "batches")
         return self
 
     @property

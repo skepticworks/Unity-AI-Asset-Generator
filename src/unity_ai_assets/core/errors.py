@@ -281,6 +281,49 @@ class JobServiceUnavailableError(AppError):
         super().__init__(message, code=AppErrorCode.JOB_SERVICE_UNAVAILABLE)
 
 
+class BatchNotFoundError(AppError):
+    """Raised when a batch ID does not resolve to a persisted record."""
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, code=AppErrorCode.BATCH_NOT_FOUND)
+
+
+class BatchRequestInvalidError(AppError):
+    """Raised when a batch configuration cannot be expanded into jobs."""
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        field_issues: dict[str, list[FieldIssue]] | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=AppErrorCode.BATCH_REQUEST_INVALID,
+            details=details,
+            field_issues=field_issues,
+        )
+
+
+class BatchTooLargeError(AppError):
+    """Raised when expansion would exceed the configured job-count safeguard."""
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        field_issues: dict[str, list[FieldIssue]] | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=AppErrorCode.BATCH_TOO_LARGE,
+            details=details,
+            field_issues=field_issues,
+        )
+
+
 @dataclass
 class ErrorEnvelope:
     """Public API error envelope builder helpers."""

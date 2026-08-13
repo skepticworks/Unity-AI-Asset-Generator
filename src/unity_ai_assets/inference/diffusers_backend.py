@@ -6,10 +6,14 @@ import time
 
 import torch
 
-from unity_ai_assets.core.errors import InferenceError, ModelLoadError
+from unity_ai_assets.core.errors import InferenceError, ModelLoadError, OperationUnsupportedError
 from unity_ai_assets.core.logging import get_logger
 from unity_ai_assets.domain.capabilities import InferenceCapabilities
-from unity_ai_assets.domain.enums import AssetType
+from unity_ai_assets.domain.enums import (
+    AssetType,
+    OperationType,
+    model_family_supports_image_to_image,
+)
 from unity_ai_assets.domain.generation import GeneratedImage, GenerationRequest
 from unity_ai_assets.inference.model_manager import ModelManager
 
@@ -44,7 +48,9 @@ class DiffusersBackend:
         available = self._model_manager.available_precision_names(device)
         return InferenceCapabilities(
             text_to_image_supported=True,
-            image_to_image_supported=False,
+            image_to_image_supported=model_family_supports_image_to_image(
+                self._model_manager.model_family
+            ),
             inpainting_supported=False,
             supported_asset_types=[
                 AssetType.TEXTURE.value,
@@ -62,6 +68,12 @@ class DiffusersBackend:
         )
 
     def generate(self, request: GenerationRequest) -> GeneratedImage:
+        operation = request.operation or OperationType.TEXT_TO_IMAGE.value
+        if operation == OperationType.IMAGE_TO_IMAGE.value:
+            return self._generate_image_to_image(request)
+        return self._generate_text_to_image(request)
+
+    def _generate_text_to_image(self, request: GenerationRequest) -> GeneratedImage:
         try:
             pipeline = self._model_manager.get_pipeline()
         except ModelLoadError:
@@ -116,6 +128,100 @@ class DiffusersBackend:
         elapsed = time.perf_counter() - started
         logger.info(
             "Inference finished generation_id=%s elapsed=%.2fs",
+            request.generation_id,
+            elapsed,
+        )
+        return GeneratedImage(
+            image=image,
+            seed=request.seed,
+            width=request.width,
+            height=request.height,
+            elapsed_seconds=round(elapsed, 4),
+            device=self._model_manager.device,
+            torch_dtype=self._model_manager.torch_dtype_name,
+            model_id=self._model_manager.model_id,
+            model_revision=self._model_manager.model_revision,
+        )
+
+    def _generate_image_to_image(self, request: GenerationRequest) -> GeneratedImage:
+        if not model_family_supports_image_to_image(self._model_manager.model_family):
+            raise OperationUnsupportedError(
+                "The current model does not support image_to_image. "
+                "The request was not converted to text-to-image."
+            )
+        if request.source_image is None:
+            raise InferenceError("image_to_image requires a source init image.")
+
+        try:
+            txt2img = self._model_manager.get_pipeline()
+        except ModelLoadError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise ModelLoadError(
+                f"Unexpected failure while obtaining the inference pipeline: {type(exc).__name__}"
+            ) from exc
+
+        try:
+            from diffusers import AutoPipelineForImage2Image
+
+            pipeline = AutoPipelineForImage2Image.from_pipe(txt2img)
+        except Exception as exc:  # noqa: BLE001
+            raise OperationUnsupportedError(
+                "The loaded model does not support image-to-image generation. "
+                "The request was not converted to text-to-image."
+            ) from exc
+
+        generator_device = self._model_manager.device
+        if generator_device == "cuda":
+            generator = torch.Generator(device="cuda").manual_seed(request.seed)
+        else:
+            generator = torch.Generator(device="cpu").manual_seed(request.seed)
+
+        strength = (
+            0.75 if request.denoising_strength is None else float(request.denoising_strength)
+        )
+        started = time.perf_counter()
+        logger.info(
+            "Img2img inference starting generation_id=%s size=%sx%s steps=%s guidance=%s "
+            "strength=%s device=%s",
+            request.generation_id,
+            request.width,
+            request.height,
+            request.steps,
+            request.guidance_scale,
+            strength,
+            generator_device,
+        )
+        try:
+            if hasattr(pipeline, "set_progress_bar_config"):
+                pipeline.set_progress_bar_config(disable=True)
+
+            init_image = request.source_image.convert("RGB")
+            with torch.inference_mode():
+                result = pipeline(
+                    prompt=request.prompt,
+                    image=init_image,
+                    negative_prompt=request.negative_prompt or None,
+                    num_inference_steps=request.steps,
+                    guidance_scale=request.guidance_scale,
+                    strength=strength,
+                    generator=generator,
+                )
+            image = result.images[0]
+        except OperationUnsupportedError:
+            raise
+        except ModelLoadError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Img2img inference failed for generation_id=%s", request.generation_id)
+            raise InferenceError(
+                "Image-to-image generation failed. Check the source image, prompt parameters, "
+                f"VRAM availability, and model compatibility. Details: {type(exc).__name__}"
+            ) from exc
+
+        elapsed = time.perf_counter() - started
+        logger.info(
+            "Img2img inference finished generation_id=%s elapsed=%.2fs",
             request.generation_id,
             elapsed,
         )

@@ -51,12 +51,16 @@ namespace UnityAiAssets.Editor.Generation
         public string BackgroundRemovalImplementation;
         public string TransparencyStrategy;
         public string ProcessingSummary;
+        public string Operation;
+        public float? DenoisingStrength;
 
         public bool CapabilitiesUsable =>
             CapabilityState == CapabilityState.Ready || CapabilityState == CapabilityState.Stale;
 
         public bool CanGenerate =>
-            CapabilitiesUsable && Capabilities != null && Capabilities.Operations?.TextToImage?.Supported == true;
+            CapabilitiesUsable && Capabilities != null &&
+            (Capabilities.Operations?.TextToImage?.Supported == true ||
+             Capabilities.Operations?.ImageToImage?.Supported == true);
     }
 
     /// <summary>
@@ -245,6 +249,8 @@ namespace UnityAiAssets.Editor.Generation
             Progress.BackgroundRemovalImplementation = null;
             Progress.TransparencyStrategy = null;
             Progress.ProcessingSummary = null;
+            Progress.Operation = null;
+            Progress.DenoisingStrength = null;
 
             try
             {
@@ -357,6 +363,10 @@ namespace UnityAiAssets.Editor.Generation
                 Progress.GenerationId = response.generation_id;
                 Progress.Seed = response.seed;
                 Progress.ElapsedSeconds = response.elapsed_seconds;
+                Progress.Operation = !string.IsNullOrWhiteSpace(response.operation)
+                    ? response.operation
+                    : (request.UseImageToImage ? "image_to_image" : "text_to_image");
+                Progress.DenoisingStrength = request.UseImageToImage ? request.DenoisingStrength : (float?)null;
                 Progress.RequestId = client.LastRequestId ?? Progress.RequestId;
 
                 SetState(GenerationState.Downloading, "Downloading generated PNG and manifest…");
@@ -482,6 +492,19 @@ namespace UnityAiAssets.Editor.Generation
             Progress.BackgroundRemovalImplementation = processing.BackgroundRemovalImplementation;
 
             var parts = new List<string>();
+            if (request.UseImageToImage)
+            {
+                var operation = manifest?.Generation?.Operation ?? "image_to_image";
+                var strength = request.DenoisingStrength.ToString("0.###");
+                var sourceMeta = manifest?.Request?.SourceImage;
+                var sourceDetail = sourceMeta == null
+                    ? string.Empty
+                    : $" Source {sourceMeta.Width}×{sourceMeta.Height} {sourceMeta.Format}" +
+                      (string.IsNullOrEmpty(sourceMeta.Sha256) ? "." : $", sha256={sourceMeta.Sha256.Substring(0, Math.Min(8, sourceMeta.Sha256.Length))}….");
+                parts.Add(
+                    $"Operation: {operation} (source used as init/latent image, not reference conditioning). " +
+                    $"Denoising strength: {strength}.{sourceDetail}");
+            }
             if (request.ApplySeamCorrection)
             {
                 if (processing.SeamCorrectionApplied)

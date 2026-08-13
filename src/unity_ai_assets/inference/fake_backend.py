@@ -7,9 +7,9 @@ from collections.abc import Callable
 
 from PIL import Image
 
-from unity_ai_assets.core.errors import InferenceError
+from unity_ai_assets.core.errors import InferenceError, OperationUnsupportedError
 from unity_ai_assets.domain.capabilities import InferenceCapabilities
-from unity_ai_assets.domain.enums import AssetType
+from unity_ai_assets.domain.enums import AssetType, OperationType
 from unity_ai_assets.domain.generation import GeneratedImage, GenerationRequest
 
 
@@ -28,6 +28,7 @@ class FakeImageGenerationBackend:
         model_loaded: bool = True,
         resolved_precision: str = "float32",
         default_scheduler: str = "pndm",
+        image_to_image_supported: bool = True,
     ) -> None:
         self._device_name = device_name
         self._model_id = model_id
@@ -38,6 +39,7 @@ class FakeImageGenerationBackend:
         self._loaded = model_loaded
         self._resolved_precision = resolved_precision
         self._default_scheduler = default_scheduler
+        self._image_to_image_supported = image_to_image_supported
         self.calls: list[GenerationRequest] = []
         self.capability_calls: int = 0
         self.unload_calls: int = 0
@@ -67,7 +69,7 @@ class FakeImageGenerationBackend:
         self.capability_calls += 1
         return InferenceCapabilities(
             text_to_image_supported=True,
-            image_to_image_supported=False,
+            image_to_image_supported=self._image_to_image_supported,
             inpainting_supported=False,
             supported_asset_types=[
                 AssetType.TEXTURE.value,
@@ -92,7 +94,26 @@ class FakeImageGenerationBackend:
         started = time.perf_counter()
         time.sleep(self._delay_seconds)
         color = self._color_factory(request)
-        image = Image.new("RGB", (request.width, request.height), color=color)
+        operation = request.operation or OperationType.TEXT_TO_IMAGE.value
+        if operation == OperationType.IMAGE_TO_IMAGE.value:
+            if not self._image_to_image_supported:
+                raise OperationUnsupportedError(
+                    "The current model/backend does not support image_to_image. "
+                    "The request was not converted to text-to-image."
+                )
+            if request.source_image is None:
+                raise InferenceError("image_to_image requires a source init image.")
+            src = request.source_image.convert("RGB")
+            if src.size != (request.width, request.height):
+                src = src.resize((request.width, request.height), Image.Resampling.LANCZOS)
+            overlay = Image.new("RGB", (request.width, request.height), color=color)
+            strength = (
+                0.75 if request.denoising_strength is None else float(request.denoising_strength)
+            )
+            strength = max(0.0, min(1.0, strength))
+            image = Image.blend(src, overlay, strength)
+        else:
+            image = Image.new("RGB", (request.width, request.height), color=color)
         elapsed = time.perf_counter() - started
         self._loaded = True
         return GeneratedImage(

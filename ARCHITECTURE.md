@@ -6,7 +6,7 @@ Local FastAPI texture generation (Diffusers behind an inference protocol) plus a
 
 **ComfyUI is not used** in any form.
 
-Application/package version: **0.6.0** (Milestone 6 — tileable texture workflow).
+Application/package version: **0.7.0** (Milestone 7 — image-to-image variations).
 
 ## Backend component responsibilities
 
@@ -304,7 +304,38 @@ strategy (`background_removal` via rembg/U2-Net), not native model alpha. Backgr
 removal is optional, lazily loaded, reused across requests, and isolated behind
 `ImageBackgroundRemover` so it never enters the diffusion backend protocol.
 
-## Milestone 5 extension boundary
+## Milestone 7 image-to-image variations
+
+Img2img is a first-class generation **operation** (`image_to_image`), not a form of
+reference-image conditioning. The uploaded `source_image` is the diffusion **init/latent
+image**. Denoising strength controls how far the result may move from that init image.
+
+Reference conditioning (IP-Adapter and similar) is intentionally absent. A future
+`reference_image` / conditioning payload can be added beside `source_image` without
+reusing img2img fields, labels, or pipeline entry points.
+
+```mermaid
+flowchart LR
+  Caps[Capabilities image_to_image.supported]
+  Src[Source image bytes]
+  Val[Format / size / dimension / decode validation]
+  Init[Resize to output size LANCZOS]
+  Inf[Img2img pipeline from txt2img components]
+  Man[Manifest operation + source metadata]
+
+  Caps -->|unsupported| Fail[OPERATION_UNSUPPORTED no txt2img fallback]
+  Caps -->|supported| Src --> Val --> Init --> Inf --> Man
+```
+
+- API: extend `POST /api/v1/generations/textures` with `operation`, nested `source_image`
+  (`content_base64`, optional `media_type`), and `denoising_strength`.
+- Capabilities schema **1.3** advertises img2img ranges, supported source formats, and max
+  upload size. SD 1.5 and SDXL families report `supported: true`; others report false.
+- Manifest schema **1.4** records denoising strength and source-image metadata (not pixels).
+- Diffusers converts the loaded txt2img pipeline with `AutoPipelineForImage2Image.from_pipe`
+  so weights are shared. The fake backend blends the source with a seed color for tests.
+- Unity: source picker + preview, denoising slider, preflight against capabilities, metadata
+  `Operation = image_to_image`.
 
 Milestone 5 retains the common path through `GenerationController`: resolve a generation
 profile, construct a wire DTO, validate capabilities, submit, download by `generation_id`,

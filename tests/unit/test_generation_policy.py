@@ -60,6 +60,14 @@ def test_policy_rejects_seed_out_of_range() -> None:
         policy.validate_seed(policy.maximum_seed + 1)
 
 
+def test_policy_rejects_denoising_out_of_range() -> None:
+    policy = GenerationPolicy.from_settings(Settings())
+    with pytest.raises(GenerationRequestInvalidError):
+        policy.validate_denoising_strength(-0.01)
+    with pytest.raises(GenerationRequestInvalidError):
+        policy.validate_denoising_strength(1.01)
+
+
 def test_invalid_policy_configuration() -> None:
     with pytest.raises(ValueError, match="MIN_WIDTH"):
         validate_policy_settings(

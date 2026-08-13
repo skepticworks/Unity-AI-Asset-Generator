@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import base64
+import io
 import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from unity_ai_assets.core.config import Settings
 from unity_ai_assets.core.version import (
@@ -231,7 +234,9 @@ def test_capabilities_endpoint(
     assert payload["runtime"]["configured_device"] == "cpu"
     assert payload["runtime"]["resolved_device"] == "cpu"
     assert payload["operations"]["text_to_image"]["supported"] is True
-    assert payload["operations"]["image_to_image"]["supported"] is False
+    assert payload["operations"]["image_to_image"]["supported"] is True
+    assert payload["operations"]["image_to_image"]["denoising_strength"]["default"] == 0.75
+    assert "png" in payload["operations"]["image_to_image"]["source_image"]["supported_formats"]
     assert payload["operations"]["inpainting"]["supported"] is False
     assert payload["operations"]["text_to_image"]["dimensions"]["maximum_width"] == 1024
     assert payload["operations"]["text_to_image"]["schedulers"]["selection_supported"] is False
@@ -250,3 +255,73 @@ def test_invalid_request_id_replaced(client: TestClient) -> None:
     response = client.get("/health", headers={"X-Request-ID": "bad id with spaces"})
     assert response.headers["X-Request-ID"] != "bad id with spaces"
     assert response.headers["X-Request-ID"]
+
+
+def _png_base64(width: int = 64, height: int = 64) -> str:
+    buffer = io.BytesIO()
+    Image.new("RGB", (width, height), color=(180, 40, 20)).save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
+def test_img2img_generation_request(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/generations/textures",
+        json={
+            "prompt": "weathered variation of the source plate",
+            "width": 64,
+            "height": 64,
+            "steps": 5,
+            "seed": 42,
+            "output_name": "img2img_wall",
+            "operation": "image_to_image",
+            "denoising_strength": 0.35,
+            "source_image": {
+                "content_base64": _png_base64(),
+                "media_type": "image/png",
+            },
+        },
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["operation"] == "image_to_image"
+    assert payload["seed"] == 42
+    manifest = client.get(payload["resources"]["manifest"]).json()
+    assert manifest["generation"]["operation"] == "image_to_image"
+    assert manifest["request"]["denoising_strength"] == 0.35
+    assert manifest["request"]["source_image"]["format"] == "png"
+    assert manifest["request"]["source_image"]["width"] == 64
+    assert manifest["request"]["source_image"]["sha256"]
+
+
+def test_img2img_missing_source_rejected(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/generations/textures",
+        json={
+            "prompt": "missing source",
+            "width": 64,
+            "height": 64,
+            "operation": "image_to_image",
+            "output_name": "missing",
+        },
+    )
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert error["code"] in {"REQUEST_BODY_INVALID", "GENERATION_REQUEST_INVALID"}
+
+
+def test_txt2img_with_source_image_rejected(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/generations/textures",
+        json={
+            "prompt": "should not accept source",
+            "width": 64,
+            "height": 64,
+            "operation": "text_to_image",
+            "source_image": {
+                "content_base64": _png_base64(),
+                "media_type": "image/png",
+            },
+            "output_name": "nope",
+        },
+    )
+    assert response.status_code == 422

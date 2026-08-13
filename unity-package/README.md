@@ -79,6 +79,18 @@ Do **not** store Hugging Face tokens here.
    incompatible).
 7. When complete, use **Select Imported Texture** or inspect the status panel.
 
+## Image-to-image variations
+
+Open **Image-to-Image Variation** in the generator window. Enable img2img, assign a project
+`Texture2D` or **Load From Disk…** (PNG/JPEG/WebP), preview the source, and set **Denoising
+Strength** (0 keeps the source almost unchanged; 1 allows maximum change). The source is the
+**init/latent image**, not a style/identity reference (IP-Adapter). Generate is disabled when
+the backend reports `operations.image_to_image.supported = false` or no source is selected —
+img2img is never silently converted to text-to-image.
+
+Status and the metadata asset record `operation = image_to_image`, denoising strength, and
+source-image format/dimensions/SHA-256 from the manifest.
+
 ## Capability discovery and version compatibility
 
 Before generating, the package fetches `GET /api/v1/capabilities` and caches it in memory for
@@ -96,7 +108,8 @@ treated as incompatible and **Generate And Import** is disabled with the reason 
 
 Before submitting a request, `GenerationCapabilityValidator` checks it against the fetched
 capabilities (dimensions, steps, guidance scale, seed, prompt/negative-prompt/output-name
-length) and reports every violation — it never silently clamps or rewrites your input.
+length, and img2img source/denoising constraints) and reports every violation — it never silently
+clamps or rewrites your input.
 
 ## Generation manifest and integrity verification
 
@@ -140,7 +153,7 @@ Conflicts append `_1`, `_2`, … instead of overwriting.
 
 ## Metadata and reproducibility
 
-Each import creates a `GenerationMetadataAsset` ScriptableObject with generation ID, prompts, seed, model id/revision, backend elapsed time, retrieval URLs, and a reference to the texture, plus (when a manifest was retrieved) manifest schema version, operation, asset type, status, completed-at, application name/version, API major, model family, device, precision, scheduler, output SHA256/byte size, and the request ID. Absolute backend filesystem paths are never stored — only relative resource paths/URLs.
+Each import creates a `GenerationMetadataAsset` ScriptableObject with generation ID, prompts, seed, model id/revision, backend elapsed time, retrieval URLs, and a reference to the texture, plus (when a manifest was retrieved) manifest schema version, operation (including `image_to_image`), asset type, status, completed-at, application name/version, API major, model family, device, precision, scheduler, output SHA256/byte size, the request ID, and img2img source-image metadata when present. Absolute backend filesystem paths are never stored — only relative resource paths/URLs.
 
 ## Cancellation limitation
 

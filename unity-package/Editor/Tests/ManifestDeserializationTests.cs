@@ -172,5 +172,33 @@ namespace UnityAiAssets.Editor.Tests
             Assert.AreEqual("i", manifest.Profile.UnityImportProfileId);
             Assert.AreEqual(1, manifest.SchemaVersionValue.Major);
         }
+
+        [Test]
+        public void Parse_ReadsImg2ImgSourceImageMetadata()
+        {
+            var json = FixtureJson.Replace(
+                @"""output_name"": ""wall""
+            }",
+                @"""output_name"": ""wall"",
+                ""denoising_strength"": 0.4,
+                ""source_image"": {
+                    ""format"": ""png"",
+                    ""media_type"": ""image/png"",
+                    ""width"": 512,
+                    ""height"": 512,
+                    ""byte_size"": 2048,
+                    ""sha256"": ""deadbeef""
+                }
+            }").Replace(@"""operation"": ""text_to_image""", @"""operation"": ""image_to_image""");
+            var manifest = GenerationManifestDocument.Parse(json);
+            Assert.AreEqual("image_to_image", manifest.Generation.Operation);
+            Assert.AreEqual(0.4f, manifest.Request.DenoisingStrength, 0.0001f);
+            Assert.IsNotNull(manifest.Request.SourceImage);
+            Assert.AreEqual("png", manifest.Request.SourceImage.Format);
+            Assert.AreEqual("image/png", manifest.Request.SourceImage.MediaType);
+            Assert.AreEqual(512, manifest.Request.SourceImage.Width);
+            Assert.AreEqual(2048L, manifest.Request.SourceImage.ByteSize);
+            Assert.AreEqual("deadbeef", manifest.Request.SourceImage.Sha256);
+        }
     }
 }

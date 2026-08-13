@@ -2,19 +2,20 @@
 
 Local, AI-assisted generation of Unity-ready **2D game assets** using pretrained generative models (Hugging Face Diffusers) plus an **editor-only Unity package**. No ComfyUI.
 
-## Current milestone scope (Milestone 6)
+## Current milestone scope (Milestone 7)
 
-1. Versioned capability reporting (`GET /api/v1/capabilities`) including processing + tileable support
-2. Authoritative generation policy (single source of truth for limits)
+1. Versioned capability reporting (`GET /api/v1/capabilities`) including processing, tileable, and **image-to-image**
+2. Authoritative generation policy (single source of truth for limits, including denoising strength and source-image uploads)
 3. Stable machine-readable API error envelope + request IDs
-4. Versioned generation manifests with integrity hashes and processing provenance
+4. Versioned generation manifests with integrity hashes, processing provenance, and img2img source-image metadata
 5. Unity capability cache, compatibility checks, and preflight validation
 6. Unity download integrity verification before import
-7. Texture, sprite, icon, and **tileable texture** generation through one shared pipeline
+7. Texture, sprite, icon, tileable texture, and **img2img variation** generation through one shared pipeline
 8. Explicit transparency strategies with optional local background removal + alpha cleanup
 9. Tileable workflow: offset inspect, seam diagnostics, modular correction, tile preview, optional palette reduction
 10. Single-sprite Unity import with pixels-per-unit, pivot modes, and atlas-hint metadata
 11. Versioned built-in/user generation profiles with migration and profile provenance
+12. Image-to-image: source/init image upload, validation, denoising strength, capability gating (no silent txt2img fallback)
 
 Automated Python tests use a **fake inference backend** (and fake background remover when needed).
 They do **not** download diffusion or rembg weights.
@@ -23,7 +24,7 @@ They do **not** download diffusion or rembg weights.
 
 - ComfyUI, ComfyUI APIs, workflows, or custom nodes
 - Sprite sheets, animation frame extraction, automatic SpriteAtlas creation, Addressables
-- img2img, ControlNet, IP-Adapter, inpainting, masking, batching
+- ControlNet, IP-Adapter / reference-image conditioning, inpainting (except local tileable seam repair), masking, batching
 - Guaranteed perfectly seamless textures (correction is best-effort diagnostics + soft blending)
 - Database, Redis, Celery, Docker, auth, cloud storage
 - Model installation UI, distributed job system
@@ -78,10 +79,10 @@ On low-VRAM GPUs, keep `ENABLE_CPU_OFFLOAD=false` and `EXCLUSIVE_MODEL_VRAM=true
 
 | Concern | Source | Notes |
 |---------|--------|-------|
-| Application semver | `pyproject.toml` / `core.version` | Currently `0.6.0` |
-| API major/minor | `core.version` | Independent of app semver |
-| Capabilities schema | `1.2` | Tileable processing block is additive |
-| Generation manifest schema | `1.3` | Tileable provenance is additive |
+| Application semver | `pyproject.toml` / `core.version` | Currently `0.7.0` |
+| API major/minor | `core.version` | Independent of app semver; currently `1.1` |
+| Capabilities schema | `1.3` | Img2img operation block is additive |
+| Generation manifest schema | `1.4` | Img2img source-image metadata is additive |
 | Generation profile schema | `1.2` | Tileable defaults are additive |
 
 ## Tileable texture workflow
@@ -101,6 +102,35 @@ AI seam repair runs on the backend during generate only (circular offset + cente
 ## Sprite and icon workflow
 
 Transparency via local background removal, single-sprite import, pivots, atlas hints. Choose strategy `none` for opaque sprites when rembg is unavailable.
+
+## Image-to-image variations
+
+Img2img uses a **source image as the generation init/latent image** and modifies it according to
+**denoising strength** (0 keeps the source, 1 allows maximum change; default `0.75`). This is **not**
+reference-image conditioning (IP-Adapter / style / identity). Those workflows would use a separate
+request field later and must not be mixed with `source_image`.
+
+1. Confirm capabilities: `operations.image_to_image.supported` must be `true` (SD 1.5 / SDXL families).
+   Requests against an unsupported model fail with `OPERATION_UNSUPPORTED` and are **not** converted to text-to-image.
+2. Upload a PNG, JPEG, or WebP as `source_image.content_base64` (optional `media_type`).
+3. Source images are validated for format, file size (`MAX_SOURCE_IMAGE_BYTES`, default 10 MiB),
+   dimensions (same min/max/multiple policy as generation), and corrupt payloads.
+4. Set `operation` to `image_to_image` and optionally `denoising_strength` in `0.0…1.0`.
+
+```powershell
+curl -X POST http://127.0.0.1:8000/api/v1/generations/textures `
+  -H "Content-Type: application/json" `
+  -d "{\"prompt\":\"weathered rusted metal variation\",\"width\":512,\"height\":512,\"operation\":\"image_to_image\",\"denoising_strength\":0.45,\"source_image\":{\"content_base64\":\"<base64-png>\",\"media_type\":\"image/png\"},\"output_name\":\"metal_var\"}"
+```
+
+The generation response `operation` is `image_to_image`. The manifest echoes `denoising_strength` and
+source-image metadata (format, media type, original dimensions, byte size, SHA-256) without storing the
+uploaded pixels. The same source bytes, prompt, model, seed, denoising strength, and generation
+parameters produce the same output.
+
+In Unity: **Tools → AI Asset Generator → Image-to-Image Variation**. Select a project texture or load a
+file, preview it, set denoising strength, then **Generate And Import**. Status and the metadata asset
+record that the result was produced with img2img.
 
 ## Generation
 

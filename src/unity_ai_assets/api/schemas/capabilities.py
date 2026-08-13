@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from unity_ai_assets.domain.capabilities import CapabilityDocument
+from unity_ai_assets.domain.capabilities import CapabilityDocument, ImageToImageCapabilities
 
 
 class ApiVersionSchema(BaseModel):
@@ -179,6 +179,37 @@ class TextToImageCapabilitiesSchema(BaseModel):
     processing: ProcessingCapabilitiesSchema | None = None
 
 
+class SourceImageConstraintsSchema(BaseModel):
+    """Img2img init/source image constraints (not reference conditioning)."""
+
+    supported_formats: list[str]
+    maximum_byte_size: int
+    dimensions: DimensionConstraintsSchema | None = None
+
+
+class ImageToImageCapabilitiesSchema(BaseModel):
+    """Image-to-image operation capabilities.
+
+    ``source_image`` is the init/latent image. Reference-image conditioning
+    (IP-Adapter and similar) is a separate future capability and is not
+    advertised here.
+    """
+
+    supported: bool
+    asset_types: list[str]
+    dimensions: DimensionConstraintsSchema
+    steps: IntRangeSchema
+    guidance_scale: FloatRangeSchema
+    seed: SeedConstraintsSchema
+    prompt: PromptConstraintsSchema
+    negative_prompt: NegativePromptConstraintsSchema
+    output_name: OutputNameConstraintsSchema
+    schedulers: SchedulerCapabilitiesSchema
+    denoising_strength: FloatRangeSchema
+    source_image: SourceImageConstraintsSchema
+    processing: ProcessingCapabilitiesSchema | None = None
+
+
 class UnsupportedOperationSchema(BaseModel):
     """Unsupported operation marker."""
 
@@ -189,7 +220,7 @@ class OperationsSchema(BaseModel):
     """Per-operation capabilities."""
 
     text_to_image: TextToImageCapabilitiesSchema
-    image_to_image: UnsupportedOperationSchema
+    image_to_image: ImageToImageCapabilitiesSchema
     inpainting: UnsupportedOperationSchema
 
 
@@ -359,8 +390,9 @@ class CapabilitiesResponse(BaseModel):
                     ),
                     processing=processing_schema,
                 ),
-                image_to_image=UnsupportedOperationSchema(
-                    supported=document.operations.image_to_image.supported,
+                image_to_image=_image_to_image_schema(
+                    document.operations.image_to_image,
+                    processing_schema,
                 ),
                 inpainting=UnsupportedOperationSchema(
                     supported=document.operations.inpainting.supported,
@@ -376,3 +408,82 @@ class CapabilitiesResponse(BaseModel):
                 maximum_concurrent_generations=document.limits.maximum_concurrent_generations,
             ),
         )
+
+
+def _image_to_image_schema(
+    i2i: ImageToImageCapabilities,
+    processing_schema: ProcessingCapabilitiesSchema | None,
+) -> ImageToImageCapabilitiesSchema:
+    """Map domain img2img capabilities to the public schema."""
+    source = i2i.source_image
+    source_dimensions = None
+    if source.dimensions is not None:
+        source_dimensions = DimensionConstraintsSchema(
+            minimum_width=source.dimensions.minimum_width,
+            maximum_width=source.dimensions.maximum_width,
+            minimum_height=source.dimensions.minimum_height,
+            maximum_height=source.dimensions.maximum_height,
+            width_multiple=source.dimensions.width_multiple,
+            height_multiple=source.dimensions.height_multiple,
+            supported_aspect_ratios=source.dimensions.supported_aspect_ratios,
+        )
+    return ImageToImageCapabilitiesSchema(
+        supported=i2i.supported,
+        asset_types=list(i2i.asset_types),
+        dimensions=DimensionConstraintsSchema(
+            minimum_width=i2i.dimensions.minimum_width,
+            maximum_width=i2i.dimensions.maximum_width,
+            minimum_height=i2i.dimensions.minimum_height,
+            maximum_height=i2i.dimensions.maximum_height,
+            width_multiple=i2i.dimensions.width_multiple,
+            height_multiple=i2i.dimensions.height_multiple,
+            supported_aspect_ratios=i2i.dimensions.supported_aspect_ratios,
+        ),
+        steps=IntRangeSchema(
+            minimum=i2i.steps.minimum,
+            maximum=i2i.steps.maximum,
+            default=i2i.steps.default or i2i.steps.minimum,
+        ),
+        guidance_scale=FloatRangeSchema(
+            minimum=i2i.guidance_scale.minimum,
+            maximum=i2i.guidance_scale.maximum,
+            default=(
+                i2i.guidance_scale.default
+                if i2i.guidance_scale.default is not None
+                else i2i.guidance_scale.minimum
+            ),
+        ),
+        seed=SeedConstraintsSchema(
+            minimum=i2i.seed.minimum,
+            maximum=i2i.seed.maximum,
+            random_when_omitted=i2i.seed.random_when_omitted,
+        ),
+        prompt=PromptConstraintsSchema(maximum_length=i2i.prompt.maximum_length),
+        negative_prompt=NegativePromptConstraintsSchema(
+            supported=i2i.negative_prompt.supported,
+            maximum_length=i2i.negative_prompt.maximum_length,
+        ),
+        output_name=OutputNameConstraintsSchema(
+            maximum_length=i2i.output_name.maximum_length,
+        ),
+        schedulers=SchedulerCapabilitiesSchema(
+            selection_supported=i2i.schedulers.selection_supported,
+            default=i2i.schedulers.default,
+            available=list(i2i.schedulers.available),
+        ),
+        denoising_strength=FloatRangeSchema(
+            minimum=i2i.denoising_strength.minimum,
+            maximum=i2i.denoising_strength.maximum,
+            default=(
+                i2i.denoising_strength.default
+                if i2i.denoising_strength.default is not None
+                else i2i.denoising_strength.minimum
+            ),
+        ),
+        source_image=SourceImageConstraintsSchema(
+            supported_formats=list(source.supported_formats),
+            maximum_byte_size=source.maximum_byte_size,
+            dimensions=source_dimensions,
+        ),
+        processing=processing_schema,
+    )

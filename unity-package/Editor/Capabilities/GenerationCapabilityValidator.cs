@@ -52,7 +52,89 @@ namespace UnityAiAssets.Editor.Capabilities
             }
 
             var textToImage = capabilities.Operations?.TextToImage;
-            if (textToImage == null || !textToImage.Supported)
+            var imageToImage = capabilities.Operations?.ImageToImage;
+            if (request.UseImageToImage)
+            {
+                if (imageToImage == null || !imageToImage.Supported)
+                {
+                    issues.Add(new CapabilityValidationIssue
+                    {
+                        FieldName = "operation",
+                        Code = AppErrorCode.OperationUnsupported,
+                        Message =
+                            "The backend does not currently support image_to_image. " +
+                            "Img2img was not converted to text-to-image.",
+                    });
+                    return issues;
+                }
+
+                if (request.SourceTexture == null)
+                {
+                    issues.Add(new CapabilityValidationIssue
+                    {
+                        FieldName = "source_image",
+                        Code = FieldIssueCode.FieldRequired,
+                        Message =
+                            "A source image is required for image-to-image generation. " +
+                            "The source is the init/latent image, not a reference-conditioning input.",
+                    });
+                }
+                else
+                {
+                    var sourceDims = imageToImage.SourceImage?.Dimensions ?? imageToImage.Dimensions;
+                    if (sourceDims != null)
+                    {
+                        ValidateDimension(
+                            "source_image.width", request.SourceTexture.width,
+                            sourceDims.MinimumWidth, sourceDims.MaximumWidth,
+                            sourceDims.WidthMultiple, issues);
+                        ValidateDimension(
+                            "source_image.height", request.SourceTexture.height,
+                            sourceDims.MinimumHeight, sourceDims.MaximumHeight,
+                            sourceDims.HeightMultiple, issues);
+                    }
+
+                    if (imageToImage.SourceImage != null && imageToImage.SourceImage.MaximumByteSize > 0)
+                    {
+                        if (SourceImageCodec.TryEncodePng(request.SourceTexture, out var png, out var encodeError))
+                        {
+                            if (png.Length > imageToImage.SourceImage.MaximumByteSize)
+                            {
+                                issues.Add(new CapabilityValidationIssue
+                                {
+                                    FieldName = "source_image",
+                                    Code = FieldIssueCode.ValueAboveMaximum,
+                                    Message =
+                                        $"Source image is {png.Length} bytes; maximum is " +
+                                        $"{imageToImage.SourceImage.MaximumByteSize} bytes.",
+                                });
+                            }
+                        }
+                        else
+                        {
+                            issues.Add(new CapabilityValidationIssue
+                            {
+                                FieldName = "source_image",
+                                Code = FieldIssueCode.FormatInvalid,
+                                Message = encodeError,
+                            });
+                        }
+                    }
+                }
+
+                var strengthRange = imageToImage.DenoisingStrength;
+                if (strengthRange != null)
+                {
+                    ValidateFloatRange(
+                        "denoising_strength", request.DenoisingStrength,
+                        strengthRange.Minimum, strengthRange.Maximum, issues);
+                }
+                else
+                {
+                    ValidateFloatRange("denoising_strength", request.DenoisingStrength, 0f, 1f, issues);
+                }
+            }
+            else if (textToImage == null || !textToImage.Supported)
             {
                 issues.Add(new CapabilityValidationIssue
                 {
@@ -63,8 +145,16 @@ namespace UnityAiAssets.Editor.Capabilities
                 return issues;
             }
 
+            if (textToImage == null)
+            {
+                return issues;
+            }
+
             var assetType = string.IsNullOrWhiteSpace(request.AssetType) ? "texture" : request.AssetType;
-            if (textToImage.AssetTypes == null || !textToImage.AssetTypes.Contains(assetType))
+            var assetTypes = request.UseImageToImage && imageToImage?.AssetTypes != null && imageToImage.AssetTypes.Count > 0
+                ? imageToImage.AssetTypes
+                : textToImage.AssetTypes;
+            if (assetTypes == null || !assetTypes.Contains(assetType))
             {
                 issues.Add(new CapabilityValidationIssue
                 {

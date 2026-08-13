@@ -49,6 +49,7 @@ from unity_ai_assets.domain.generation_manifest import (
     ManifestRequestInfo,
     ManifestRuntimeInfo,
     ManifestSchemaInfo,
+    ManifestSourceImageInfo,
     parse_manifest_payload,
 )
 from unity_ai_assets.processing.pipeline import ProcessingResult
@@ -454,7 +455,7 @@ class OutputService:
                 ),
                 generation=ManifestGenerationInfo(
                     id=request.generation_id,
-                    operation=OperationType.TEXT_TO_IMAGE.value,
+                    operation=request.operation or OperationType.TEXT_TO_IMAGE.value,
                     asset_type=request.asset_type or AssetType.TEXTURE.value,
                     status=GenerationStatus.COMPLETED.value,
                     created_at_utc=created_at,
@@ -500,6 +501,19 @@ class OutputService:
                     seam_blend_width=request.seam_blend_width,
                     palette_reduction_enabled=request.palette_reduction_enabled,
                     palette_color_count=request.palette_color_count,
+                    denoising_strength=request.denoising_strength,
+                    source_image=(
+                        None
+                        if request.source_image_meta is None
+                        else ManifestSourceImageInfo(
+                            format=request.source_image_meta.format,
+                            media_type=request.source_image_meta.media_type,
+                            width=request.source_image_meta.original_width,
+                            height=request.source_image_meta.original_height,
+                            byte_size=request.source_image_meta.byte_size,
+                            sha256=request.source_image_meta.sha256,
+                        )
+                    ),
                 ),
                 profile=ManifestProfileInfo(
                     generation_profile_id=request.generation_profile_id,
@@ -534,7 +548,7 @@ class OutputService:
         return GenerationResult(
             generation_id=request.generation_id,
             status=GenerationStatus.COMPLETED.value,
-            operation=OperationType.TEXT_TO_IMAGE.value,
+            operation=request.operation or OperationType.TEXT_TO_IMAGE.value,
             asset_type=request.asset_type or AssetType.TEXTURE.value,
             image_path=display_image,
             metadata_path=display_manifest,

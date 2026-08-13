@@ -20,6 +20,12 @@ namespace UnityAiAssets.Editor.Api
         public string Device => resolved_device;
     }
 
+    public sealed class SourceImagePayloadDto
+    {
+        public string content_base64;
+        public string media_type;
+    }
+
     [Serializable]
     public sealed class TextureGenerationRequestDto
     {
@@ -55,6 +61,9 @@ namespace UnityAiAssets.Editor.Api
         public int? seam_blend_width;
         public bool? palette_reduction_enabled;
         public int? palette_color_count;
+        public string operation;
+        public SourceImagePayloadDto source_image;
+        public float? denoising_strength;
 
         public string ToJson()
         {
@@ -96,6 +105,18 @@ namespace UnityAiAssets.Editor.Api
             if (seam_blend_width.HasValue) AppendNumber(sb, "seam_blend_width", seam_blend_width.Value);
             if (palette_reduction_enabled.HasValue) AppendBool(sb, "palette_reduction_enabled", palette_reduction_enabled.Value);
             if (palette_color_count.HasValue) AppendNumber(sb, "palette_color_count", palette_color_count.Value);
+            if (!string.IsNullOrWhiteSpace(operation))
+                AppendString(sb, "operation", operation, first: false);
+            if (denoising_strength.HasValue)
+                AppendFloat(sb, "denoising_strength", denoising_strength.Value);
+            if (source_image != null && !string.IsNullOrEmpty(source_image.content_base64))
+            {
+                sb.Append(",\"source_image\":{");
+                AppendString(sb, "content_base64", source_image.content_base64, first: true);
+                if (!string.IsNullOrWhiteSpace(source_image.media_type))
+                    AppendString(sb, "media_type", source_image.media_type, first: false);
+                sb.Append('}');
+            }
             sb.Append('}');
             return sb.ToString();
         }

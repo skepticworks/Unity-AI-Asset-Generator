@@ -66,6 +66,14 @@ async def generate_texture(
         seam_blend_width=payload.seam_blend_width,
         palette_reduction_enabled=payload.palette_reduction_enabled,
         palette_color_count=payload.palette_color_count,
+        operation=payload.operation,
+        source_image_base64=(
+            None if payload.source_image is None else payload.source_image.content_base64
+        ),
+        source_image_media_type=(
+            None if payload.source_image is None else payload.source_image.media_type
+        ),
+        denoising_strength=payload.denoising_strength,
     )
     resources = _resources(result.generation_id)
     return TextureGenerationResponse(

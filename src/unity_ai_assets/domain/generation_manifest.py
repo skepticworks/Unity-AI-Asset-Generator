@@ -69,6 +69,18 @@ class ManifestRuntimeInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class ManifestSourceImageInfo:
+    """Metadata for the img2img init/source image (pixels are not stored)."""
+
+    format: str
+    media_type: str
+    width: int
+    height: int
+    byte_size: int
+    sha256: str
+
+
+@dataclass(frozen=True, slots=True)
 class ManifestRequestInfo:
     """Echo of the generation request parameters actually used."""
 
@@ -95,6 +107,8 @@ class ManifestRequestInfo:
     seam_blend_width: int | None = None
     palette_reduction_enabled: bool = False
     palette_color_count: int | None = None
+    denoising_strength: float | None = None
+    source_image: ManifestSourceImageInfo | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,6 +222,18 @@ class GenerationManifest:
         request_payload["tileable"] = self.request.tileable
         request_payload["apply_seam_correction"] = self.request.apply_seam_correction
         request_payload["palette_reduction_enabled"] = self.request.palette_reduction_enabled
+        if self.request.denoising_strength is not None:
+            request_payload["denoising_strength"] = self.request.denoising_strength
+        if self.request.source_image is not None:
+            source = self.request.source_image
+            request_payload["source_image"] = {
+                "format": source.format,
+                "media_type": source.media_type,
+                "width": source.width,
+                "height": source.height,
+                "byte_size": source.byte_size,
+                "sha256": source.sha256,
+            }
 
         payload: dict[str, Any] = {
             "schema": {
@@ -371,6 +397,34 @@ def _optional_bool(value: Any) -> bool | None:
     return bool(value)
 
 
+def _parse_source_image(raw: Any) -> ManifestSourceImageInfo | None:
+    if not isinstance(raw, dict):
+        return None
+    format_name = raw.get("format")
+    media_type = raw.get("media_type")
+    width = raw.get("width")
+    height = raw.get("height")
+    byte_size = raw.get("byte_size")
+    sha256 = raw.get("sha256")
+    if (
+        not isinstance(format_name, str)
+        or not isinstance(media_type, str)
+        or width is None
+        or height is None
+        or byte_size is None
+        or not isinstance(sha256, str)
+    ):
+        return None
+    return ManifestSourceImageInfo(
+        format=format_name,
+        media_type=media_type,
+        width=int(width),
+        height=int(height),
+        byte_size=int(byte_size),
+        sha256=sha256,
+    )
+
+
 def _parse_processing(raw: Any) -> ManifestProcessingInfo | None:
     if not isinstance(raw, dict):
         return None
@@ -486,6 +540,8 @@ def _parse_versioned(payload: dict[str, Any], *, schema_version: str) -> Generat
             seam_blend_width=_optional_int(request.get("seam_blend_width")),
             palette_reduction_enabled=bool(request.get("palette_reduction_enabled") or False),
             palette_color_count=_optional_int(request.get("palette_color_count")),
+            denoising_strength=_optional_float(request.get("denoising_strength")),
+            source_image=_parse_source_image(request.get("source_image")),
         ),
         outputs=outputs,
         profile=(

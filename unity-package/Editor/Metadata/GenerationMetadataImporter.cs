@@ -104,6 +104,13 @@ namespace UnityAiAssets.Editor.Metadata
             asset.BackgroundRemovalImplementation = manifest?.Processing?.BackgroundRemovalImplementation;
             asset.BackgroundRemovalModel = manifest?.Processing?.BackgroundRemovalModel;
             asset.ProducesNativeAlpha = manifest?.Processing?.ProducesNativeAlpha ?? false;
+            asset.DenoisingStrength = manifest?.Request?.DenoisingStrength ?? 0f;
+            asset.SourceImageFormat = manifest?.Request?.SourceImage?.Format;
+            asset.SourceImageMediaType = manifest?.Request?.SourceImage?.MediaType;
+            asset.SourceImageWidth = manifest?.Request?.SourceImage?.Width ?? 0;
+            asset.SourceImageHeight = manifest?.Request?.SourceImage?.Height ?? 0;
+            asset.SourceImageByteSize = manifest?.Request?.SourceImage?.ByteSize ?? 0;
+            asset.SourceImageSha256 = manifest?.Request?.SourceImage?.Sha256;
 
             AssetDatabase.CreateAsset(asset, uniquePath);
             AssetDatabase.SaveAssets();

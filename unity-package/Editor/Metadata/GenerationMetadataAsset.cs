@@ -65,5 +65,12 @@ namespace UnityAiAssets.Editor.Metadata
         public string BackgroundRemovalImplementation;
         public string BackgroundRemovalModel;
         public bool ProducesNativeAlpha;
+        public float DenoisingStrength;
+        public string SourceImageFormat;
+        public string SourceImageMediaType;
+        public int SourceImageWidth;
+        public int SourceImageHeight;
+        public long SourceImageByteSize;
+        public string SourceImageSha256;
     }
 }

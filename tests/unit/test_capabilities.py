@@ -27,7 +27,9 @@ def test_capability_document_construction() -> None:
     assert document.runtime.configured_device == "cpu"
     assert document.runtime.resolved_device == "cpu"
     assert document.operations.text_to_image.supported is True
-    assert document.operations.image_to_image.supported is False
+    assert document.operations.image_to_image.supported is True
+    assert document.operations.image_to_image.denoising_strength.default == 0.75
+    assert "png" in document.operations.image_to_image.source_image.supported_formats
     assert document.operations.inpainting.supported is False
     assert document.operations.text_to_image.schedulers.selection_supported is False
     assert document.precision.user_selectable is False
@@ -41,6 +43,11 @@ def test_capability_serialization() -> None:
     response = CapabilitiesResponse.from_domain(service.get_capabilities())
     payload = response.model_dump()
     assert payload["operations"]["text_to_image"]["dimensions"]["width_multiple"] == 8
+    i2i = payload["operations"]["image_to_image"]
+    assert i2i["supported"] is True
+    assert i2i["denoising_strength"]["default"] == 0.75
+    assert i2i["source_image"]["maximum_byte_size"] == 10 * 1024 * 1024
+    assert "png" in i2i["source_image"]["supported_formats"]
     assert "diffusers" not in str(payload).lower()
     assert "C:\\" not in str(payload)
     assert "huggingface" not in str(payload).lower() or "model" in str(payload).lower()

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0 — Milestone 7 image-to-image variations
+
+- Image-to-image uses a source **init/latent image** plus denoising strength. This is not
+  reference-image conditioning (IP-Adapter); those fields/labels are kept separate.
+- Generator window: source image ObjectField / load-from-disk, preview, denoising-strength
+  slider with help text, capability gating, and Status/metadata showing `image_to_image`.
+- Request DTO sends `operation`, `source_image.content_base64`, and `denoising_strength`
+  only when img2img is enabled. Preflight fails clearly when the backend does not support it.
+- Manifest 1.4 source-image metadata (format, dimensions, byte size, SHA-256) is stored on
+  `GenerationMetadataAsset` without uploading pixels into the project as the source of truth.
+
 ## 0.6.1 — UI, seam-repair wiring, transparency clarity
 
 - Generator window: foldout sections, word-wrapped prompts, tooltips, responsive previews,

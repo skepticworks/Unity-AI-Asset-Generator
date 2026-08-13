@@ -13,6 +13,24 @@ _PROFILE_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]*$"
 _ATLAS_HINT_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
 
 
+class SourceImagePayload(BaseModel):
+    """Uploaded img2img init/source image.
+
+    This is the generation starting image (latent/init image), not a
+    reference-conditioning or IP-Adapter input.
+    """
+
+    content_base64: str = Field(
+        ...,
+        min_length=1,
+        description="Base64-encoded PNG, JPEG, or WebP bytes used as the img2img init image",
+    )
+    media_type: str | None = Field(
+        default=None,
+        description="Optional IANA media type (image/png, image/jpeg, image/webp)",
+    )
+
+
 class TextureGenerationRequest(BaseModel):
     """HTTP body for POST /api/v1/generations/textures.
 
@@ -64,6 +82,23 @@ class TextureGenerationRequest(BaseModel):
     seam_blend_width: int | None = Field(default=None, ge=8, le=128)
     palette_reduction_enabled: bool | None = None
     palette_color_count: int | None = Field(default=None, ge=2, le=256)
+    operation: Literal["text_to_image", "image_to_image"] = "text_to_image"
+    source_image: SourceImagePayload | None = Field(
+        default=None,
+        description=(
+            "Init/source image for image_to_image. Required when operation is "
+            "image_to_image. Not a reference-conditioning input."
+        ),
+    )
+    denoising_strength: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "How strongly the source init image is denoised (0 keeps it, 1 allows "
+            "maximum change). Only valid for image_to_image."
+        ),
+    )
 
     @field_validator("prompt")
     @classmethod
@@ -87,6 +122,20 @@ class TextureGenerationRequest(BaseModel):
             raise ValueError(
                 "custom_pivot_x and custom_pivot_y are required when pivot_mode is custom"
             )
+        if self.operation == "image_to_image":
+            if self.source_image is None:
+                raise ValueError(
+                    "source_image is required when operation is image_to_image "
+                    "(init/source image, not reference conditioning)"
+                )
+        else:
+            if self.source_image is not None:
+                raise ValueError(
+                    "source_image is only valid for image_to_image. "
+                    "It is the init/latent image, not a reference-conditioning input."
+                )
+            if self.denoising_strength is not None:
+                raise ValueError("denoising_strength is only valid for image_to_image")
         return self
 
 

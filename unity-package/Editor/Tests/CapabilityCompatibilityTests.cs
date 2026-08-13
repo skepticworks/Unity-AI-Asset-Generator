@@ -50,7 +50,7 @@ namespace UnityAiAssets.Editor.Tests
                             Available = new System.Collections.Generic.List<string>(),
                         },
                     },
-                    ImageToImage = new UnsupportedOperationInfo { Supported = false },
+                    ImageToImage = new ImageToImageCapabilities { Supported = false },
                     Inpainting = new UnsupportedOperationInfo { Supported = false },
                 },
                 Precision = new PrecisionInfo

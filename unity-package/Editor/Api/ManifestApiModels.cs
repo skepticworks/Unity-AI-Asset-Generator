@@ -63,6 +63,18 @@ namespace UnityAiAssets.Editor.Api
         public int SeamBlendWidth;
         public bool PaletteReductionEnabled;
         public int PaletteColorCount;
+        public float DenoisingStrength;
+        public ManifestSourceImageInfo SourceImage;
+    }
+
+    public sealed class ManifestSourceImageInfo
+    {
+        public string Format;
+        public string MediaType;
+        public int Width;
+        public int Height;
+        public long ByteSize;
+        public string Sha256;
     }
 
     public sealed class ManifestProcessingInfo
@@ -247,7 +259,9 @@ namespace UnityAiAssets.Editor.Api
                     ApplySeamCorrection = requestNode.Get("apply_seam_correction").AsBool(),
                     SeamBlendWidth = requestNode.Get("seam_blend_width").AsInt(64),
                     PaletteReductionEnabled = requestNode.Get("palette_reduction_enabled").AsBool(),
-                    PaletteColorCount = requestNode.Get("palette_color_count").AsInt(16)
+                    PaletteColorCount = requestNode.Get("palette_color_count").AsInt(16),
+                    DenoisingStrength = requestNode.Get("denoising_strength").AsFloat(),
+                    SourceImage = ParseSourceImage(requestNode.Get("source_image"))
                 },
                 Processing = processingNode.IsObject ? new ManifestProcessingInfo
                 {
@@ -313,6 +327,24 @@ namespace UnityAiAssets.Editor.Api
             }
 
             return document;
+        }
+
+        static ManifestSourceImageInfo ParseSourceImage(JsonNode node)
+        {
+            if (node == null || !node.IsObject)
+            {
+                return null;
+            }
+
+            return new ManifestSourceImageInfo
+            {
+                Format = node.Get("format").AsString(),
+                MediaType = node.Get("media_type").AsString(),
+                Width = node.Get("width").AsInt(),
+                Height = node.Get("height").AsInt(),
+                ByteSize = node.Get("byte_size").AsLong(),
+                Sha256 = node.Get("sha256").AsString(),
+            };
         }
     }
 }

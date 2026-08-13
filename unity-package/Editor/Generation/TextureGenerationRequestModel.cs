@@ -48,8 +48,13 @@ namespace UnityAiAssets.Editor.Generation
         public bool PaletteReductionEnabled;
         public int PaletteColorCount = 16;
         public bool UseImageToImage;
+        public bool UseInpainting;
         public Texture2D SourceTexture;
+        public Texture2D MaskTexture;
         public float DenoisingStrength = 0.75f;
+        public int MaskBrushSize = 24;
+        public bool MaskBrushPaintsInpaint = true;
+        public float MaskOverlayOpacity = 0.45f;
         public string MaterialDestinationFolder = "Assets/Generated/Materials";
         public string ShaderName = "Universal Render Pipeline/Lit";
     }

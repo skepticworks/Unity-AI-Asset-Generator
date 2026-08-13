@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.0 — Milestone 8 masks and inpainting
+
+- Masked inpainting is a distinct operation (`inpainting`), not a mode of img2img or
+  reference-image conditioning. White mask pixels regenerate; black pixels are kept.
+- Generator window: source + mask pickers, source/mask/overlay previews, brush editor,
+  clear/reset mask, capability gating, and Status/metadata showing `inpainting`.
+- Request DTO sends `operation`, `source_image`, `mask_image`, and `denoising_strength` when
+  inpainting is enabled. Preflight fails clearly when the backend does not support it.
+- Manifest 1.5 records mask convention plus source/mask metadata (format, dimensions, byte
+  size, SHA-256) on `GenerationMetadataAsset`.
+
 ## 0.7.0 — Milestone 7 image-to-image variations
 
 - Image-to-image uses a source **init/latent image** plus denoising strength. This is not

@@ -66,6 +66,9 @@ class GenerationRequest:
     denoising_strength: float | None = None
     source_image: Image.Image | None = None
     source_image_meta: SourceImageMetadata | None = None
+    mask_image: Image.Image | None = None
+    mask_image_meta: SourceImageMetadata | None = None
+    mask_convention: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

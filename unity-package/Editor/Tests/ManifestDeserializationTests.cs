@@ -200,5 +200,40 @@ namespace UnityAiAssets.Editor.Tests
             Assert.AreEqual(2048L, manifest.Request.SourceImage.ByteSize);
             Assert.AreEqual("deadbeef", manifest.Request.SourceImage.Sha256);
         }
+
+        [Test]
+        public void Parse_ReadsInpaintingMaskMetadata()
+        {
+            var json = FixtureJson.Replace(
+                @"""output_name"": ""wall""
+            }",
+                @"""output_name"": ""wall"",
+                ""denoising_strength"": 0.5,
+                ""mask_convention"": ""white_inpaints"",
+                ""source_image"": {
+                    ""format"": ""png"",
+                    ""media_type"": ""image/png"",
+                    ""width"": 512,
+                    ""height"": 512,
+                    ""byte_size"": 2048,
+                    ""sha256"": ""deadbeef""
+                },
+                ""mask_image"": {
+                    ""format"": ""png"",
+                    ""media_type"": ""image/png"",
+                    ""width"": 512,
+                    ""height"": 512,
+                    ""byte_size"": 512,
+                    ""sha256"": ""cafebabe""
+                }
+            }").Replace(@"""operation"": ""text_to_image""", @"""operation"": ""inpainting""");
+            var manifest = GenerationManifestDocument.Parse(json);
+            Assert.AreEqual("inpainting", manifest.Generation.Operation);
+            Assert.AreEqual("white_inpaints", manifest.Request.MaskConvention);
+            Assert.IsNotNull(manifest.Request.MaskImage);
+            Assert.AreEqual("png", manifest.Request.MaskImage.Format);
+            Assert.AreEqual(512, manifest.Request.MaskImage.Width);
+            Assert.AreEqual("cafebabe", manifest.Request.MaskImage.Sha256);
+        }
     }
 }

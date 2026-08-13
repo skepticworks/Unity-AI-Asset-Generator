@@ -72,5 +72,12 @@ namespace UnityAiAssets.Editor.Metadata
         public int SourceImageHeight;
         public long SourceImageByteSize;
         public string SourceImageSha256;
+        public string MaskImageFormat;
+        public string MaskImageMediaType;
+        public int MaskImageWidth;
+        public int MaskImageHeight;
+        public long MaskImageByteSize;
+        public string MaskImageSha256;
+        public string MaskConvention;
     }
 }

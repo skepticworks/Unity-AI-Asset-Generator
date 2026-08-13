@@ -6,7 +6,7 @@ Local FastAPI texture generation (Diffusers behind an inference protocol) plus a
 
 **ComfyUI is not used** in any form.
 
-Application/package version: **0.7.0** (Milestone 7 — image-to-image variations).
+Application/package version: **0.8.0** (Milestone 8 — masks and inpainting).
 
 ## Backend component responsibilities
 
@@ -22,7 +22,7 @@ Application/package version: **0.7.0** (Milestone 7 — image-to-image variation
 | `services/generation_service.py` | Policy validation, seed, lock, orchestration, post-processing |
 | `services/output_service.py` | Atomic PNG + manifest persistence, SHA-256, resolve-by-UUID |
 | `processing/*` | Background removal, alpha cleanup, tileable wrap/seam/palette (isolated from diffusion backends) |
-| `inference/*` | Backend protocol (`describe_capabilities` + `generate`), Diffusers, fake, model manager |
+| `inference/*` | Backend protocol (`describe_capabilities` + `generate`), Diffusers, fake, inpainting pipeline, model manager |
 | `core/version.py` | Central API / schema / application version constants |
 | `core/error_codes.py` | Stable application + field issue codes |
 | `core/exception_handlers.py` | Translate AppError / Pydantic errors into the public envelope |
@@ -336,6 +336,36 @@ flowchart LR
   so weights are shared. The fake backend blends the source with a seed color for tests.
 - Unity: source picker + preview, denoising slider, preflight against capabilities, metadata
   `Operation = image_to_image`.
+
+## Milestone 8 masks and inpainting
+
+Inpainting is a first-class operation (`inpainting`), not a flag on img2img. The source image is
+still the init image; the **mask** selects which pixels to regenerate. Convention:
+**white = regenerate**, **black = keep**. Alpha on either image is ignored for mask semantics.
+
+```mermaid
+flowchart LR
+  Caps[Capabilities inpainting.supported]
+  Src[Source + mask bytes]
+  Val[Format / size / decode / empty-mask checks]
+  Align[Reject mismatched original sizes]
+  Prep[LANCZOS resize both to output size]
+  Inf[Inpainting pipeline from txt2img components]
+  Man[Manifest operation + source/mask metadata]
+
+  Caps -->|unsupported| Fail[OPERATION_UNSUPPORTED no img2img/txt2img fallback]
+  Caps -->|supported| Src --> Val --> Align --> Prep --> Inf --> Man
+```
+
+- API: `operation=inpainting`, nested `mask_image` (`content_base64`, optional `media_type`).
+  `denoising_strength` is shared with img2img but `mask_image` is rejected on img2img requests.
+- Capabilities schema **1.4** advertises inpainting ranges, mask formats, max upload size, and
+  the `white_inpaints` convention. SD 1.5 and SDXL families report `supported: true`.
+- Manifest schema **1.5** records `mask_convention` plus mask-image metadata (not pixels).
+- Diffusers uses `AutoPipelineForInpainting.from_pipe` in `inference/inpainting.py` so weights
+  are shared. The fake backend composites a seed-colored blend only where the mask is white.
+- Unity: source + mask pickers, previews, red overlay, brush editor (white/black), clear/reset,
+  preflight against capabilities, metadata `Operation = inpainting`.
 
 Milestone 5 retains the common path through `GenerationController`: resolve a generation
 profile, construct a wire DTO, validate capabilities, submit, download by `generation_id`,

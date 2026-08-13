@@ -214,6 +214,20 @@ class SourceImageConstraints:
 
 
 @dataclass(frozen=True, slots=True)
+class MaskImageConstraints:
+    """Constraints and explicit semantics for an inpainting mask."""
+
+    supported_formats: list[str]
+    maximum_byte_size: int
+    dimensions: DimensionConstraints | None = None
+    must_match_source_dimensions: bool = True
+    convention: str = "white_inpaints"
+    white_means: str = "regenerate"
+    black_means: str = "keep"
+    alpha_ignored: bool = True
+
+
+@dataclass(frozen=True, slots=True)
 class ImageToImageCapabilities:
     """Constraints for image-to-image (init-image) generation.
 
@@ -244,12 +258,35 @@ class UnsupportedOperation:
 
 
 @dataclass(frozen=True, slots=True)
+class InpaintingCapabilities:
+    """Constraints for masked inpainting (distinct from img2img and IP-Adapter).
+
+    White mask pixels are regenerated; black pixels are kept from the source.
+    """
+
+    supported: bool
+    asset_types: list[str]
+    dimensions: DimensionConstraints
+    steps: NumericRangeInt
+    guidance_scale: NumericRangeFloat
+    seed: SeedConstraints
+    prompt: PromptConstraints
+    negative_prompt: NegativePromptConstraints
+    output_name: OutputNameConstraints
+    schedulers: SchedulerCapabilities
+    denoising_strength: NumericRangeFloat
+    source_image: SourceImageConstraints
+    mask_image: MaskImageConstraints
+    processing: ProcessingCapabilities | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class OperationsCapabilities:
     """Per-operation capability declarations."""
 
     text_to_image: TextToImageCapabilities
     image_to_image: ImageToImageCapabilities
-    inpainting: UnsupportedOperation
+    inpainting: InpaintingCapabilities
 
 
 @dataclass(frozen=True, slots=True)

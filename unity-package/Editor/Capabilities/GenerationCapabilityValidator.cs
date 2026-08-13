@@ -53,7 +53,130 @@ namespace UnityAiAssets.Editor.Capabilities
 
             var textToImage = capabilities.Operations?.TextToImage;
             var imageToImage = capabilities.Operations?.ImageToImage;
-            if (request.UseImageToImage)
+            var inpainting = capabilities.Operations?.Inpainting;
+            if (request.UseInpainting && request.UseImageToImage)
+            {
+                issues.Add(new CapabilityValidationIssue
+                {
+                    FieldName = "operation",
+                    Code = FieldIssueCode.ValueInvalid,
+                    Message =
+                        "Inpainting and image-to-image cannot be enabled together. " +
+                        "Inpainting is masked regeneration; img2img is full-frame init variation.",
+                });
+            }
+
+            if (request.UseInpainting)
+            {
+                if (inpainting == null || !inpainting.Supported)
+                {
+                    issues.Add(new CapabilityValidationIssue
+                    {
+                        FieldName = "operation",
+                        Code = AppErrorCode.OperationUnsupported,
+                        Message =
+                            "The backend does not currently support inpainting. " +
+                            "Inpainting was not converted to image_to_image or text_to_image.",
+                    });
+                    return issues;
+                }
+
+                ValidateInitSource(request, inpainting.SourceImage, inpainting.Dimensions, issues);
+                if (request.MaskTexture == null)
+                {
+                    issues.Add(new CapabilityValidationIssue
+                    {
+                        FieldName = "mask_image",
+                        Code = FieldIssueCode.FieldRequired,
+                        Message =
+                            "A mask is required for inpainting. White regenerates; black is kept " +
+                            "from the source. Alpha is ignored.",
+                    });
+                }
+                else
+                {
+                    var maskDims = inpainting.MaskImage?.Dimensions ?? inpainting.Dimensions;
+                    if (maskDims != null)
+                    {
+                        ValidateDimension(
+                            "mask_image.width", request.MaskTexture.width,
+                            maskDims.MinimumWidth, maskDims.MaximumWidth,
+                            maskDims.WidthMultiple, issues);
+                        ValidateDimension(
+                            "mask_image.height", request.MaskTexture.height,
+                            maskDims.MinimumHeight, maskDims.MaximumHeight,
+                            maskDims.HeightMultiple, issues);
+                    }
+
+                    if (request.SourceTexture != null &&
+                        !MaskBrushUtility.DimensionsMatch(request.SourceTexture, request.MaskTexture))
+                    {
+                        issues.Add(new CapabilityValidationIssue
+                        {
+                            FieldName = "mask_image",
+                            Code = FieldIssueCode.ValueInvalid,
+                            Message =
+                                "Mask dimensions must match the source image exactly " +
+                                $"({request.SourceTexture.width}×{request.SourceTexture.height}); " +
+                                $"the mask is {request.MaskTexture.width}×{request.MaskTexture.height}.",
+                        });
+                    }
+
+                    if (!MaskBrushUtility.HasInpaintRegion(request.MaskTexture))
+                    {
+                        issues.Add(new CapabilityValidationIssue
+                        {
+                            FieldName = "mask_image",
+                            Code = FieldIssueCode.ValueInvalid,
+                            Message =
+                                "The mask has no region to regenerate. Paint white where pixels " +
+                                "should be inpainted; black is kept from the source.",
+                        });
+                    }
+
+                    var maxBytes = inpainting.MaskImage != null && inpainting.MaskImage.MaximumByteSize > 0
+                        ? inpainting.MaskImage.MaximumByteSize
+                        : 0;
+                    if (maxBytes > 0)
+                    {
+                        if (SourceImageCodec.TryEncodePng(request.MaskTexture, out var png, out var encodeError))
+                        {
+                            if (png.Length > maxBytes)
+                            {
+                                issues.Add(new CapabilityValidationIssue
+                                {
+                                    FieldName = "mask_image",
+                                    Code = FieldIssueCode.ValueAboveMaximum,
+                                    Message =
+                                        $"Mask image is {png.Length} bytes; maximum is {maxBytes} bytes.",
+                                });
+                            }
+                        }
+                        else
+                        {
+                            issues.Add(new CapabilityValidationIssue
+                            {
+                                FieldName = "mask_image",
+                                Code = FieldIssueCode.FormatInvalid,
+                                Message = encodeError,
+                            });
+                        }
+                    }
+                }
+
+                var strengthRange = inpainting.DenoisingStrength;
+                if (strengthRange != null)
+                {
+                    ValidateFloatRange(
+                        "denoising_strength", request.DenoisingStrength,
+                        strengthRange.Minimum, strengthRange.Maximum, issues);
+                }
+                else
+                {
+                    ValidateFloatRange("denoising_strength", request.DenoisingStrength, 0f, 1f, issues);
+                }
+            }
+            else if (request.UseImageToImage)
             {
                 if (imageToImage == null || !imageToImage.Supported)
                 {
@@ -68,59 +191,7 @@ namespace UnityAiAssets.Editor.Capabilities
                     return issues;
                 }
 
-                if (request.SourceTexture == null)
-                {
-                    issues.Add(new CapabilityValidationIssue
-                    {
-                        FieldName = "source_image",
-                        Code = FieldIssueCode.FieldRequired,
-                        Message =
-                            "A source image is required for image-to-image generation. " +
-                            "The source is the init/latent image, not a reference-conditioning input.",
-                    });
-                }
-                else
-                {
-                    var sourceDims = imageToImage.SourceImage?.Dimensions ?? imageToImage.Dimensions;
-                    if (sourceDims != null)
-                    {
-                        ValidateDimension(
-                            "source_image.width", request.SourceTexture.width,
-                            sourceDims.MinimumWidth, sourceDims.MaximumWidth,
-                            sourceDims.WidthMultiple, issues);
-                        ValidateDimension(
-                            "source_image.height", request.SourceTexture.height,
-                            sourceDims.MinimumHeight, sourceDims.MaximumHeight,
-                            sourceDims.HeightMultiple, issues);
-                    }
-
-                    if (imageToImage.SourceImage != null && imageToImage.SourceImage.MaximumByteSize > 0)
-                    {
-                        if (SourceImageCodec.TryEncodePng(request.SourceTexture, out var png, out var encodeError))
-                        {
-                            if (png.Length > imageToImage.SourceImage.MaximumByteSize)
-                            {
-                                issues.Add(new CapabilityValidationIssue
-                                {
-                                    FieldName = "source_image",
-                                    Code = FieldIssueCode.ValueAboveMaximum,
-                                    Message =
-                                        $"Source image is {png.Length} bytes; maximum is " +
-                                        $"{imageToImage.SourceImage.MaximumByteSize} bytes.",
-                                });
-                            }
-                        }
-                        else
-                        {
-                            issues.Add(new CapabilityValidationIssue
-                            {
-                                FieldName = "source_image",
-                                Code = FieldIssueCode.FormatInvalid,
-                                Message = encodeError,
-                            });
-                        }
-                    }
-                }
+                ValidateInitSource(request, imageToImage.SourceImage, imageToImage.Dimensions, issues);
 
                 var strengthRange = imageToImage.DenoisingStrength;
                 if (strengthRange != null)
@@ -151,9 +222,11 @@ namespace UnityAiAssets.Editor.Capabilities
             }
 
             var assetType = string.IsNullOrWhiteSpace(request.AssetType) ? "texture" : request.AssetType;
-            var assetTypes = request.UseImageToImage && imageToImage?.AssetTypes != null && imageToImage.AssetTypes.Count > 0
-                ? imageToImage.AssetTypes
-                : textToImage.AssetTypes;
+            var assetTypes = request.UseInpainting && inpainting?.AssetTypes != null && inpainting.AssetTypes.Count > 0
+                ? inpainting.AssetTypes
+                : request.UseImageToImage && imageToImage?.AssetTypes != null && imageToImage.AssetTypes.Count > 0
+                    ? imageToImage.AssetTypes
+                    : textToImage.AssetTypes;
             if (assetTypes == null || !assetTypes.Contains(assetType))
             {
                 issues.Add(new CapabilityValidationIssue
@@ -296,6 +369,66 @@ namespace UnityAiAssets.Editor.Capabilities
             }
 
             return issues;
+        }
+
+        static void ValidateInitSource(
+            TextureGenerationRequestModel request,
+            SourceImageConstraints sourceConstraints,
+            DimensionConstraints fallbackDimensions,
+            List<CapabilityValidationIssue> issues)
+        {
+            if (request.SourceTexture == null)
+            {
+                issues.Add(new CapabilityValidationIssue
+                {
+                    FieldName = "source_image",
+                    Code = FieldIssueCode.FieldRequired,
+                    Message =
+                        "A source image is required. The source is the init/latent image, " +
+                        "not a reference-conditioning input.",
+                });
+                return;
+            }
+
+            var sourceDims = sourceConstraints?.Dimensions ?? fallbackDimensions;
+            if (sourceDims != null)
+            {
+                ValidateDimension(
+                    "source_image.width", request.SourceTexture.width,
+                    sourceDims.MinimumWidth, sourceDims.MaximumWidth,
+                    sourceDims.WidthMultiple, issues);
+                ValidateDimension(
+                    "source_image.height", request.SourceTexture.height,
+                    sourceDims.MinimumHeight, sourceDims.MaximumHeight,
+                    sourceDims.HeightMultiple, issues);
+            }
+
+            if (sourceConstraints != null && sourceConstraints.MaximumByteSize > 0)
+            {
+                if (SourceImageCodec.TryEncodePng(request.SourceTexture, out var png, out var encodeError))
+                {
+                    if (png.Length > sourceConstraints.MaximumByteSize)
+                    {
+                        issues.Add(new CapabilityValidationIssue
+                        {
+                            FieldName = "source_image",
+                            Code = FieldIssueCode.ValueAboveMaximum,
+                            Message =
+                                $"Source image is {png.Length} bytes; maximum is " +
+                                $"{sourceConstraints.MaximumByteSize} bytes.",
+                        });
+                    }
+                }
+                else
+                {
+                    issues.Add(new CapabilityValidationIssue
+                    {
+                        FieldName = "source_image",
+                        Code = FieldIssueCode.FormatInvalid,
+                        Message = encodeError,
+                    });
+                }
+            }
         }
 
         static void ValidateDimension(

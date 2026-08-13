@@ -31,6 +31,7 @@ namespace UnityAiAssets.Editor.UI
         bool _foldPrompt = true;
         bool _foldGeneration = true;
         bool _foldImg2Img = true;
+        bool _foldInpaint = true;
         bool _foldProcessing = true;
         bool _foldImport = true;
         bool _foldTileable = true;
@@ -45,6 +46,9 @@ namespace UnityAiAssets.Editor.UI
         Texture2D _previewCompare;
         Texture2D _previewCompareTiled;
         bool _ownsSourceTexture;
+        bool _ownsMaskTexture;
+        Texture2D _maskOverlay;
+        bool _maskOverlayDirty = true;
         SeamAnalysisResult _seamDiagnostics;
         WrapDiscontinuityResult _wrapDiagnostics;
         string _workingTexturePath;
@@ -76,6 +80,8 @@ namespace UnityAiAssets.Editor.UI
         {
             DestroyPreviewTextures();
             DestroyOwnedSourceTexture();
+            DestroyOwnedMaskTexture();
+            DestroyPreview(ref _maskOverlay);
         }
 
         void DestroyPreviewTextures()
@@ -170,6 +176,7 @@ namespace UnityAiAssets.Editor.UI
                 DrawPromptSection(progress);
                 DrawGenerationSection(progress);
                 DrawImageToImageSection(progress);
+                DrawInpaintingSection(progress);
                 DrawProcessingSection(progress);
                 DrawImportSection();
             }
@@ -471,12 +478,15 @@ namespace UnityAiAssets.Editor.UI
 
                 using (new EditorGUI.DisabledScope(!supported && progress.Capabilities != null))
                 {
-                    _request.UseImageToImage = EditorGUILayout.Toggle(
+                    var nextImg2Img = EditorGUILayout.Toggle(
                         Tip(
                             "Enable Image-to-Image",
                             "When enabled, the source image is the starting latent. Denoising strength " +
-                            "controls how much it changes. Not a style/identity reference."),
+                            "controls how much it changes. Not a style/identity reference and not masked inpainting."),
                         _request.UseImageToImage);
+                    if (nextImg2Img && !_request.UseImageToImage)
+                        _request.UseInpainting = false;
+                    _request.UseImageToImage = nextImg2Img;
 
                     using (new EditorGUI.DisabledScope(!_request.UseImageToImage))
                     {
@@ -495,6 +505,7 @@ namespace UnityAiAssets.Editor.UI
                                 DestroyImmediate(previous);
                             _ownsSourceTexture = false;
                             _request.SourceTexture = next;
+                            EnsureMaskMatchesSource();
                         }
 
                         EditorGUILayout.BeginHorizontal();
@@ -574,6 +585,311 @@ namespace UnityAiAssets.Editor.UI
             EditorGUILayout.EndFoldoutHeaderGroup();
         }
 
+        void DrawInpaintingSection(GenerationProgress progress)
+        {
+            _foldInpaint = EditorGUILayout.BeginFoldoutHeaderGroup(_foldInpaint, "Masked Inpainting");
+            if (_foldInpaint)
+            {
+                var inpaint = progress.Capabilities?.Operations?.Inpainting;
+                var supported = inpaint?.Supported == true;
+                var convention = inpaint?.MaskImage?.Convention ?? MaskBrushUtility.ConventionId;
+                EditorGUILayout.LabelField(
+                    "Regenerates only the masked region of the source image. " +
+                    "White = regenerate; black = keep original pixels. Mask alpha is ignored. " +
+                    "This is not full-frame img2img and not reference-image conditioning.",
+                    _sectionHelp);
+
+                using (new EditorGUI.DisabledScope(!supported && progress.Capabilities != null))
+                {
+                    var nextInpaint = EditorGUILayout.Toggle(
+                        Tip(
+                            "Enable Inpainting",
+                            "Masked regeneration of the source image. Mutually exclusive with image-to-image."),
+                        _request.UseInpainting);
+                    if (nextInpaint && !_request.UseInpainting)
+                        _request.UseImageToImage = false;
+                    _request.UseInpainting = nextInpaint;
+
+                    using (new EditorGUI.DisabledScope(!_request.UseInpainting))
+                    {
+                        DrawSharedSourcePicker("Inpaint Source", "Image whose unmasked pixels are kept.");
+                        DrawMaskPicker();
+                        DrawMaskPreviews();
+                        DrawMaskBrushControls();
+
+                        var minStrength = inpaint?.DenoisingStrength != null ? inpaint.DenoisingStrength.Minimum : 0f;
+                        var maxStrength = inpaint?.DenoisingStrength != null ? inpaint.DenoisingStrength.Maximum : 1f;
+                        if (maxStrength <= minStrength)
+                        {
+                            minStrength = 0f;
+                            maxStrength = 1f;
+                        }
+
+                        _request.DenoisingStrength = EditorGUILayout.Slider(
+                            Tip(
+                                "Denoising Strength",
+                                "How strongly the masked region is regenerated. 0 keeps it closer to the source; " +
+                                "1 allows maximum change inside the white mask."),
+                            _request.DenoisingStrength,
+                            minStrength,
+                            maxStrength);
+                    }
+                }
+
+                if (progress.Capabilities != null && !supported)
+                {
+                    EditorGUILayout.HelpBox(
+                        "The current model/backend does not support inpainting. " +
+                        "Inpainting is not silently converted to image-to-image or text-to-image.",
+                        MessageType.Warning);
+                    _request.UseInpainting = false;
+                }
+                else if (_request.UseInpainting && _request.SourceTexture == null)
+                {
+                    EditorGUILayout.HelpBox(
+                        "Select a source image before painting or loading a mask.",
+                        MessageType.Warning);
+                }
+                else if (_request.UseInpainting && _request.MaskTexture == null)
+                {
+                    EditorGUILayout.HelpBox(
+                        "Load a mask from disk or paint one over the source. White regenerates; black is kept.",
+                        MessageType.Warning);
+                }
+                else if (_request.UseInpainting &&
+                         _request.SourceTexture != null &&
+                         _request.MaskTexture != null &&
+                         !MaskBrushUtility.DimensionsMatch(_request.SourceTexture, _request.MaskTexture))
+                {
+                    EditorGUILayout.HelpBox(
+                        "Source and mask dimensions must match. Clear the mask and paint a new one, " +
+                        "or load a mask with the same size as the source.",
+                        MessageType.Error);
+                }
+                else if (_request.UseInpainting &&
+                         _request.MaskTexture != null &&
+                         !MaskBrushUtility.HasInpaintRegion(_request.MaskTexture))
+                {
+                    EditorGUILayout.HelpBox(
+                        "The mask is entirely black (keep). Paint white over the region to regenerate.",
+                        MessageType.Warning);
+                }
+                else if (_request.UseInpainting)
+                {
+                    EditorGUILayout.HelpBox(
+                        $"Generation will use inpainting ({convention}: white regenerates, black is kept). " +
+                        "Status and metadata record the operation, source, and mask.",
+                        MessageType.Info);
+                }
+            }
+
+            EditorGUILayout.EndFoldoutHeaderGroup();
+        }
+
+        void DrawSharedSourcePicker(string label, string tooltip)
+        {
+            var previous = _request.SourceTexture;
+            var next = (Texture2D)EditorGUILayout.ObjectField(
+                Tip(label, tooltip),
+                _request.SourceTexture,
+                typeof(Texture2D),
+                false);
+            if (next != previous)
+            {
+                if (_ownsSourceTexture && previous != null)
+                    DestroyImmediate(previous);
+                _ownsSourceTexture = false;
+                _request.SourceTexture = next;
+                EnsureMaskMatchesSource();
+            }
+
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button(Tip("Load Source From Disk…", "Open a PNG, JPEG, or WebP file as the inpaint source.")))
+            {
+                var path = EditorUtility.OpenFilePanel(
+                    "Select source image", "", "png,jpg,jpeg,webp");
+                if (!string.IsNullOrEmpty(path))
+                    LoadSourceImageFromDisk(path);
+            }
+
+            using (new EditorGUI.DisabledScope(_request.SourceTexture == null))
+            {
+                if (GUILayout.Button("Clear Source"))
+                {
+                    DestroyOwnedSourceTexture();
+                    DestroyOwnedMaskTexture();
+                    DestroyPreview(ref _maskOverlay);
+                }
+            }
+
+            EditorGUILayout.EndHorizontal();
+
+            if (_request.SourceTexture != null)
+            {
+                EditorGUILayout.LabelField(
+                    $"{_request.SourceTexture.width}×{_request.SourceTexture.height}  {_request.SourceTexture.name}",
+                    _sectionHelp);
+            }
+        }
+
+        void DrawMaskPicker()
+        {
+            var previous = _request.MaskTexture;
+            var next = (Texture2D)EditorGUILayout.ObjectField(
+                Tip(
+                    "Mask Image",
+                    "White regenerates; black is kept. RGB luminance is used; alpha is ignored."),
+                _request.MaskTexture,
+                typeof(Texture2D),
+                false);
+            if (next != previous)
+            {
+                if (_ownsMaskTexture && previous != null)
+                    DestroyImmediate(previous);
+                _ownsMaskTexture = false;
+                _request.MaskTexture = next;
+                _maskOverlayDirty = true;
+            }
+
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button(Tip("Load Mask From Disk…", "Open a PNG, JPEG, or WebP mask. Dimensions must match the source.")))
+            {
+                var path = EditorUtility.OpenFilePanel(
+                    "Select inpaint mask (white=regenerate)", "", "png,jpg,jpeg,webp");
+                if (!string.IsNullOrEmpty(path))
+                    LoadMaskImageFromDisk(path);
+            }
+
+            using (new EditorGUI.DisabledScope(_request.SourceTexture == null))
+            {
+                if (GUILayout.Button(Tip("New Mask", "Create a black (keep-all) mask matching the source, then paint white to inpaint.")))
+                    ResetMaskToSource();
+            }
+
+            using (new EditorGUI.DisabledScope(_request.MaskTexture == null))
+            {
+                if (GUILayout.Button(Tip("Clear Mask", "Fill the mask with black (keep all).")))
+                {
+                    EnsureEditableMask();
+                    MaskBrushUtility.ClearToKeep(_request.MaskTexture);
+                    _maskOverlayDirty = true;
+                }
+            }
+
+            EditorGUILayout.EndHorizontal();
+        }
+
+        void DrawMaskPreviews()
+        {
+            if (_request.SourceTexture == null && _request.MaskTexture == null)
+                return;
+
+            var previewSize = Mathf.Min(160f, (EditorGUIUtility.currentViewWidth - 64f) / 3f);
+            EditorGUILayout.BeginHorizontal();
+            DrawLabeledPreview("Source", _request.SourceTexture, previewSize);
+            DrawLabeledPreview("Mask", _request.MaskTexture, previewSize);
+            if (_request.SourceTexture != null && _request.MaskTexture != null &&
+                MaskBrushUtility.DimensionsMatch(_request.SourceTexture, _request.MaskTexture))
+            {
+                if (_maskOverlayDirty || _maskOverlay == null)
+                    RebuildMaskOverlay();
+                DrawLabeledPreview("Overlay (white=inpaint)", _maskOverlay, previewSize);
+            }
+
+            EditorGUILayout.EndHorizontal();
+        }
+
+        void DrawLabeledPreview(string label, Texture2D texture, float previewSize)
+        {
+            EditorGUILayout.BeginVertical(GUILayout.Width(previewSize + 8f));
+            EditorGUILayout.LabelField(label, _sectionHelp);
+            var rect = GUILayoutUtility.GetRect(
+                previewSize, previewSize, GUILayout.ExpandWidth(false), GUILayout.ExpandHeight(false));
+            if (texture != null)
+                EditorGUI.DrawPreviewTexture(rect, texture, null, ScaleMode.ScaleToFit);
+            else
+                EditorGUI.DrawRect(rect, new Color(0.15f, 0.15f, 0.15f));
+            EditorGUILayout.EndVertical();
+        }
+
+        void DrawMaskBrushControls()
+        {
+            if (_request.SourceTexture == null)
+                return;
+
+            EditorGUILayout.LabelField(
+                "Paint on the source: white regenerates, black keeps the original. " +
+                "Click and drag on the paint canvas below.",
+                _sectionHelp);
+            _request.MaskBrushPaintsInpaint = EditorGUILayout.Toggle(
+                Tip("Paint Inpaint (White)", "On: paint the region to regenerate. Off: erase back to keep (black)."),
+                _request.MaskBrushPaintsInpaint);
+            _request.MaskBrushSize = EditorGUILayout.IntSlider(
+                Tip("Brush Size", "Radius in source pixels."),
+                Mathf.Clamp(_request.MaskBrushSize, 1, 128),
+                1,
+                128);
+            _request.MaskOverlayOpacity = EditorGUILayout.Slider(
+                Tip("Overlay Opacity", "How strongly the red inpaint overlay is drawn over the source."),
+                _request.MaskOverlayOpacity,
+                0.1f,
+                0.9f);
+
+            EnsureEditableMask();
+            if (_maskOverlayDirty || _maskOverlay == null)
+                RebuildMaskOverlay();
+
+            var canvasSize = Mathf.Min(280f, EditorGUIUtility.currentViewWidth - 48f);
+            var canvas = _maskOverlay != null ? _maskOverlay : _request.SourceTexture;
+            var rect = GUILayoutUtility.GetRect(
+                canvasSize, canvasSize, GUILayout.ExpandWidth(false), GUILayout.ExpandHeight(false));
+            if (canvas != null)
+                EditorGUI.DrawPreviewTexture(rect, canvas, null, ScaleMode.ScaleToFit);
+
+            var current = Event.current;
+            if (rect.Contains(current.mousePosition) &&
+                (current.type == EventType.MouseDown || current.type == EventType.MouseDrag) &&
+                current.button == 0 &&
+                _request.MaskTexture != null)
+            {
+                var fitted = FittedPreviewRect(rect, _request.MaskTexture.width, _request.MaskTexture.height);
+                if (fitted.Contains(current.mousePosition))
+                {
+                    var pixel = MaskBrushUtility.GuiPointToTexturePixel(
+                        fitted,
+                        current.mousePosition,
+                        _request.MaskTexture.width,
+                        _request.MaskTexture.height);
+                    MaskBrushUtility.PaintCircle(
+                        _request.MaskTexture,
+                        pixel.x,
+                        pixel.y,
+                        _request.MaskBrushSize,
+                        _request.MaskBrushPaintsInpaint);
+                    _maskOverlayDirty = true;
+                    current.Use();
+                    GUI.changed = true;
+                    Repaint();
+                }
+            }
+        }
+
+        static Rect FittedPreviewRect(Rect outer, int imageWidth, int imageHeight)
+        {
+            if (imageWidth <= 0 || imageHeight <= 0)
+                return outer;
+            var imageAspect = imageWidth / (float)imageHeight;
+            var rectAspect = outer.width / outer.height;
+            if (imageAspect > rectAspect)
+            {
+                var height = outer.width / imageAspect;
+                return new Rect(outer.x, outer.y + (outer.height - height) * 0.5f, outer.width, height);
+            }
+
+            var width = outer.height * imageAspect;
+            return new Rect(outer.x + (outer.width - width) * 0.5f, outer.y, width, outer.height);
+        }
+
         void LoadSourceImageFromDisk(string path)
         {
             try
@@ -595,6 +911,7 @@ namespace UnityAiAssets.Editor.UI
                     DestroyImmediate(_request.SourceTexture);
                 _request.SourceTexture = texture;
                 _ownsSourceTexture = true;
+                EnsureMaskMatchesSource();
             }
             catch (Exception ex)
             {
@@ -611,6 +928,131 @@ namespace UnityAiAssets.Editor.UI
             }
 
             _ownsSourceTexture = false;
+            _maskOverlayDirty = true;
+        }
+
+        void DestroyOwnedMaskTexture()
+        {
+            if (_ownsMaskTexture && _request != null && _request.MaskTexture != null)
+            {
+                DestroyImmediate(_request.MaskTexture);
+                _request.MaskTexture = null;
+            }
+
+            _ownsMaskTexture = false;
+            _maskOverlayDirty = true;
+        }
+
+        void EnsureMaskMatchesSource()
+        {
+            _maskOverlayDirty = true;
+            if (_request?.SourceTexture == null)
+            {
+                DestroyOwnedMaskTexture();
+                DestroyPreview(ref _maskOverlay);
+                return;
+            }
+
+            if (_request.MaskTexture != null &&
+                MaskBrushUtility.DimensionsMatch(_request.SourceTexture, _request.MaskTexture))
+                return;
+
+            ResetMaskToSource();
+        }
+
+        void ResetMaskToSource()
+        {
+            if (_request?.SourceTexture == null)
+                return;
+            var created = MaskBrushUtility.CreateKeepMask(
+                _request.SourceTexture.width, _request.SourceTexture.height);
+            if (_ownsMaskTexture && _request.MaskTexture != null)
+                DestroyImmediate(_request.MaskTexture);
+            _request.MaskTexture = created;
+            _ownsMaskTexture = true;
+            _maskOverlayDirty = true;
+        }
+
+        void EnsureEditableMask()
+        {
+            if (_request?.SourceTexture == null)
+                return;
+            if (_request.MaskTexture == null)
+            {
+                ResetMaskToSource();
+                return;
+            }
+
+            if (!_request.MaskTexture.isReadable ||
+                !MaskBrushUtility.DimensionsMatch(_request.SourceTexture, _request.MaskTexture))
+            {
+                var converted = MaskBrushUtility.ToLuminanceMask(_request.MaskTexture);
+                if (_ownsMaskTexture && _request.MaskTexture != null)
+                    DestroyImmediate(_request.MaskTexture);
+                _request.MaskTexture = converted;
+                _ownsMaskTexture = true;
+                _maskOverlayDirty = true;
+            }
+        }
+
+        void LoadMaskImageFromDisk(string path)
+        {
+            try
+            {
+                var bytes = File.ReadAllBytes(path);
+                var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                if (!texture.LoadImage(bytes))
+                {
+                    DestroyImmediate(texture);
+                    EditorUtility.DisplayDialog(
+                        "Mask Image",
+                        "Could not decode the selected file. Use a valid PNG, JPEG, or WebP image.",
+                        "OK");
+                    return;
+                }
+
+                if (_request.SourceTexture != null &&
+                    (texture.width != _request.SourceTexture.width ||
+                     texture.height != _request.SourceTexture.height))
+                {
+                    var message =
+                        $"Mask is {texture.width}×{texture.height} but the source is " +
+                        $"{_request.SourceTexture.width}×{_request.SourceTexture.height}. " +
+                        "They must match exactly; the mask will not be stretched.";
+                    DestroyImmediate(texture);
+                    EditorUtility.DisplayDialog("Mask Image", message, "OK");
+                    return;
+                }
+
+                var luminance = MaskBrushUtility.ToLuminanceMask(texture, Path.GetFileName(path));
+                DestroyImmediate(texture);
+                if (_ownsMaskTexture && _request.MaskTexture != null)
+                    DestroyImmediate(_request.MaskTexture);
+                _request.MaskTexture = luminance;
+                _ownsMaskTexture = true;
+                _maskOverlayDirty = true;
+            }
+            catch (Exception ex)
+            {
+                EditorUtility.DisplayDialog("Mask Image", "Failed to load the file: " + ex.Message, "OK");
+            }
+        }
+
+        void RebuildMaskOverlay()
+        {
+            DestroyPreview(ref _maskOverlay);
+            if (_request?.SourceTexture == null || _request.MaskTexture == null)
+            {
+                _maskOverlayDirty = false;
+                return;
+            }
+
+            _maskOverlay = MaskBrushUtility.BuildOverlay(
+                _request.SourceTexture,
+                _request.MaskTexture,
+                new Color(0.9f, 0.15f, 0.15f),
+                _request.MaskOverlayOpacity);
+            _maskOverlayDirty = false;
         }
 
         void DrawProcessingSection(GenerationProgress progress)
@@ -1239,6 +1681,21 @@ namespace UnityAiAssets.Editor.UI
                 canGenerate = false;
             }
 
+            if (canGenerate &&
+                _request.UseInpainting &&
+                progress.Capabilities?.Operations?.Inpainting?.Supported != true)
+            {
+                canGenerate = false;
+            }
+
+            if (canGenerate && _request.UseInpainting &&
+                (_request.SourceTexture == null || _request.MaskTexture == null ||
+                 !MaskBrushUtility.DimensionsMatch(_request.SourceTexture, _request.MaskTexture) ||
+                 !MaskBrushUtility.HasInpaintRegion(_request.MaskTexture)))
+            {
+                canGenerate = false;
+            }
+
             EditorGUILayout.BeginHorizontal();
             using (new EditorGUI.DisabledScope(busy))
             {
@@ -1284,6 +1741,21 @@ namespace UnityAiAssets.Editor.UI
                     reason = "Generate is disabled: the current model/backend does not support image_to_image.";
                 else if (_request.UseImageToImage && _request.SourceTexture == null)
                     reason = "Generate is disabled: image-to-image requires a source init image.";
+                else if (_request.UseInpainting && progress.Capabilities?.Operations?.Inpainting?.Supported != true)
+                    reason = "Generate is disabled: the current model/backend does not support inpainting.";
+                else if (_request.UseInpainting && _request.SourceTexture == null)
+                    reason = "Generate is disabled: inpainting requires a source image.";
+                else if (_request.UseInpainting && _request.MaskTexture == null)
+                    reason = "Generate is disabled: inpainting requires a mask (white=regenerate, black=keep).";
+                else if (_request.UseInpainting &&
+                         _request.SourceTexture != null &&
+                         _request.MaskTexture != null &&
+                         !MaskBrushUtility.DimensionsMatch(_request.SourceTexture, _request.MaskTexture))
+                    reason = "Generate is disabled: source and mask dimensions must match.";
+                else if (_request.UseInpainting &&
+                         _request.MaskTexture != null &&
+                         !MaskBrushUtility.HasInpaintRegion(_request.MaskTexture))
+                    reason = "Generate is disabled: paint a white inpaint region on the mask.";
                 else if (profileCompatibility != null && !profileCompatibility.CanGenerate)
                     reason = string.Join("\n", profileCompatibility.Messages);
                 else if (string.IsNullOrWhiteSpace(_request.Subject))

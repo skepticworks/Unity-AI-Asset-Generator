@@ -111,6 +111,13 @@ namespace UnityAiAssets.Editor.Metadata
             asset.SourceImageHeight = manifest?.Request?.SourceImage?.Height ?? 0;
             asset.SourceImageByteSize = manifest?.Request?.SourceImage?.ByteSize ?? 0;
             asset.SourceImageSha256 = manifest?.Request?.SourceImage?.Sha256;
+            asset.MaskImageFormat = manifest?.Request?.MaskImage?.Format;
+            asset.MaskImageMediaType = manifest?.Request?.MaskImage?.MediaType;
+            asset.MaskImageWidth = manifest?.Request?.MaskImage?.Width ?? 0;
+            asset.MaskImageHeight = manifest?.Request?.MaskImage?.Height ?? 0;
+            asset.MaskImageByteSize = manifest?.Request?.MaskImage?.ByteSize ?? 0;
+            asset.MaskImageSha256 = manifest?.Request?.MaskImage?.Sha256;
+            asset.MaskConvention = manifest?.Request?.MaskConvention;
 
             AssetDatabase.CreateAsset(asset, uniquePath);
             AssetDatabase.SaveAssets();

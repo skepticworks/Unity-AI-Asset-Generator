@@ -13,8 +13,10 @@ from unity_ai_assets.domain.enums import (
     AssetType,
     OperationType,
     model_family_supports_image_to_image,
+    model_family_supports_inpainting,
 )
 from unity_ai_assets.domain.generation import GeneratedImage, GenerationRequest
+from unity_ai_assets.inference.inpainting import DiffusersInpaintingPipeline
 from unity_ai_assets.inference.model_manager import ModelManager
 
 logger = get_logger(__name__)
@@ -51,7 +53,9 @@ class DiffusersBackend:
             image_to_image_supported=model_family_supports_image_to_image(
                 self._model_manager.model_family
             ),
-            inpainting_supported=False,
+            inpainting_supported=model_family_supports_inpainting(
+                self._model_manager.model_family
+            ),
             supported_asset_types=[
                 AssetType.TEXTURE.value,
                 AssetType.SPRITE.value,
@@ -69,6 +73,8 @@ class DiffusersBackend:
 
     def generate(self, request: GenerationRequest) -> GeneratedImage:
         operation = request.operation or OperationType.TEXT_TO_IMAGE.value
+        if operation == OperationType.INPAINTING.value:
+            return DiffusersInpaintingPipeline(self._model_manager).inpaint(request)
         if operation == OperationType.IMAGE_TO_IMAGE.value:
             return self._generate_image_to_image(request)
         return self._generate_text_to_image(request)

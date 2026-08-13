@@ -185,6 +185,81 @@ namespace UnityAiAssets.Editor.Tests
         }
 
         [Test]
+        public void Parse_ReadsInpaintingCapabilities()
+        {
+            const string json = @"{
+                ""api"": { ""major"": 1, ""minor"": 2 },
+                ""application"": { ""name"": ""unity-ai-asset-generator"", ""version"": ""0.8.0"" },
+                ""schemas"": { ""capabilities"": ""1.4"", ""generation_manifest"": ""1.5"" },
+                ""runtime"": {
+                    ""configured_device"": ""auto"", ""resolved_device"": ""cpu"",
+                    ""configured_precision"": ""auto"", ""resolved_precision"": ""float32"",
+                    ""model_loaded"": false
+                },
+                ""model"": { ""id"": ""m"", ""revision"": null, ""family"": ""sd15"", ""display_name"": null },
+                ""operations"": {
+                    ""text_to_image"": {
+                        ""supported"": true, ""asset_types"": [""texture""],
+                        ""dimensions"": {
+                            ""minimum_width"": 8, ""maximum_width"": 1024,
+                            ""minimum_height"": 8, ""maximum_height"": 1024,
+                            ""width_multiple"": 8, ""height_multiple"": 8
+                        },
+                        ""steps"": { ""minimum"": 1, ""maximum"": 150, ""default"": 25 },
+                        ""guidance_scale"": { ""minimum"": 0.0, ""maximum"": 30.0, ""default"": 7.0 },
+                        ""seed"": { ""minimum"": 0, ""maximum"": 4294967295, ""random_when_omitted"": true },
+                        ""prompt"": { ""maximum_length"": 2000 },
+                        ""negative_prompt"": { ""supported"": true, ""maximum_length"": 2000 },
+                        ""output_name"": { ""maximum_length"": 100 },
+                        ""schedulers"": { ""selection_supported"": false, ""default"": ""pndm"", ""available"": [] }
+                    },
+                    ""image_to_image"": { ""supported"": true },
+                    ""inpainting"": {
+                        ""supported"": true, ""asset_types"": [""texture"", ""sprite""],
+                        ""dimensions"": {
+                            ""minimum_width"": 8, ""maximum_width"": 1024,
+                            ""minimum_height"": 8, ""maximum_height"": 1024,
+                            ""width_multiple"": 8, ""height_multiple"": 8
+                        },
+                        ""steps"": { ""minimum"": 1, ""maximum"": 150, ""default"": 25 },
+                        ""guidance_scale"": { ""minimum"": 0.0, ""maximum"": 30.0, ""default"": 7.0 },
+                        ""seed"": { ""minimum"": 0, ""maximum"": 4294967295, ""random_when_omitted"": true },
+                        ""prompt"": { ""maximum_length"": 2000 },
+                        ""negative_prompt"": { ""supported"": true, ""maximum_length"": 2000 },
+                        ""output_name"": { ""maximum_length"": 100 },
+                        ""schedulers"": { ""selection_supported"": false, ""default"": ""pndm"", ""available"": [] },
+                        ""denoising_strength"": { ""minimum"": 0.0, ""maximum"": 1.0, ""default"": 0.75 },
+                        ""source_image"": {
+                            ""supported_formats"": [""png"", ""jpeg"", ""webp""],
+                            ""maximum_byte_size"": 10485760
+                        },
+                        ""mask_image"": {
+                            ""supported_formats"": [""png"", ""jpeg"", ""webp""],
+                            ""maximum_byte_size"": 10485760,
+                            ""must_match_source_dimensions"": true,
+                            ""convention"": ""white_inpaints"",
+                            ""white_means"": ""regenerate"",
+                            ""black_means"": ""keep"",
+                            ""alpha_ignored"": true
+                        }
+                    }
+                },
+                ""precision"": { ""configured"": ""auto"", ""resolved"": ""float32"", ""available"": [""float32""], ""user_selectable"": false },
+                ""limits"": { ""maximum_concurrent_generations"": 1 }
+            }";
+            var document = CapabilityDocument.Parse(json);
+            Assert.IsTrue(document.Operations.Inpainting.Supported);
+            Assert.AreEqual("white_inpaints", document.Operations.Inpainting.MaskImage.Convention);
+            Assert.AreEqual("regenerate", document.Operations.Inpainting.MaskImage.WhiteMeans);
+            Assert.AreEqual("keep", document.Operations.Inpainting.MaskImage.BlackMeans);
+            Assert.IsTrue(document.Operations.Inpainting.MaskImage.MustMatchSourceDimensions);
+            Assert.IsTrue(document.Operations.Inpainting.MaskImage.AlphaIgnored);
+            CollectionAssert.AreEqual(
+                new[] { "png", "jpeg", "webp" },
+                document.Operations.Inpainting.MaskImage.SupportedFormats);
+        }
+
+        [Test]
         public void Parse_ReadsLimits()
         {
             var document = CapabilityDocument.Parse(FixtureJson);

@@ -30,7 +30,12 @@ def test_capability_document_construction() -> None:
     assert document.operations.image_to_image.supported is True
     assert document.operations.image_to_image.denoising_strength.default == 0.75
     assert "png" in document.operations.image_to_image.source_image.supported_formats
-    assert document.operations.inpainting.supported is False
+    assert document.operations.inpainting.supported is True
+    assert document.operations.inpainting.mask_image.convention == "white_inpaints"
+    assert document.operations.inpainting.mask_image.white_means == "regenerate"
+    assert document.operations.inpainting.mask_image.black_means == "keep"
+    assert document.operations.inpainting.mask_image.alpha_ignored is True
+    assert document.operations.inpainting.mask_image.must_match_source_dimensions is True
     assert document.operations.text_to_image.schedulers.selection_supported is False
     assert document.precision.user_selectable is False
     assert backend.calls == []
@@ -48,6 +53,12 @@ def test_capability_serialization() -> None:
     assert i2i["denoising_strength"]["default"] == 0.75
     assert i2i["source_image"]["maximum_byte_size"] == 10 * 1024 * 1024
     assert "png" in i2i["source_image"]["supported_formats"]
+    inpaint = payload["operations"]["inpainting"]
+    assert inpaint["supported"] is True
+    assert inpaint["mask_image"]["convention"] == "white_inpaints"
+    assert inpaint["mask_image"]["white_means"] == "regenerate"
+    assert inpaint["mask_image"]["black_means"] == "keep"
+    assert "png" in inpaint["mask_image"]["supported_formats"]
     assert "diffusers" not in str(payload).lower()
     assert "C:\\" not in str(payload)
     assert "huggingface" not in str(payload).lower() or "model" in str(payload).lower()

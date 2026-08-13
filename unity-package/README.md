@@ -91,6 +91,25 @@ img2img is never silently converted to text-to-image.
 Status and the metadata asset record `operation = image_to_image`, denoising strength, and
 source-image format/dimensions/SHA-256 from the manifest.
 
+## Masked inpainting
+
+Open **Masked Inpainting** in the generator window. This is **not** full-frame img2img and not
+reference-image conditioning. **White regenerates; black is kept.** Mask alpha is ignored.
+
+1. Enable inpainting (this disables image-to-image).
+2. Assign a source `Texture2D` or **Load Source From Disk…**.
+3. Load a mask from disk (same dimensions as the source) or **New Mask** and paint white over
+   the region to regenerate. **Clear Mask** fills black (keep all).
+4. Inspect the source, mask, and red overlay previews so alignment can be checked before generate.
+5. Reuse prompt, seed, denoising strength, and dimensions from the shared generation controls.
+
+Generate is disabled when `operations.inpainting.supported = false`, when source/mask are missing
+or mismatched, or when the mask has no white region — inpainting is never silently converted to
+img2img or text-to-image.
+
+Status and the metadata asset record `operation = inpainting`, `mask_convention = white_inpaints`,
+denoising strength, and source/mask format/dimensions/SHA-256 from the manifest.
+
 ## Capability discovery and version compatibility
 
 Before generating, the package fetches `GET /api/v1/capabilities` and caches it in memory for
@@ -108,7 +127,7 @@ treated as incompatible and **Generate And Import** is disabled with the reason 
 
 Before submitting a request, `GenerationCapabilityValidator` checks it against the fetched
 capabilities (dimensions, steps, guidance scale, seed, prompt/negative-prompt/output-name
-length, and img2img source/denoising constraints) and reports every violation — it never silently
+length, img2img source/denoising constraints, and inpainting source/mask constraints) and reports every violation — it never silently
 clamps or rewrites your input.
 
 ## Generation manifest and integrity verification
@@ -153,7 +172,7 @@ Conflicts append `_1`, `_2`, … instead of overwriting.
 
 ## Metadata and reproducibility
 
-Each import creates a `GenerationMetadataAsset` ScriptableObject with generation ID, prompts, seed, model id/revision, backend elapsed time, retrieval URLs, and a reference to the texture, plus (when a manifest was retrieved) manifest schema version, operation (including `image_to_image`), asset type, status, completed-at, application name/version, API major, model family, device, precision, scheduler, output SHA256/byte size, the request ID, and img2img source-image metadata when present. Absolute backend filesystem paths are never stored — only relative resource paths/URLs.
+Each import creates a `GenerationMetadataAsset` ScriptableObject with generation ID, prompts, seed, model id/revision, backend elapsed time, retrieval URLs, and a reference to the texture, plus (when a manifest was retrieved) manifest schema version, operation (including `image_to_image` and `inpainting`), asset type, status, completed-at, application name/version, API major, model family, device, precision, scheduler, output SHA256/byte size, the request ID, img2img source-image metadata, and inpainting mask metadata when present. Absolute backend filesystem paths are never stored — only relative resource paths/URLs.
 
 ## Cancellation limitation
 

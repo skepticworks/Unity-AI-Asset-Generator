@@ -20,6 +20,8 @@ from unity_ai_assets.domain.capabilities import (
     DimensionConstraints,
     ImageToImageCapabilities,
     InferenceCapabilities,
+    InpaintingCapabilities,
+    MaskImageConstraints,
     ModelIdentity,
     NegativePromptConstraints,
     NumericRangeFloat,
@@ -37,10 +39,14 @@ from unity_ai_assets.domain.capabilities import (
     SpriteImportCapabilities,
     TextToImageCapabilities,
     TileableProcessingCapabilities,
-    UnsupportedOperation,
 )
 from unity_ai_assets.domain.enums import AssetType, PivotMode, TransparencyStrategy
 from unity_ai_assets.domain.generation_policy import GenerationPolicy
+from unity_ai_assets.domain.mask_image import (
+    MASK_BLACK_MEANS,
+    MASK_CONVENTION_ID,
+    MASK_WHITE_MEANS,
+)
 from unity_ai_assets.inference.backend import ImageGenerationBackend
 from unity_ai_assets.processing.background_removal import ImageBackgroundRemover
 from unity_ai_assets.processing.seam_inpaint import (
@@ -261,6 +267,40 @@ class CapabilityService:
             processing=processing,
         )
 
+        inpainting = InpaintingCapabilities(
+            supported=inference.inpainting_supported,
+            asset_types=list(text_to_image.asset_types),
+            dimensions=text_to_image.dimensions,
+            steps=text_to_image.steps,
+            guidance_scale=text_to_image.guidance_scale,
+            seed=text_to_image.seed,
+            prompt=text_to_image.prompt,
+            negative_prompt=text_to_image.negative_prompt,
+            output_name=text_to_image.output_name,
+            schedulers=text_to_image.schedulers,
+            denoising_strength=NumericRangeFloat(
+                minimum=policy.minimum_denoising_strength,
+                maximum=policy.maximum_denoising_strength,
+                default=policy.default_denoising_strength,
+            ),
+            source_image=SourceImageConstraints(
+                supported_formats=list(policy.supported_source_image_formats),
+                maximum_byte_size=policy.maximum_source_image_bytes,
+                dimensions=text_to_image.dimensions,
+            ),
+            mask_image=MaskImageConstraints(
+                supported_formats=list(policy.supported_mask_image_formats),
+                maximum_byte_size=policy.maximum_mask_image_bytes,
+                dimensions=text_to_image.dimensions,
+                must_match_source_dimensions=True,
+                convention=MASK_CONVENTION_ID,
+                white_means=MASK_WHITE_MEANS,
+                black_means=MASK_BLACK_MEANS,
+                alpha_ignored=True,
+            ),
+            processing=processing,
+        )
+
         return CapabilityDocument(
             api=ApiVersionInfo(major=API_MAJOR_VERSION, minor=API_MINOR_VERSION),
             application=ApplicationIdentity(
@@ -287,7 +327,7 @@ class CapabilityService:
             operations=OperationsCapabilities(
                 text_to_image=text_to_image,
                 image_to_image=image_to_image,
-                inpainting=UnsupportedOperation(supported=inference.inpainting_supported),
+                inpainting=inpainting,
             ),
             precision=PrecisionCapabilities(
                 configured=settings.torch_dtype,

@@ -2,20 +2,21 @@
 
 Local, AI-assisted generation of Unity-ready **2D game assets** using pretrained generative models (Hugging Face Diffusers) plus an **editor-only Unity package**. No ComfyUI.
 
-## Current milestone scope (Milestone 7)
+## Current milestone scope (Milestone 8)
 
-1. Versioned capability reporting (`GET /api/v1/capabilities`) including processing, tileable, and **image-to-image**
-2. Authoritative generation policy (single source of truth for limits, including denoising strength and source-image uploads)
+1. Versioned capability reporting (`GET /api/v1/capabilities`) including processing, tileable, image-to-image, and **inpainting**
+2. Authoritative generation policy (single source of truth for limits, including denoising strength and source/mask uploads)
 3. Stable machine-readable API error envelope + request IDs
-4. Versioned generation manifests with integrity hashes, processing provenance, and img2img source-image metadata
+4. Versioned generation manifests with integrity hashes, processing provenance, img2img source metadata, and **inpainting source/mask metadata**
 5. Unity capability cache, compatibility checks, and preflight validation
 6. Unity download integrity verification before import
-7. Texture, sprite, icon, tileable texture, and **img2img variation** generation through one shared pipeline
+7. Texture, sprite, icon, tileable texture, img2img variation, and **masked inpainting** through one shared generation service
 8. Explicit transparency strategies with optional local background removal + alpha cleanup
 9. Tileable workflow: offset inspect, seam diagnostics, modular correction, tile preview, optional palette reduction
 10. Single-sprite Unity import with pixels-per-unit, pivot modes, and atlas-hint metadata
 11. Versioned built-in/user generation profiles with migration and profile provenance
 12. Image-to-image: source/init image upload, validation, denoising strength, capability gating (no silent txt2img fallback)
+13. Masked inpainting: source + mask upload, white=regenerate / black=keep convention, alignment, capability gating (no silent img2img/txt2img fallback)
 
 Automated Python tests use a **fake inference backend** (and fake background remover when needed).
 They do **not** download diffusion or rembg weights.
@@ -24,7 +25,7 @@ They do **not** download diffusion or rembg weights.
 
 - ComfyUI, ComfyUI APIs, workflows, or custom nodes
 - Sprite sheets, animation frame extraction, automatic SpriteAtlas creation, Addressables
-- ControlNet, IP-Adapter / reference-image conditioning, inpainting (except local tileable seam repair), masking, batching
+- ControlNet, IP-Adapter / reference-image conditioning, batching
 - Guaranteed perfectly seamless textures (correction is best-effort diagnostics + soft blending)
 - Database, Redis, Celery, Docker, auth, cloud storage
 - Model installation UI, distributed job system
@@ -79,10 +80,10 @@ On low-VRAM GPUs, keep `ENABLE_CPU_OFFLOAD=false` and `EXCLUSIVE_MODEL_VRAM=true
 
 | Concern | Source | Notes |
 |---------|--------|-------|
-| Application semver | `pyproject.toml` / `core.version` | Currently `0.7.0` |
-| API major/minor | `core.version` | Independent of app semver; currently `1.1` |
-| Capabilities schema | `1.3` | Img2img operation block is additive |
-| Generation manifest schema | `1.4` | Img2img source-image metadata is additive |
+| Application semver | `pyproject.toml` / `core.version` | Currently `0.8.0` |
+| API major/minor | `core.version` | Independent of app semver; currently `1.2` |
+| Capabilities schema | `1.4` | Inpainting operation block is additive |
+| Generation manifest schema | `1.5` | Inpainting mask metadata is additive |
 | Generation profile schema | `1.2` | Tileable defaults are additive |
 
 ## Tileable texture workflow
@@ -131,6 +132,40 @@ parameters produce the same output.
 In Unity: **Tools → AI Asset Generator → Image-to-Image Variation**. Select a project texture or load a
 file, preview it, set denoising strength, then **Generate And Import**. Status and the metadata asset
 record that the result was produced with img2img.
+
+## Masked inpainting
+
+Inpainting regenerates **only the masked region** of a source image. It is a distinct operation from
+img2img (full-frame init variation) and from reference-image conditioning.
+
+**Mask convention (system-wide):** **white regenerates**, **black is kept** from the source.
+Gray values are valid soft-mask strengths. **Mask alpha is ignored** and never treated as the
+inpaint region. Source alpha is composited on black for the init RGB image and does not change
+mask semantics.
+
+1. Confirm capabilities: `operations.inpainting.supported` must be `true` (SD 1.5 / SDXL families).
+   Unsupported models fail with `OPERATION_UNSUPPORTED` and are **not** converted to img2img or
+   text-to-image.
+2. Upload PNG, JPEG, or WebP as `source_image` and `mask_image` (`content_base64`, optional
+   `media_type`). Both are validated for format, file size (`MAX_SOURCE_IMAGE_BYTES` /
+   `MAX_MASK_IMAGE_BYTES`, default 10 MiB), dimensions, and corrupt payloads.
+3. Source and mask **original dimensions must match**. The backend will not stretch or offset a
+   mismatched mask. Both are then resized to the requested generation size with LANCZOS when needed.
+4. Set `operation` to `inpainting` and optionally `denoising_strength` in `0.0…1.0`.
+
+```powershell
+curl -X POST http://127.0.0.1:8000/api/v1/generations/textures `
+  -H "Content-Type: application/json" `
+  -d "{\"prompt\":\"replace the damaged plaque with a clean bronze plate\",\"width\":512,\"height\":512,\"operation\":\"inpainting\",\"denoising_strength\":0.45,\"source_image\":{\"content_base64\":\"<base64-png>\",\"media_type\":\"image/png\"},\"mask_image\":{\"content_base64\":\"<base64-mask-png>\",\"media_type\":\"image/png\"},\"output_name\":\"metal_inpaint\"}"
+```
+
+The generation response `operation` is `inpainting`. The manifest records `mask_convention`
+(`white_inpaints`), denoising strength, and source/mask metadata (format, dimensions, byte size,
+SHA-256) without storing uploaded pixels.
+
+In Unity: **Tools → AI Asset Generator → Masked Inpainting**. Select or load a source, load a mask
+from disk or paint one (white = regenerate), inspect the red overlay for alignment, then
+**Generate And Import**.
 
 ## Generation
 

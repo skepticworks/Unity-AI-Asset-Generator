@@ -29,6 +29,7 @@ class FakeImageGenerationBackend:
         resolved_precision: str = "float32",
         default_scheduler: str = "pndm",
         image_to_image_supported: bool = True,
+        inpainting_supported: bool = True,
     ) -> None:
         self._device_name = device_name
         self._model_id = model_id
@@ -40,6 +41,7 @@ class FakeImageGenerationBackend:
         self._resolved_precision = resolved_precision
         self._default_scheduler = default_scheduler
         self._image_to_image_supported = image_to_image_supported
+        self._inpainting_supported = inpainting_supported
         self.calls: list[GenerationRequest] = []
         self.capability_calls: int = 0
         self.unload_calls: int = 0
@@ -70,7 +72,7 @@ class FakeImageGenerationBackend:
         return InferenceCapabilities(
             text_to_image_supported=True,
             image_to_image_supported=self._image_to_image_supported,
-            inpainting_supported=False,
+            inpainting_supported=self._inpainting_supported,
             supported_asset_types=[
                 AssetType.TEXTURE.value,
                 AssetType.SPRITE.value,
@@ -86,6 +88,33 @@ class FakeImageGenerationBackend:
             resolved_precision=self._resolved_precision,
         )
 
+    def _inpaint(
+        self,
+        request: GenerationRequest,
+        color: tuple[int, int, int],
+    ) -> Image.Image:
+        if not self._inpainting_supported:
+            raise OperationUnsupportedError(
+                "The current model/backend does not support inpainting. "
+                "The request was not converted to image_to_image or text_to_image."
+            )
+        if request.source_image is None or request.mask_image is None:
+            raise InferenceError("inpainting requires both a source image and a mask.")
+        src = request.source_image.convert("RGB")
+        if src.size != (request.width, request.height):
+            src = src.resize((request.width, request.height), Image.Resampling.LANCZOS)
+        mask = request.mask_image.convert("L")
+        if mask.size != (request.width, request.height):
+            mask = mask.resize((request.width, request.height), Image.Resampling.LANCZOS)
+        overlay = Image.new("RGB", (request.width, request.height), color=color)
+        strength = (
+            0.75 if request.denoising_strength is None else float(request.denoising_strength)
+        )
+        strength = max(0.0, min(1.0, strength))
+        blended = Image.blend(src, overlay, strength)
+        # White (255) regenerates; black (0) keeps the source. Soft gray is a blend.
+        return Image.composite(blended, src, mask)
+
     def generate(self, request: GenerationRequest) -> GeneratedImage:
         self.calls.append(request)
         if self._fail:
@@ -95,7 +124,9 @@ class FakeImageGenerationBackend:
         time.sleep(self._delay_seconds)
         color = self._color_factory(request)
         operation = request.operation or OperationType.TEXT_TO_IMAGE.value
-        if operation == OperationType.IMAGE_TO_IMAGE.value:
+        if operation == OperationType.INPAINTING.value:
+            image = self._inpaint(request, color)
+        elif operation == OperationType.IMAGE_TO_IMAGE.value:
             if not self._image_to_image_supported:
                 raise OperationUnsupportedError(
                     "The current model/backend does not support image_to_image. "

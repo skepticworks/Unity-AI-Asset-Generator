@@ -34,6 +34,14 @@ from unity_ai_assets.domain.enums import (
 )
 from unity_ai_assets.domain.generation import GeneratedImage, GenerationRequest, GenerationResult
 from unity_ai_assets.domain.generation_policy import GenerationPolicy
+from unity_ai_assets.domain.mask_image import (
+    MASK_CONVENTION_ID,
+    assert_source_mask_dimensions_match,
+    decode_mask_image_base64,
+    prepare_inpaint_mask,
+    prepare_inpaint_source,
+    validate_mask_image,
+)
 from unity_ai_assets.domain.source_image import (
     decode_source_image_base64,
     prepare_init_image,
@@ -189,6 +197,8 @@ class GenerationService:
         operation: str | None = None,
         source_image_base64: str | None = None,
         source_image_media_type: str | None = None,
+        mask_image_base64: str | None = None,
+        mask_image_media_type: str | None = None,
         denoising_strength: float | None = None,
     ) -> GenerationResult:
         """Validate inputs against policy, run inference under a lock, and persist."""
@@ -210,17 +220,41 @@ class GenerationService:
         if resolved_operation not in {
             OperationType.TEXT_TO_IMAGE.value,
             OperationType.IMAGE_TO_IMAGE.value,
+            OperationType.INPAINTING.value,
         }:
             raise OperationUnsupportedError(
                 f"Operation '{resolved_operation}' is not supported."
             )
 
         inference_caps = self._backend.describe_capabilities()
+        prepared_source = None
+        source_meta = None
+        prepared_mask = None
+        mask_meta = None
+        mask_convention = None
+        resolved_strength = None
+
         if resolved_operation == OperationType.IMAGE_TO_IMAGE.value:
             if not inference_caps.image_to_image_supported:
                 raise OperationUnsupportedError(
                     "The current model/backend does not support image_to_image. "
                     "The request was not converted to text-to-image."
+                )
+            if mask_image_base64 is not None:
+                raise GenerationRequestInvalidError(
+                    "mask_image is only valid for inpainting.",
+                    field_issues={
+                        "mask_image": [
+                            FieldIssue(
+                                code=FieldIssueCode.VALUE_INVALID,
+                                message=(
+                                    "mask_image is only accepted when operation is inpainting. "
+                                    "Image-to-image is full-frame init variation, not masked "
+                                    "inpainting."
+                                ),
+                            )
+                        ]
+                    },
                 )
             if source_image_base64 is None:
                 raise GenerationRequestInvalidError(
@@ -252,42 +286,118 @@ class GenerationService:
             policy.validate_denoising_strength(resolved_strength)
             prepared_source = prepare_init_image(validated_source.image, width, height)
             source_meta = validated_source.metadata
+        elif resolved_operation == OperationType.INPAINTING.value:
+            if not inference_caps.inpainting_supported:
+                raise OperationUnsupportedError(
+                    "The current model/backend does not support inpainting. "
+                    "The request was not converted to image_to_image or text_to_image."
+                )
+            if source_image_base64 is None:
+                raise GenerationRequestInvalidError(
+                    "source_image is required for inpainting.",
+                    field_issues={
+                        "source_image": [
+                            FieldIssue(
+                                code=FieldIssueCode.FIELD_REQUIRED,
+                                message=(
+                                    "source_image is required when operation is inpainting. "
+                                    "Provide the image to keep outside the mask, not a "
+                                    "reference-conditioning image."
+                                ),
+                            )
+                        ]
+                    },
+                )
+            if mask_image_base64 is None:
+                raise GenerationRequestInvalidError(
+                    "mask_image is required for inpainting.",
+                    field_issues={
+                        "mask_image": [
+                            FieldIssue(
+                                code=FieldIssueCode.FIELD_REQUIRED,
+                                message=(
+                                    "mask_image is required when operation is inpainting. "
+                                    "White regenerates; black is kept from the source."
+                                ),
+                            )
+                        ]
+                    },
+                )
+            raw_bytes = decode_source_image_base64(source_image_base64)
+            validated_source = validate_source_image(
+                raw_bytes=raw_bytes,
+                policy=policy,
+                media_type=source_image_media_type,
+                apply_exif=True,
+            )
+            mask_bytes = decode_mask_image_base64(mask_image_base64)
+            validated_mask = validate_mask_image(
+                raw_bytes=mask_bytes,
+                policy=policy,
+                media_type=mask_image_media_type,
+            )
+            assert_source_mask_dimensions_match(
+                source_width=validated_source.metadata.original_width,
+                source_height=validated_source.metadata.original_height,
+                mask_width=validated_mask.metadata.original_width,
+                mask_height=validated_mask.metadata.original_height,
+            )
+            resolved_strength = (
+                policy.default_denoising_strength
+                if denoising_strength is None
+                else float(denoising_strength)
+            )
+            policy.validate_denoising_strength(resolved_strength)
+            prepared_source = prepare_inpaint_source(validated_source.image, width, height)
+            prepared_mask = prepare_inpaint_mask(validated_mask.image, width, height)
+            source_meta = validated_source.metadata
+            mask_meta = validated_mask.metadata
+            mask_convention = MASK_CONVENTION_ID
         else:
             if source_image_base64 is not None:
                 raise GenerationRequestInvalidError(
-                    "source_image is only valid for image_to_image.",
+                    "source_image is only valid for image_to_image or inpainting.",
                     field_issues={
                         "source_image": [
                             FieldIssue(
                                 code=FieldIssueCode.VALUE_INVALID,
                                 message=(
-                                    "source_image is the img2img init/latent image and is only "
-                                    "accepted when operation is image_to_image. It is not a "
-                                    "reference-conditioning input."
+                                    "source_image is the init/latent image and is only "
+                                    "accepted when operation is image_to_image or inpainting. "
+                                    "It is not a reference-conditioning input."
                                 ),
+                            )
+                        ]
+                    },
+                )
+            if mask_image_base64 is not None:
+                raise GenerationRequestInvalidError(
+                    "mask_image is only valid for inpainting.",
+                    field_issues={
+                        "mask_image": [
+                            FieldIssue(
+                                code=FieldIssueCode.VALUE_INVALID,
+                                message="mask_image is only accepted when operation is inpainting.",
                             )
                         ]
                     },
                 )
             if denoising_strength is not None:
                 raise GenerationRequestInvalidError(
-                    "denoising_strength is only valid for image_to_image.",
+                    "denoising_strength is only valid for image_to_image or inpainting.",
                     field_issues={
                         "denoising_strength": [
                             FieldIssue(
                                 code=FieldIssueCode.VALUE_INVALID,
                                 message=(
                                     "denoising_strength applies only to image_to_image "
-                                    "init-image variation."
+                                    "or inpainting."
                                 ),
                                 actual=denoising_strength,
                             )
                         ]
                     },
                 )
-            prepared_source = None
-            source_meta = None
-            resolved_strength = None
 
         _validate_provenance(
             identifiers={
@@ -590,6 +700,9 @@ class GenerationService:
             denoising_strength=resolved_strength,
             source_image=prepared_source,
             source_image_meta=source_meta,
+            mask_image=prepared_mask,
+            mask_image_meta=mask_meta,
+            mask_convention=mask_convention,
         )
 
         logger.info(

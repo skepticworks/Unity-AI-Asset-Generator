@@ -71,6 +71,14 @@ namespace UnityAiAssets.Editor.Tests
             Assert.AreEqual(32, dto.palette_color_count);
         }
 
+        [Test]
+        public void FromResolved_OmitsInpaintingWhenDisabled()
+        {
+            var dto = GenerationRequestFactory.FromResolved(CreateResolved(), new TextureGenerationRequestModel());
+            Assert.IsNull(dto.operation);
+            Assert.IsNull(dto.mask_image);
+        }
+
         static ResolvedGenerationSettings CreateResolved() => new ResolvedGenerationSettings
         {
             ConstructedPrompt = " constructed prompt ",

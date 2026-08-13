@@ -109,6 +109,8 @@ class ManifestRequestInfo:
     palette_color_count: int | None = None
     denoising_strength: float | None = None
     source_image: ManifestSourceImageInfo | None = None
+    mask_image: ManifestSourceImageInfo | None = None
+    mask_convention: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -234,6 +236,18 @@ class GenerationManifest:
                 "byte_size": source.byte_size,
                 "sha256": source.sha256,
             }
+        if self.request.mask_image is not None:
+            mask = self.request.mask_image
+            request_payload["mask_image"] = {
+                "format": mask.format,
+                "media_type": mask.media_type,
+                "width": mask.width,
+                "height": mask.height,
+                "byte_size": mask.byte_size,
+                "sha256": mask.sha256,
+            }
+        if self.request.mask_convention is not None:
+            request_payload["mask_convention"] = self.request.mask_convention
 
         payload: dict[str, Any] = {
             "schema": {
@@ -542,6 +556,12 @@ def _parse_versioned(payload: dict[str, Any], *, schema_version: str) -> Generat
             palette_color_count=_optional_int(request.get("palette_color_count")),
             denoising_strength=_optional_float(request.get("denoising_strength")),
             source_image=_parse_source_image(request.get("source_image")),
+            mask_image=_parse_source_image(request.get("mask_image")),
+            mask_convention=(
+                str(request["mask_convention"])
+                if isinstance(request.get("mask_convention"), str)
+                else None
+            ),
         ),
         outputs=outputs,
         profile=(

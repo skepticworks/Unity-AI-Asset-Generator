@@ -65,6 +65,8 @@ namespace UnityAiAssets.Editor.Api
         public int PaletteColorCount;
         public float DenoisingStrength;
         public ManifestSourceImageInfo SourceImage;
+        public ManifestSourceImageInfo MaskImage;
+        public string MaskConvention;
     }
 
     public sealed class ManifestSourceImageInfo
@@ -261,7 +263,9 @@ namespace UnityAiAssets.Editor.Api
                     PaletteReductionEnabled = requestNode.Get("palette_reduction_enabled").AsBool(),
                     PaletteColorCount = requestNode.Get("palette_color_count").AsInt(16),
                     DenoisingStrength = requestNode.Get("denoising_strength").AsFloat(),
-                    SourceImage = ParseSourceImage(requestNode.Get("source_image"))
+                    SourceImage = ParseSourceImage(requestNode.Get("source_image")),
+                    MaskImage = ParseSourceImage(requestNode.Get("mask_image")),
+                    MaskConvention = requestNode.Get("mask_convention").AsString()
                 },
                 Processing = processingNode.IsObject ? new ManifestProcessingInfo
                 {

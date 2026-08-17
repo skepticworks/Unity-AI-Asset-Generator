@@ -50,8 +50,7 @@ namespace UnityAiAssets.Editor.Models
         {
             _clientFactory = clientFactory ?? (() =>
             {
-                var settings = UnityAiAssetSettings.instance;
-                return new GenerationApiClient(settings.BackendBaseUrl, settings.ApiTimeoutSeconds);
+                return UnityAiAssetSettings.CreateApiClient();
             });
             State = new ModelManagementState();
         }

@@ -17,6 +17,7 @@ router = APIRouter(prefix="/api/v1", tags=["jobs"])
 def submit_job(payload: TextureGenerationRequest, request: Request) -> JobResponse:
     """Queue a generation job. GPU work runs on the local worker, not this request."""
     job_service = request.app.state.job_service
+    request.app.state.quota_service.check_queue(job_service)
     record = job_service.submit(payload.model_dump(mode="json"))
     return JobResponse.from_record(record)
 

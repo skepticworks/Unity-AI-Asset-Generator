@@ -1,0 +1,16 @@
+.git/
+.venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+generated/
+models/
+tests/
+unity-package/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/

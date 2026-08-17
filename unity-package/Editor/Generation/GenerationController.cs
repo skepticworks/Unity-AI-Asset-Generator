@@ -98,8 +98,7 @@ namespace UnityAiAssets.Editor.Generation
         {
             _clientFactory = clientFactory ?? (() =>
             {
-                var settings = UnityAiAssetSettings.instance;
-                return new GenerationApiClient(settings.BackendBaseUrl, settings.ApiTimeoutSeconds);
+                return UnityAiAssetSettings.CreateApiClient();
             });
             _assetImporter = assetImporter ?? new GeneratedAssetImporter();
             _metadataImporter = metadataImporter ?? new GenerationMetadataImporter();

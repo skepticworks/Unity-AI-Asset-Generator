@@ -424,6 +424,25 @@ class OfflineOperationUnavailableError(AppError):
         )
 
 
+class AuthenticationRequiredError(AppError):
+    """Raised when a protected endpoint lacks valid credentials."""
+
+    def __init__(self) -> None:
+        super().__init__(code=AppErrorCode.AUTHENTICATION_REQUIRED)
+
+
+class QuotaExceededError(AppError):
+    """Raised when a request or queue limit is reached."""
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, code=AppErrorCode.QUOTA_EXCEEDED, details=details)
+
+
 @dataclass
 class ErrorEnvelope:
     """Public API error envelope builder helpers."""

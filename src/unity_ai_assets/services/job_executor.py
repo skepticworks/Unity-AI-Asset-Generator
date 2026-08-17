@@ -7,7 +7,9 @@ without exposing local GPU vs remote worker details to the API or Unity client.
 from __future__ import annotations
 
 import threading
+import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from unity_ai_assets.core.errors import GenerationCancelledError
@@ -15,6 +17,37 @@ from unity_ai_assets.domain.jobs import JobProgress, JobRecord, JobResult
 from unity_ai_assets.services.generation_service import GenerationService
 
 ProgressCallback = Callable[[JobProgress], None]
+
+
+@dataclass(frozen=True, slots=True)
+class RemoteWorkerSubmission:
+    """Provider-neutral payload accepted by a hosted generation worker."""
+
+    request_id: str
+    parameters: dict[str, Any]
+    metadata: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class RemoteWorkerStatus:
+    """Provider-neutral job status returned by a hosted generation worker."""
+
+    job_id: str
+    state: str
+    progress: JobProgress | None = None
+    result: JobResult | None = None
+    error: Exception | None = None
+
+
+@runtime_checkable
+class RemoteWorkerClient(Protocol):
+    """Contract adapters implement for any hosted GPU platform."""
+
+    def submit(self, submission: RemoteWorkerSubmission) -> str: ...
+
+    def get_status(self, remote_job_id: str) -> RemoteWorkerStatus: ...
+
+    def cancel(self, remote_job_id: str) -> None: ...
 
 
 @runtime_checkable
@@ -147,3 +180,53 @@ class LocalGenerationExecutor:
             image_path=result.image_path,
             metadata_path=result.metadata_path,
         )
+
+
+class RemoteGenerationExecutor:
+    """Adapt a provider-neutral remote client to the existing JobService contract."""
+
+    def __init__(
+        self,
+        validator: GenerationJobExecutor,
+        client: RemoteWorkerClient,
+        *,
+        poll_interval: float = 0.25,
+    ) -> None:
+        self._validator = validator
+        self._client = client
+        self._poll_interval = poll_interval
+
+    def validate(self, payload: dict[str, Any]) -> int:
+        return self._validator.validate(payload)
+
+    def execute(
+        self,
+        job: JobRecord,
+        *,
+        cancel_event: threading.Event,
+        on_progress: ProgressCallback,
+    ) -> JobResult:
+        remote_id = self._client.submit(
+            RemoteWorkerSubmission(
+                request_id=job.job_id,
+                parameters=job.request,
+                metadata={"generation_type": job.generation_type, "asset_type": job.asset_type},
+            )
+        )
+        cancellation_sent = False
+        while True:
+            if cancel_event.is_set() and not cancellation_sent:
+                self._client.cancel(remote_id)
+                cancellation_sent = True
+            status = self._client.get_status(remote_id)
+            if status.progress is not None:
+                on_progress(status.progress)
+            if status.state == "completed" and status.result is not None:
+                return status.result
+            if status.state == "cancelled":
+                raise GenerationCancelledError("Remote worker cancelled the job.")
+            if status.state == "failed":
+                if status.error is not None:
+                    raise status.error
+                raise RuntimeError("Remote worker failed without structured error.")
+            time.sleep(self._poll_interval)

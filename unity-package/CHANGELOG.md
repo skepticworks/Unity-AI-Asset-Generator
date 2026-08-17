@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.0 — Milestone 12 packaging and hosted-worker preparation
+
+- Optional API-key authentication for network-accessible backends. The key is stored in
+  EditorPrefs, not the project settings asset. Local loopback use can leave it empty.
+- Backend packaging, readiness checks, process-local quotas, durable volume layout, and a
+  provider-neutral remote worker contract. See the repository README and `docs/deployment.md`.
+
 ## 0.11.0 — Milestone 11 model management
 
 - Added a Models foldout for installed Diffusers models: validation state, license/source

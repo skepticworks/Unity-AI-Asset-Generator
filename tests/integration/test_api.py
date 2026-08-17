@@ -40,6 +40,7 @@ def test_service_root_endpoint(client: TestClient) -> None:
     assert payload["service"] == "unity-ai-assets"
     assert payload["status"] == "ok"
     assert payload["endpoints"]["health"] == "/health"
+    assert payload["endpoints"]["ready"] == "/ready"
     assert payload["endpoints"]["capabilities"] == "/api/v1/capabilities"
     assert payload["endpoints"]["jobs"] == "/api/v1/jobs"
     assert payload["endpoints"]["batches"] == "/api/v1/batches"

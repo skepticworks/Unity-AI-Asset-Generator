@@ -36,6 +36,7 @@ async def generate_texture(
     handler. Unity should prefer ``POST /api/v1/jobs`` and poll for status.
     """
     job_service = request.app.state.job_service
+    request.app.state.quota_service.check_queue(job_service)
     record = await asyncio.to_thread(job_service.submit, payload.model_dump(mode="json"))
     record = await asyncio.to_thread(job_service.wait_for_terminal, record.job_id)
     result = job_service.raise_if_unsuccessful(record)

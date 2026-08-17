@@ -6,11 +6,16 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from unity_ai_assets.api.routes import batches, capabilities, generation, health, jobs, models
+from unity_ai_assets.core.auth import ApiKeyAuthenticator
 from unity_ai_assets.core.config import Settings, get_settings
-from unity_ai_assets.core.exception_handlers import register_exception_handlers
+from unity_ai_assets.core.errors import AppError
+from unity_ai_assets.core.exception_handlers import (
+    build_error_response,
+    register_exception_handlers,
+)
 from unity_ai_assets.core.logging import configure_logging, get_logger
 from unity_ai_assets.core.middleware import RequestIdMiddleware
 from unity_ai_assets.core.version import APPLICATION_VERSION
@@ -25,11 +30,18 @@ from unity_ai_assets.services.batch_service import BatchService
 from unity_ai_assets.services.batch_store import BatchStore
 from unity_ai_assets.services.capability_service import CapabilityService
 from unity_ai_assets.services.generation_service import GenerationService
-from unity_ai_assets.services.job_executor import LocalGenerationExecutor
+from unity_ai_assets.services.job_executor import (
+    GenerationJobExecutor,
+    LocalGenerationExecutor,
+    RemoteGenerationExecutor,
+)
 from unity_ai_assets.services.job_service import JobService
 from unity_ai_assets.services.job_store import JobStore
 from unity_ai_assets.services.model_service import ModelService
 from unity_ai_assets.services.output_service import OutputService
+from unity_ai_assets.services.quota_service import QuotaService
+from unity_ai_assets.services.remote_worker_http import HttpRemoteWorkerClient
+from unity_ai_assets.services.runtime_validation import RuntimeValidator
 
 logger = get_logger(__name__)
 
@@ -48,6 +60,7 @@ def create_app(
     *,
     settings: Settings | None = None,
     backend: ImageGenerationBackend | None = None,
+    job_executor: GenerationJobExecutor | None = None,
     force_fake_background_removal: bool = False,
     force_fake_seam_inpaint: bool = False,
 ) -> FastAPI:
@@ -83,6 +96,20 @@ def create_app(
             resolved_settings.enable_cpu_offload,
         )
         job_service: JobService = app.state.job_service
+        report = app.state.runtime_validator.validate()
+        logger.info(
+            "Runtime validation usable=%s selected_device=%s worker_mode=%s bind=%s:%s",
+            report.usable,
+            report.selected_device,
+            resolved_settings.worker_mode,
+            resolved_settings.bind_host,
+            resolved_settings.bind_port,
+        )
+        for check in report.checks:
+            if check.status == "fatal":
+                logger.error("Runtime check %s: %s", check.name, check.message)
+            elif check.status != "ok":
+                logger.warning("Runtime check %s: %s", check.name, check.message)
         job_service.start()
         try:
             yield
@@ -152,10 +179,22 @@ def create_app(
         resolved_settings.output_directory / "jobs"
     )
     job_store = JobStore(job_directory)
-    job_executor = LocalGenerationExecutor(generation_service)
+    local_executor = LocalGenerationExecutor(generation_service)
+    if job_executor is not None:
+        resolved_executor = job_executor
+    elif resolved_settings.worker_mode == "remote":
+        resolved_executor = RemoteGenerationExecutor(
+            local_executor,
+            HttpRemoteWorkerClient(
+                resolved_settings.remote_worker_url or "",
+                token=resolved_settings.remote_worker_token,
+            ),
+        )
+    else:
+        resolved_executor = local_executor
     job_service = JobService(
         store=job_store,
-        executor=job_executor,
+        executor=resolved_executor,
         settings=resolved_settings,
     )
     batch_directory = resolved_settings.batch_directory or (
@@ -185,6 +224,26 @@ def create_app(
     app.state.background_remover = background_remover
     app.state.seam_inpainter = seam_inpainter
     app.state.processing_pipeline = processing_pipeline
+    app.state.runtime_validator = RuntimeValidator(
+        resolved_settings, model_service=model_service
+    )
+    app.state.quota_service = QuotaService(resolved_settings)
+    app.state.authenticator = ApiKeyAuthenticator(resolved_settings)
+
+    @app.middleware("http")
+    async def authenticate_and_limit(request: Request, call_next: object) -> object:
+        """Protect API routes while preserving unauthenticated liveness probes."""
+        if request.url.path.startswith("/api/"):
+            try:
+                client_id = app.state.authenticator.authenticate(request)
+                app.state.quota_service.check_request(client_id)
+            except AppError as exc:
+                return build_error_response(
+                    code=exc.code,
+                    message=exc.message,
+                    details=exc.details_payload(),
+                )
+        return await call_next(request)  # type: ignore[misc]
 
     app.add_middleware(RequestIdMiddleware)
     register_exception_handlers(app)
@@ -208,8 +267,8 @@ def run() -> None:
     configure_logging(settings.log_level)
     uvicorn.run(
         "unity_ai_assets.main:app",
-        host="127.0.0.1",
-        port=8000,
+        host=settings.bind_host,
+        port=settings.bind_port,
         reload=False,
         workers=1,
     )

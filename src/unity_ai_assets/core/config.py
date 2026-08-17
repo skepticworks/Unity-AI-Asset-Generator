@@ -14,6 +14,9 @@ from unity_ai_assets.domain.generation_policy import validate_policy_settings
 
 DeviceChoice = Literal["auto", "cuda", "mps", "cpu"]
 TorchDtypeChoice = Literal["auto", "float16", "bfloat16", "float32"]
+EnvironmentMode = Literal["local", "production"]
+AuthenticationMode = Literal["disabled", "api_key"]
+WorkerMode = Literal["local", "remote"]
 
 
 class Settings(BaseSettings):
@@ -79,6 +82,20 @@ class Settings(BaseSettings):
     local_files_only: bool = Field(default=False)
     log_level: str = Field(default="INFO")
     app_version: str = Field(default="")
+    environment: EnvironmentMode = Field(default="local")
+    bind_host: str = Field(default="127.0.0.1")
+    bind_port: int = Field(default=8000, ge=1, le=65535)
+    authentication_mode: AuthenticationMode = Field(default="disabled")
+    api_key: str | None = Field(default=None, repr=False)
+    worker_mode: WorkerMode = Field(default="local")
+    remote_worker_url: str | None = Field(default=None)
+    remote_worker_token: str | None = Field(default=None, repr=False)
+    max_requests_per_minute: int = Field(
+        default=0, ge=0, description="0 disables the in-process request-rate limit."
+    )
+    max_queued_jobs: int = Field(
+        default=0, ge=0, description="0 disables the queue-depth limit."
+    )
 
     # Authoritative generation policy (env-configurable)
     min_width: int = Field(default=8, ge=1)
@@ -215,7 +232,15 @@ class Settings(BaseSettings):
     default_pixels_per_unit: float = Field(default=100.0, gt=0)
     default_pivot_mode: str = Field(default="center")
 
-    @field_validator("model_revision", "model_variant", "model_display_name", mode="before")
+    @field_validator(
+        "model_revision",
+        "model_variant",
+        "model_display_name",
+        "api_key",
+        "remote_worker_url",
+        "remote_worker_token",
+        mode="before",
+    )
     @classmethod
     def _empty_str_to_none(cls, value: object) -> object:
         if value == "":
@@ -301,6 +326,18 @@ class Settings(BaseSettings):
             object.__setattr__(self, "job_directory", self.output_directory / "jobs")
         if self.batch_directory is None:
             object.__setattr__(self, "batch_directory", self.output_directory / "batches")
+        if (
+            self.environment == "production"
+            and self.bind_host not in {"127.0.0.1", "localhost"}
+            and self.authentication_mode == "disabled"
+        ):
+            raise ValueError(
+                "AUTHENTICATION_MODE=api_key is required for a production network bind."
+            )
+        if self.authentication_mode == "api_key" and not self.api_key:
+            raise ValueError("API_KEY must be set when AUTHENTICATION_MODE=api_key.")
+        if self.worker_mode == "remote" and not self.remote_worker_url:
+            raise ValueError("REMOTE_WORKER_URL must be set when WORKER_MODE=remote.")
         return self
 
     @property

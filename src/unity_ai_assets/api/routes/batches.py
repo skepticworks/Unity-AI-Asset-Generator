@@ -39,6 +39,18 @@ def preview_batch(payload: BatchSubmitRequest, request: Request) -> BatchPreview
 def submit_batch(payload: BatchSubmitRequest, request: Request) -> BatchResponse:
     """Expand the batch into normal jobs and enqueue them on the existing queue."""
     batch_service = request.app.state.batch_service
+    plan = batch_service.preview(
+        prompts=payload.prompts,
+        seed_mode=payload.seed_mode,
+        variation_count=payload.variation_count,
+        seed=payload.seed,
+        seed_start=payload.seed_start,
+        seed_end=payload.seed_end,
+        output_name=payload.request.output_name,
+    )
+    request.app.state.quota_service.check_queue(
+        request.app.state.job_service, required_slots=plan.job_count
+    )
     record, jobs, _plan = batch_service.submit(
         prompts=payload.prompts,
         seed_mode=payload.seed_mode,

@@ -31,7 +31,7 @@ def test_schema_versions() -> None:
 
 def test_application_identity() -> None:
     assert APPLICATION_NAME == "unity-ai-asset-generator"
-    assert APPLICATION_VERSION_FALLBACK == "0.11.0"
+    assert APPLICATION_VERSION_FALLBACK == "0.12.0"
     assert APPLICATION_VERSION
     resolved = resolve_application_version()
     assert resolved == APPLICATION_VERSION

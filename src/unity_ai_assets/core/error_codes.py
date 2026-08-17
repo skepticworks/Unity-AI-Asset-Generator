@@ -52,6 +52,9 @@ class AppErrorCode(StrEnum):
     MODEL_DELETE_FAILED = "MODEL_DELETE_FAILED"
     MODEL_OUTSIDE_STORAGE_BOUNDARY = "MODEL_OUTSIDE_STORAGE_BOUNDARY"
     OFFLINE_OPERATION_UNAVAILABLE = "OFFLINE_OPERATION_UNAVAILABLE"
+    AUTHENTICATION_REQUIRED = "AUTHENTICATION_REQUIRED"
+    QUOTA_EXCEEDED = "QUOTA_EXCEEDED"
+    RUNTIME_VALIDATION_FAILED = "RUNTIME_VALIDATION_FAILED"
     INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
 
 
@@ -122,6 +125,9 @@ DEFAULT_MESSAGES: dict[AppErrorCode, str] = {
     AppErrorCode.OFFLINE_OPERATION_UNAVAILABLE: (
         "This operation requires network access and is unavailable in offline mode."
     ),
+    AppErrorCode.AUTHENTICATION_REQUIRED: "Authentication is required for this endpoint.",
+    AppErrorCode.QUOTA_EXCEEDED: "The request exceeds the configured service quota.",
+    AppErrorCode.RUNTIME_VALIDATION_FAILED: "The configured runtime is not usable.",
     AppErrorCode.INTERNAL_SERVER_ERROR: "An unexpected server error occurred.",
 }
 
@@ -168,5 +174,8 @@ HTTP_STATUS_BY_CODE: dict[AppErrorCode, int] = {
     AppErrorCode.MODEL_DELETE_FAILED: 500,
     AppErrorCode.MODEL_OUTSIDE_STORAGE_BOUNDARY: 422,
     AppErrorCode.OFFLINE_OPERATION_UNAVAILABLE: 503,
+    AppErrorCode.AUTHENTICATION_REQUIRED: 401,
+    AppErrorCode.QUOTA_EXCEEDED: 429,
+    AppErrorCode.RUNTIME_VALIDATION_FAILED: 503,
     AppErrorCode.INTERNAL_SERVER_ERROR: 500,
 }

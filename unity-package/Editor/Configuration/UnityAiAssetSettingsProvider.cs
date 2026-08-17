@@ -21,6 +21,12 @@ namespace UnityAiAssets.Editor.Configuration
             EditorGUILayout.LabelField("Backend", EditorStyles.boldLabel);
             settings.BackendBaseUrl = EditorGUILayout.TextField("Backend Base URL", settings.BackendBaseUrl);
             settings.ApiTimeoutSeconds = EditorGUILayout.IntField("API Timeout (seconds)", settings.ApiTimeoutSeconds);
+            settings.BackendApiKey = EditorGUILayout.PasswordField("Backend API Key", settings.BackendApiKey);
+            EditorGUILayout.HelpBox(
+                "Leave the API key empty for local loopback backends with authentication disabled. " +
+                "When the backend uses AUTHENTICATION_MODE=api_key, paste the same secret here. " +
+                "The key is stored in EditorPrefs on this machine, not in the project asset.",
+                MessageType.Info);
             EditorGUILayout.HelpBox(
                 "Generation waits until the backend finishes. Laptop GPUs often need 120–600+ seconds for 512×512. " +
                 "Default timeout is 1800s (30 minutes).",

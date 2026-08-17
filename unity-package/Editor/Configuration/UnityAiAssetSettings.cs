@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using UnityAiAssets.Editor.Api;
 using UnityAiAssets.Editor.AssetTypes;
 using UnityAiAssets.Editor.Importing;
 using UnityEditor;
@@ -22,6 +23,7 @@ namespace UnityAiAssets.Editor.Configuration
         const string DefaultBackendUrl = "http://127.0.0.1:8000";
         const string DefaultTextureFolder = "Assets/Generated/Textures";
         const string DefaultMaterialFolder = "Assets/Generated/Materials";
+        const string ApiKeyPrefKey = "UnityAiAssets.BackendApiKey";
 
         [SerializeField] string backendBaseUrl = DefaultBackendUrl;
         [SerializeField] int apiTimeoutSeconds = 1800;
@@ -148,6 +150,24 @@ namespace UnityAiAssets.Editor.Configuration
         {
             get => refreshCompatibilityOnReconnect;
             set { refreshCompatibilityOnReconnect = value; Save(true); }
+        }
+
+        /// <summary>
+        /// Optional backend API key stored in EditorPrefs, not the committed project asset.
+        /// </summary>
+        public string BackendApiKey
+        {
+            get => EditorPrefs.GetString(ApiKeyPrefKey, string.Empty);
+            set => EditorPrefs.SetString(ApiKeyPrefKey, value ?? string.Empty);
+        }
+
+        public static GenerationApiClient CreateApiClient()
+        {
+            var settings = instance;
+            return new GenerationApiClient(
+                settings.BackendBaseUrl,
+                settings.ApiTimeoutSeconds,
+                settings.BackendApiKey);
         }
 
         public void SaveSettings() => Save(true);

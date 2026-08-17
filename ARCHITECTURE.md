@@ -6,7 +6,7 @@ Local FastAPI texture generation (Diffusers behind an inference protocol) plus a
 
 **ComfyUI is not used** in any form.
 
-Application/package version: **0.11.0** (Milestone 11 — model management; includes Milestone 10 batch generation).
+Application/package version: **0.12.0** (Milestone 12 — packaging, auth, quotas, GPU validation, and a provider-neutral remote worker contract).
 
 ## Backend component responsibilities
 
@@ -19,7 +19,11 @@ Application/package version: **0.11.0** (Milestone 11 — model management; incl
 | `services/batch_service.py` | Batch persist/submit/cancel/retry-failed; state is aggregated from member jobs |
 | `services/batch_store.py` | Atomic JSON batch records on local disk |
 | `services/model_service.py` | Staged install, validation, hashes, storage, offline, safe deletion |
-| `services/job_executor.py` | Execution-backend protocol; local GPU executor wraps `GenerationService` |
+| `services/quota_service.py` | Process-local request-rate and queue-depth admission (not distributed) |
+| `services/runtime_validation.py` | GPU/runtime diagnostics for `/ready` and startup logs |
+| `services/remote_worker_http.py` | Provider-neutral HTTP adapter for `WORKER_MODE=remote` |
+| `core/auth.py` | Configurable API-key authenticator (constant-time compare) |
+| `services/job_executor.py` | Execution-backend protocol; local GPU executor and remote-worker adapter |
 | `api/schemas` | Versioned public Pydantic models (capabilities, generation, errors) |
 | `domain/generation_policy.py` | **Authoritative** generation limits and validation |
 | `domain/capabilities.py` | Capability domain models including processing support |

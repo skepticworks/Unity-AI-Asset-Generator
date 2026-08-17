@@ -106,7 +106,7 @@ namespace UnityAiAssets.Editor.Api
         readonly HttpClient _http;
         readonly int _timeoutSeconds;
 
-        public GenerationApiClient(string baseUrl, int timeoutSeconds)
+        public GenerationApiClient(string baseUrl, int timeoutSeconds, string apiKey)
         {
             if (string.IsNullOrWhiteSpace(baseUrl))
             {
@@ -120,6 +120,16 @@ namespace UnityAiAssets.Editor.Api
                 BaseAddress = new Uri(root, UriKind.Absolute),
                 Timeout = Timeout.InfiniteTimeSpan
             };
+            if (!string.IsNullOrWhiteSpace(apiKey))
+            {
+                _http.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey.Trim());
+            }
+        }
+
+        public GenerationApiClient(string baseUrl, int timeoutSeconds)
+            : this(baseUrl, timeoutSeconds, null)
+        {
         }
 
         public string LastRequestId { get; private set; }

@@ -73,6 +73,8 @@ REQUIRED_CAPABILITY_PATHS = [
     ("jobs", "supported"),
     ("batches", "supported"),
     ("batches", "maximum_jobs"),
+    ("model_management", "supported"),
+    ("model_management", "offline_mode"),
 ]
 
 REQUIRED_GENERATION_RESPONSE_KEYS = [

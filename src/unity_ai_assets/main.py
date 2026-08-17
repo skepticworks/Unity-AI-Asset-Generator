@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 
-from unity_ai_assets.api.routes import batches, capabilities, generation, health, jobs
+from unity_ai_assets.api.routes import batches, capabilities, generation, health, jobs, models
 from unity_ai_assets.core.config import Settings, get_settings
 from unity_ai_assets.core.exception_handlers import register_exception_handlers
 from unity_ai_assets.core.logging import configure_logging, get_logger
@@ -28,14 +28,19 @@ from unity_ai_assets.services.generation_service import GenerationService
 from unity_ai_assets.services.job_executor import LocalGenerationExecutor
 from unity_ai_assets.services.job_service import JobService
 from unity_ai_assets.services.job_store import JobStore
+from unity_ai_assets.services.model_service import ModelService
 from unity_ai_assets.services.output_service import OutputService
 
 logger = get_logger(__name__)
 
 
-def create_backend(settings: Settings) -> ImageGenerationBackend:
+def create_backend(
+    settings: Settings,
+    *,
+    managed_models: ModelService | None = None,
+) -> ImageGenerationBackend:
     """Construct the default Diffusers-backed inference engine."""
-    manager = ModelManager(settings)
+    manager = ModelManager(settings, managed_models=managed_models)
     return DiffusersBackend(manager)
 
 
@@ -94,7 +99,10 @@ def create_app(
         lifespan=lifespan,
     )
 
-    resolved_backend = backend or create_backend(resolved_settings)
+    model_service = ModelService(resolved_settings)
+    resolved_backend = backend or create_backend(
+        resolved_settings, managed_models=model_service
+    )
     background_remover = create_background_remover(
         enabled=resolved_settings.background_removal_enabled,
         backend=resolved_settings.background_removal_backend,
@@ -103,7 +111,7 @@ def create_app(
     )
 
     # Resolve device/dtype for inpaint without forcing txt2img weights to load.
-    device_manager = ModelManager(resolved_settings)
+    device_manager = ModelManager(resolved_settings, managed_models=model_service)
     inpaint_device = device_manager.resolve_device_safe()
     inpaint_dtype = device_manager.resolve_dtype_name_safe(inpaint_device)
 
@@ -112,7 +120,7 @@ def create_app(
         model_id=resolved_settings.seam_inpaint_model_id,
         device=inpaint_device,
         torch_dtype_name=inpaint_dtype,
-        local_files_only=resolved_settings.local_files_only,
+        local_files_only=resolved_settings.local_files_only or resolved_settings.offline_mode,
         enable_cpu_offload=resolved_settings.enable_cpu_offload,
         model_revision=resolved_settings.seam_inpaint_model_revision,
         force_fake=force_fake_seam_inpaint,
@@ -138,6 +146,7 @@ def create_app(
         backend=resolved_backend,
         background_remover=background_remover,
         seam_inpainter=seam_inpainter,
+        model_service=model_service,
     )
     job_directory = resolved_settings.job_directory or (
         resolved_settings.output_directory / "jobs"
@@ -158,12 +167,17 @@ def create_app(
         job_service=job_service,
         settings=resolved_settings,
     )
+    model_service.bind_runtime(
+        unload_callback=resolved_backend.unload_weights,
+        in_use_callback=job_service.has_active_jobs,
+    )
 
     app.state.settings = resolved_settings
     app.state.generation_policy = policy
     app.state.generation_service = generation_service
     app.state.output_service = output_service
     app.state.capability_service = capability_service
+    app.state.model_service = model_service
     app.state.job_store = job_store
     app.state.job_service = job_service
     app.state.batch_store = batch_store
@@ -179,6 +193,7 @@ def create_app(
     app.include_router(capabilities.router)
     app.include_router(jobs.router)
     app.include_router(batches.router)
+    app.include_router(models.router)
     app.include_router(generation.router)
 
     return app

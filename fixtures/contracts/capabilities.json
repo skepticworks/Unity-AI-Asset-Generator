@@ -1,14 +1,14 @@
 {
   "api": {
     "major": 1,
-    "minor": 4
+    "minor": 5
   },
   "application": {
     "name": "unity-ai-asset-generator",
     "version": "0.3.0"
   },
-    "schemas": {
-    "capabilities": "1.6",
+  "schemas": {
+    "capabilities": "1.7",
     "generation_manifest": "1.5"
   },
   "runtime": {
@@ -336,5 +336,14 @@
       "failed",
       "cancelled"
     ]
+  },
+  "model_management": {
+    "supported": true,
+    "offline_mode": false,
+    "storage_configured": true,
+    "storage_accessible": true,
+    "storage_writable": true,
+    "installed_count": 0,
+    "active_model_id": null
   }
 }

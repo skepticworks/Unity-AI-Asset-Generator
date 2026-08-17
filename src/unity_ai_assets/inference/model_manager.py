@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import threading
-from typing import Any
+from pathlib import Path
+from typing import Any, Protocol
 
 import torch
 
@@ -14,11 +15,25 @@ from unity_ai_assets.core.logging import get_logger
 logger = get_logger(__name__)
 
 
+class ManagedModelLookup(Protocol):
+    """Optional resolver for locally installed managed models."""
+
+    def resolve_local_path(self, model_id: str) -> Path | None:
+        """Return a local Diffusers directory when the id is a usable managed model."""
+        ...
+
+
 class ModelManager:
     """Resolve device/dtype and lazily load a reusable Diffusers pipeline."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        managed_models: ManagedModelLookup | None = None,
+    ) -> None:
         self._settings = settings
+        self._managed_models = managed_models
         self._pipeline: Any | None = None
         self._device: str | None = None
         self._dtype: torch.dtype | None = None
@@ -179,24 +194,25 @@ class ModelManager:
         device = self.device
         dtype = self.torch_dtype
         settings = self._settings
+        pretrained_id, local_only = self._resolve_pretrained_source()
 
         logger.info(
             "Loading model %s (revision=%s, variant=%s, device=%s, dtype=%s, local_files_only=%s)",
-            settings.model_id,
+            pretrained_id,
             settings.model_revision,
             settings.model_variant,
             device,
             self.torch_dtype_name,
-            settings.local_files_only,
+            local_only,
         )
 
         load_kwargs: dict[str, Any] = {
             "torch_dtype": dtype,
-            "local_files_only": settings.local_files_only,
+            "local_files_only": local_only,
             "safety_checker": None,
             "requires_safety_checker": False,
         }
-        if settings.model_revision:
+        if settings.model_revision and not Path(pretrained_id).exists():
             load_kwargs["revision"] = settings.model_revision
         if settings.model_variant:
             load_kwargs["variant"] = settings.model_variant
@@ -204,7 +220,7 @@ class ModelManager:
         try:
             # Diffusers stubs are incomplete; treat pipeline construction as Any.
             pipeline = StableDiffusionPipeline.from_pretrained(  # type: ignore[no-untyped-call]
-                settings.model_id,
+                pretrained_id,
                 **load_kwargs,
             )
         except Exception as exc:  # noqa: BLE001 — translated to ModelLoadError
@@ -252,6 +268,22 @@ class ModelManager:
                 pass
             _release_torch_memory(self._device)
             return True
+
+    def _resolve_pretrained_source(self) -> tuple[str, bool]:
+        """Prefer a validated managed install; otherwise the configured model id."""
+        settings = self._settings
+        local_only = bool(settings.local_files_only or settings.offline_mode)
+        lookup = self._managed_models
+        if lookup is not None:
+            local_path = lookup.resolve_local_path(settings.model_id)
+            if local_path is not None:
+                return str(local_path), True
+            get_active = getattr(lookup, "get_active", None)
+            if callable(get_active):
+                active = get_active()
+                if active is not None and getattr(active, "is_usable", False):
+                    return str(active.install_path), True
+        return settings.model_id, local_only
 
 
 def _release_torch_memory(device: str | None) -> None:

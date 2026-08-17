@@ -6,18 +6,19 @@ Local FastAPI texture generation (Diffusers behind an inference protocol) plus a
 
 **ComfyUI is not used** in any form.
 
-Application/package version: **0.10.0** (Milestone 10 — batch generation UI over the local job system).
+Application/package version: **0.11.0** (Milestone 11 — model management; includes Milestone 10 batch generation).
 
 ## Backend component responsibilities
 
 | Layer | Responsibility |
 |-------|----------------|
-| `api/routes` | HTTP transport: health, capabilities, jobs, batches, generation, image/manifest retrieval |
+| `api/routes` | HTTP transport: health, capabilities, jobs, batches, models, generation, image/manifest retrieval |
 | `services/job_service.py` | Job state machine, FIFO queue, worker loop, cancel/retry/restart recovery |
 | `services/job_store.py` | Atomic JSON job records on local disk |
 | `services/batch_expansion.py` | Deterministic prompt/seed/variation expansion into ordinary jobs |
 | `services/batch_service.py` | Batch persist/submit/cancel/retry-failed; state is aggregated from member jobs |
 | `services/batch_store.py` | Atomic JSON batch records on local disk |
+| `services/model_service.py` | Staged install, validation, hashes, storage, offline, safe deletion |
 | `services/job_executor.py` | Execution-backend protocol; local GPU executor wraps `GenerationService` |
 | `api/schemas` | Versioned public Pydantic models (capabilities, generation, errors) |
 | `domain/generation_policy.py` | **Authoritative** generation limits and validation |
@@ -33,7 +34,7 @@ Application/package version: **0.10.0** (Milestone 10 — batch generation UI ov
 | `core/error_codes.py` | Stable application + field issue codes |
 | `core/exception_handlers.py` | Translate AppError / Pydantic errors into the public envelope |
 | `core/middleware.py` | `X-Request-ID` validation, generation, propagation |
-| `core/config.py` | Settings including policy, background-removal, and job-queue env vars |
+| `core/config.py` | Settings including policy, background-removal, job-queue, model-storage, and offline env vars |
 
 ## Unity package components
 
@@ -47,9 +48,10 @@ Application/package version: **0.10.0** (Milestone 10 — batch generation UI ov
 | `Editor/Generation/` | Request model/factory, state, `GenerationController` orchestration |
 | `Editor/Importing/` | Path utilities, import profiles, `GeneratedAssetImporter`, materials |
 | `Editor/Metadata/` | Manifest-aware ScriptableObject + importer |
-| `Editor/UI/` | `Tools > AI Asset Generator` window, generation history, and batch generation |
+| `Editor/UI/` | `Tools > AI Asset Generator` window, generation history, batch generation, and model management |
 | `Editor/Tileable/` | Offset/wrap, seam analysis/correction, palette reduction, tileable previews |
-| `Editor/Tests/` | Edit Mode tests (capabilities, errors, manifests, integrity, tileable) |
+| `Editor/Models/` | Model catalog controller (list/install/validate/activate/delete) |
+| `Editor/Tests/` | Edit Mode tests (capabilities, errors, manifests, integrity, tileable, models) |
 | `Editor/AssetTypes/` | Asset type contracts |
 | `Editor/Prompting/` | Prompt/negative contracts and deterministic resolution |
 | `Editor/Profiles/` | `ProfileCatalog`, generation registry/schema, compatibility, persistence, migration |
@@ -300,6 +302,8 @@ sequenceDiagram
 | Schema | Owner | Writer | Reader compatibility |
 |--------|-------|--------|----------------------|
 | Capabilities `1.x` | Backend `CapabilityService` | Capability endpoint | Unity major-match; ignore unknown optional fields |
+| Model compatibility `1.x` | Backend `ModelService` | Install / revalidate | Major 1 applied to capability checks; newer major listed but ignored |
+| Model metadata `1.x` | Backend `ModelService` | Install / revalidate | Unknown license stays `known: false` |
 | Generation manifest `1.x` | Backend `OutputService` | New generations only | Unity major-match; legacy flat metadata converted on read |
 | API `1.x` | Backend routes under `/api/v1` | All versioned endpoints | Unity supports API major `1` |
 
@@ -308,6 +312,7 @@ sequenceDiagram
 - Backend binds to loopback by default
 - Generation IDs are UUIDs only; no arbitrary path reads
 - Capability endpoint is read-only and does not mutate model state
+- Model deletion only affects paths inside configured storage roots
 - Errors never include stack traces, tokens, cache paths, or absolute output paths as the primary contract
 - Request IDs are sanitized against header injection
 
@@ -320,6 +325,25 @@ sequenceDiagram
 5. Add policy constraints if the operation introduces new parameters
 6. Bump capability schema **minor** for additive fields; **major** for breaking changes
 7. Update fixtures, Unity models, validators, and docs together
+
+## Milestone 11 model management
+
+```mermaid
+flowchart LR
+  Src[Local dir or Hugging Face] --> Stage[.staging UUID]
+  Stage --> Val[Structure type hashes compatibility]
+  Val -->|fail| Drop[Delete staging not registered]
+  Val -->|pass| Move[Atomic move into storage slug]
+  Move --> Meta[.metadata.json plus .compatibility.json]
+  Meta --> Reg[Registry discover]
+  Reg --> Caps[Capability overlay for active model]
+  Caps --> Gen[Existing generation jobs]
+```
+
+Install never registers a model until validation succeeds. Compatibility schema 1.x
+restricts `operations.*.supported` through the existing family/backend capability path.
+Offline mode blocks Hugging Face installs with `OFFLINE_OPERATION_UNAVAILABLE`.
+Deletion requires `confirm=true` and refuses paths outside storage roots.
 
 ## Milestone 5 sprite/icon processing flow
 

@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "unity-ai-assets"
-version = "0.10.0"
-description = "Local AI-assisted Unity 2D asset generation with a persistent local job queue and batch UI"
+version = "0.11.0"
+description = "Local AI-assisted Unity 2D asset generation with managed local models, a job queue, and batch UI"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 license = { text = "MIT" }
@@ -80,8 +80,9 @@ module = [
     "diffusers.*",
     "transformers",
     "transformers.*",
-    "accelerate",
-    "accelerate.*",
+    "huggingface-hub",
+    "huggingface_hub",
+    "huggingface_hub.*",
     "rembg",
     "rembg.*",
 ]

@@ -44,6 +44,14 @@ class AppErrorCode(StrEnum):
     BATCH_NOT_FOUND = "BATCH_NOT_FOUND"
     BATCH_REQUEST_INVALID = "BATCH_REQUEST_INVALID"
     BATCH_TOO_LARGE = "BATCH_TOO_LARGE"
+    MODEL_NOT_FOUND = "MODEL_NOT_FOUND"
+    MODEL_INSTALL_FAILED = "MODEL_INSTALL_FAILED"
+    MODEL_VALIDATION_FAILED = "MODEL_VALIDATION_FAILED"
+    MODEL_IN_USE = "MODEL_IN_USE"
+    MODEL_STORAGE_INVALID = "MODEL_STORAGE_INVALID"
+    MODEL_DELETE_FAILED = "MODEL_DELETE_FAILED"
+    MODEL_OUTSIDE_STORAGE_BOUNDARY = "MODEL_OUTSIDE_STORAGE_BOUNDARY"
+    OFFLINE_OPERATION_UNAVAILABLE = "OFFLINE_OPERATION_UNAVAILABLE"
     INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
 
 
@@ -102,6 +110,18 @@ DEFAULT_MESSAGES: dict[AppErrorCode, str] = {
     AppErrorCode.BATCH_NOT_FOUND: "The requested generation batch was not found.",
     AppErrorCode.BATCH_REQUEST_INVALID: "The batch generation request is invalid.",
     AppErrorCode.BATCH_TOO_LARGE: "The batch would create more jobs than the configured maximum.",
+    AppErrorCode.MODEL_NOT_FOUND: "The requested model was not found.",
+    AppErrorCode.MODEL_INSTALL_FAILED: "Model installation failed.",
+    AppErrorCode.MODEL_VALIDATION_FAILED: "The model failed validation.",
+    AppErrorCode.MODEL_IN_USE: "The model is currently in use and cannot be modified.",
+    AppErrorCode.MODEL_STORAGE_INVALID: "The model storage directory is missing or inaccessible.",
+    AppErrorCode.MODEL_DELETE_FAILED: "The model could not be deleted completely.",
+    AppErrorCode.MODEL_OUTSIDE_STORAGE_BOUNDARY: (
+        "The requested path is outside the managed model-storage boundary."
+    ),
+    AppErrorCode.OFFLINE_OPERATION_UNAVAILABLE: (
+        "This operation requires network access and is unavailable in offline mode."
+    ),
     AppErrorCode.INTERNAL_SERVER_ERROR: "An unexpected server error occurred.",
 }
 
@@ -140,5 +160,13 @@ HTTP_STATUS_BY_CODE: dict[AppErrorCode, int] = {
     AppErrorCode.BATCH_NOT_FOUND: 404,
     AppErrorCode.BATCH_REQUEST_INVALID: 422,
     AppErrorCode.BATCH_TOO_LARGE: 422,
+    AppErrorCode.MODEL_NOT_FOUND: 404,
+    AppErrorCode.MODEL_INSTALL_FAILED: 422,
+    AppErrorCode.MODEL_VALIDATION_FAILED: 422,
+    AppErrorCode.MODEL_IN_USE: 409,
+    AppErrorCode.MODEL_STORAGE_INVALID: 422,
+    AppErrorCode.MODEL_DELETE_FAILED: 500,
+    AppErrorCode.MODEL_OUTSIDE_STORAGE_BOUNDARY: 422,
+    AppErrorCode.OFFLINE_OPERATION_UNAVAILABLE: 503,
     AppErrorCode.INTERNAL_SERVER_ERROR: 500,
 }

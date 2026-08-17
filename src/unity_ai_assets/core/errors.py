@@ -324,6 +324,106 @@ class BatchTooLargeError(AppError):
         )
 
 
+class ModelNotFoundError(AppError):
+    """Raised when a managed model id does not resolve to an installed record."""
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, code=AppErrorCode.MODEL_NOT_FOUND)
+
+
+class ModelInstallError(AppError):
+    """Raised when a model cannot be copied, downloaded, or staged."""
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, code=AppErrorCode.MODEL_INSTALL_FAILED, details=details)
+
+
+class ModelValidationError(AppError):
+    """Raised when an installed or staged model fails structural/hash checks."""
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        details: dict[str, Any] | None = None,
+        field_issues: dict[str, list[FieldIssue]] | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=AppErrorCode.MODEL_VALIDATION_FAILED,
+            details=details,
+            field_issues=field_issues,
+        )
+
+
+class ModelInUseError(AppError):
+    """Raised when a model cannot be deleted or replaced while loaded or generating."""
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, code=AppErrorCode.MODEL_IN_USE)
+
+
+class ModelStorageInvalidError(AppError):
+    """Raised when the configured model-storage directory cannot be used."""
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, code=AppErrorCode.MODEL_STORAGE_INVALID, details=details)
+
+
+class ModelDeleteError(AppError):
+    """Raised when deletion is incomplete or cannot finish safely."""
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, code=AppErrorCode.MODEL_DELETE_FAILED, details=details)
+
+
+class ModelOutsideStorageBoundaryError(AppError):
+    """Raised when a delete/install path escapes managed storage."""
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=AppErrorCode.MODEL_OUTSIDE_STORAGE_BOUNDARY,
+            details=details,
+        )
+
+
+class OfflineOperationUnavailableError(AppError):
+    """Raised when a network-dependent model operation is blocked by offline mode."""
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=AppErrorCode.OFFLINE_OPERATION_UNAVAILABLE,
+            details=details,
+        )
+
+
 @dataclass
 class ErrorEnvelope:
     """Public API error envelope builder helpers."""

@@ -29,6 +29,7 @@ def sprite_settings(tmp_path: Path) -> Settings:
         device="cpu",
         torch_dtype="float32",
         output_directory=tmp_path / "generated",
+        model_storage_directory=tmp_path / "models",
         max_width=1024,
         max_height=1024,
         enable_cpu_offload=False,
@@ -55,7 +56,7 @@ def sprite_client(sprite_settings: Settings) -> TestClient:
 
 def test_capabilities_report_sprite_icon_and_processing(sprite_client: TestClient) -> None:
     payload = sprite_client.get("/api/v1/capabilities").json()
-    assert payload["schemas"]["capabilities"] == "1.6"
+    assert payload["schemas"]["capabilities"] == "1.7"
     t2i = payload["operations"]["text_to_image"]
     assert "sprite" in t2i["asset_types"]
     assert "icon" in t2i["asset_types"]

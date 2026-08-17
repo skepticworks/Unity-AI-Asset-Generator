@@ -267,6 +267,58 @@ namespace UnityAiAssets.Editor.Tests
         }
 
         [Test]
+        public void Parse_ReadsModelManagementWhenPresent()
+        {
+            const string json = @"{
+                ""api"": { ""major"": 1, ""minor"": 4 },
+                ""application"": { ""name"": ""unity-ai-asset-generator"", ""version"": ""0.10.0"" },
+                ""schemas"": { ""capabilities"": ""1.6"", ""generation_manifest"": ""1.5"" },
+                ""runtime"": {
+                    ""configured_device"": ""cpu"", ""resolved_device"": ""cpu"",
+                    ""configured_precision"": ""float32"", ""resolved_precision"": ""float32"",
+                    ""model_loaded"": false
+                },
+                ""model"": { ""id"": ""fake/model"", ""family"": ""sd15"" },
+                ""operations"": {
+                    ""text_to_image"": {
+                        ""supported"": true, ""asset_types"": [""texture""],
+                        ""dimensions"": {
+                            ""minimum_width"": 8, ""maximum_width"": 1024,
+                            ""minimum_height"": 8, ""maximum_height"": 1024,
+                            ""width_multiple"": 8, ""height_multiple"": 8
+                        },
+                        ""steps"": { ""minimum"": 1, ""maximum"": 150, ""default"": 25 },
+                        ""guidance_scale"": { ""minimum"": 0.0, ""maximum"": 30.0, ""default"": 7.0 },
+                        ""seed"": { ""minimum"": 0, ""maximum"": 4294967295, ""random_when_omitted"": true },
+                        ""prompt"": { ""maximum_length"": 2000 },
+                        ""negative_prompt"": { ""supported"": true, ""maximum_length"": 2000 },
+                        ""output_name"": { ""maximum_length"": 100 },
+                        ""schedulers"": { ""selection_supported"": false, ""default"": ""pndm"", ""available"": [] }
+                    },
+                    ""image_to_image"": { ""supported"": false },
+                    ""inpainting"": { ""supported"": false }
+                },
+                ""precision"": { ""configured"": ""float32"", ""resolved"": ""float32"", ""available"": [""float32""], ""user_selectable"": false },
+                ""limits"": { ""maximum_concurrent_generations"": 1 },
+                ""model_management"": {
+                    ""supported"": true,
+                    ""offline_mode"": true,
+                    ""storage_configured"": true,
+                    ""storage_accessible"": true,
+                    ""storage_writable"": false,
+                    ""installed_count"": 2,
+                    ""active_model_id"": ""acme__sd15""
+                }
+            }";
+            var document = CapabilityDocument.Parse(json);
+            Assert.IsNotNull(document.ModelManagement);
+            Assert.IsTrue(document.ModelManagement.Supported);
+            Assert.IsTrue(document.ModelManagement.OfflineMode);
+            Assert.AreEqual(2, document.ModelManagement.InstalledCount);
+            Assert.AreEqual("acme__sd15", document.ModelManagement.ActiveModelId);
+        }
+
+        [Test]
         public void TryParse_ReturnsFalseForMalformedJson()
         {
             Assert.IsFalse(CapabilityDocument.TryParse("{not valid json", out var document));

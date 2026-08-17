@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -46,6 +47,26 @@ namespace UnityAiAssets.Editor.Api
         Task<BatchDocument> CancelBatchAsync(string batchId, CancellationToken cancellationToken);
 
         Task<BatchDocument> RetryFailedBatchAsync(string batchId, CancellationToken cancellationToken);
+
+        Task<ModelListDocument> ListModelsAsync(CancellationToken cancellationToken);
+
+        Task<InstalledModelDocument> GetModelAsync(string modelId, CancellationToken cancellationToken);
+
+        Task<InstalledModelDocument> InstallModelAsync(string jsonBody, CancellationToken cancellationToken);
+
+        Task<InstalledModelDocument> ValidateModelAsync(string modelId, CancellationToken cancellationToken);
+
+        Task<InstalledModelDocument> ActivateModelAsync(string modelId, CancellationToken cancellationToken);
+
+        Task DeleteModelAsync(string modelId, bool confirm, CancellationToken cancellationToken);
+
+        Task<ModelStorageDocument> GetModelStorageAsync(CancellationToken cancellationToken);
+
+        Task<ModelStorageDocument> UpdateModelStorageAsync(string directory, CancellationToken cancellationToken);
+
+        Task<ModelDiskUsageDocument> RefreshModelDiskUsageAsync(CancellationToken cancellationToken);
+
+        Task<bool> SetOfflineModeAsync(bool enabled, CancellationToken cancellationToken);
 
         Task<byte[]> DownloadGenerationImageAsync(string generationId, CancellationToken cancellationToken);
 
@@ -203,6 +224,158 @@ namespace UnityAiAssets.Editor.Api
                 ApiEndpoints.JobRetry(jobId), "{}", Math.Min(30, _timeoutSeconds), cancellationToken)
                 .ConfigureAwait(true);
             return ParseJob(body);
+        }
+
+        public async Task<ModelListDocument> ListModelsAsync(CancellationToken cancellationToken)
+        {
+            var body = await GetStringAsync(
+                ApiEndpoints.Models, Math.Min(30, _timeoutSeconds), cancellationToken)
+                .ConfigureAwait(true);
+            if (!ModelListDocument.TryParse(body, out var document) || document == null)
+            {
+                throw new ApiException(
+                    "Failed to parse the model catalog returned by the backend.",
+                    ApiFailureKind.Deserialization,
+                    requestId: LastRequestId);
+            }
+
+            return document;
+        }
+
+        public async Task<InstalledModelDocument> GetModelAsync(
+            string modelId, CancellationToken cancellationToken)
+        {
+            ValidateModelId(modelId);
+            var body = await GetStringAsync(
+                ApiEndpoints.Model(modelId), Math.Min(30, _timeoutSeconds), cancellationToken)
+                .ConfigureAwait(true);
+            return ParseModel(body);
+        }
+
+        public async Task<InstalledModelDocument> InstallModelAsync(
+            string jsonBody, CancellationToken cancellationToken)
+        {
+            var body = await PostJsonAsync(
+                ApiEndpoints.ModelInstall, jsonBody, _timeoutSeconds, cancellationToken)
+                .ConfigureAwait(true);
+            return ParseModel(body);
+        }
+
+        public async Task<InstalledModelDocument> ValidateModelAsync(
+            string modelId, CancellationToken cancellationToken)
+        {
+            ValidateModelId(modelId);
+            var body = await PostJsonAsync(
+                ApiEndpoints.ModelValidate(modelId), "{}", Math.Min(120, _timeoutSeconds),
+                cancellationToken)
+                .ConfigureAwait(true);
+            return ParseModel(body);
+        }
+
+        public async Task<InstalledModelDocument> ActivateModelAsync(
+            string modelId, CancellationToken cancellationToken)
+        {
+            ValidateModelId(modelId);
+            var body = await PostJsonAsync(
+                ApiEndpoints.ModelActivate(modelId), "{}", Math.Min(30, _timeoutSeconds),
+                cancellationToken)
+                .ConfigureAwait(true);
+            return ParseModel(body);
+        }
+
+        public async Task DeleteModelAsync(
+            string modelId, bool confirm, CancellationToken cancellationToken)
+        {
+            ValidateModelId(modelId);
+            var path = ApiEndpoints.Model(modelId) + (confirm ? "?confirm=true" : "?confirm=false");
+            await DeleteAsync(path, Math.Min(60, _timeoutSeconds), cancellationToken)
+                .ConfigureAwait(true);
+        }
+
+        public async Task<ModelStorageDocument> GetModelStorageAsync(CancellationToken cancellationToken)
+        {
+            var body = await GetStringAsync(
+                ApiEndpoints.ModelStorage, Math.Min(30, _timeoutSeconds), cancellationToken)
+                .ConfigureAwait(true);
+            if (!ModelStorageDocument.TryParse(body, out var document) || document == null)
+            {
+                throw new ApiException(
+                    "Failed to parse model storage status.",
+                    ApiFailureKind.Deserialization,
+                    requestId: LastRequestId);
+            }
+
+            return document;
+        }
+
+        public async Task<ModelStorageDocument> UpdateModelStorageAsync(
+            string directory, CancellationToken cancellationToken)
+        {
+            var json = JsonWriter.Serialize(
+                new Dictionary<string, object> { { "directory", directory ?? string.Empty } },
+                indented: false);
+            var body = await PutJsonAsync(
+                ApiEndpoints.ModelStorage, json, Math.Min(30, _timeoutSeconds), cancellationToken)
+                .ConfigureAwait(true);
+            if (!ModelStorageDocument.TryParse(body, out var document) || document == null)
+            {
+                throw new ApiException(
+                    "Failed to parse the updated model storage status.",
+                    ApiFailureKind.Deserialization,
+                    requestId: LastRequestId);
+            }
+
+            return document;
+        }
+
+        public async Task<ModelDiskUsageDocument> RefreshModelDiskUsageAsync(
+            CancellationToken cancellationToken)
+        {
+            var body = await PostJsonAsync(
+                ApiEndpoints.ModelDiskUsageRefresh, "{}", Math.Min(120, _timeoutSeconds),
+                cancellationToken)
+                .ConfigureAwait(true);
+            if (!ModelDiskUsageDocument.TryParse(body, out var document) || document == null)
+            {
+                throw new ApiException(
+                    "Failed to parse model disk usage.",
+                    ApiFailureKind.Deserialization,
+                    requestId: LastRequestId);
+            }
+
+            return document;
+        }
+
+        public async Task<bool> SetOfflineModeAsync(bool enabled, CancellationToken cancellationToken)
+        {
+            var json = JsonWriter.Serialize(
+                new Dictionary<string, object> { { "enabled", enabled } },
+                indented: false);
+            var body = await PutJsonAsync(
+                ApiEndpoints.ModelOffline, json, Math.Min(30, _timeoutSeconds), cancellationToken)
+                .ConfigureAwait(true);
+            if (!JsonNode.TryParse(body, out var node) || node == null)
+            {
+                throw new ApiException(
+                    "Failed to parse the offline-mode response.",
+                    ApiFailureKind.Deserialization,
+                    requestId: LastRequestId);
+            }
+
+            return node.Get("offline_mode").AsBool(enabled);
+        }
+
+        InstalledModelDocument ParseModel(string body)
+        {
+            if (!InstalledModelDocument.TryParse(body, out var document) || document == null)
+            {
+                throw new ApiException(
+                    "Failed to parse the model record returned by the backend.",
+                    ApiFailureKind.Deserialization,
+                    requestId: LastRequestId);
+            }
+
+            return document;
         }
 
         JobDocument ParseJob(string body)
@@ -401,6 +574,30 @@ namespace UnityAiAssets.Editor.Api
             var body = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
             EnsureSuccess(response, body);
             return body;
+        }
+
+        async Task<string> PutJsonAsync(
+            string path, string json, int timeoutSeconds, CancellationToken cancellationToken)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Put, TrimOrAbsolute(path))
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+            using var response = await SendWithTimeoutAsync(request, timeoutSeconds, cancellationToken)
+                .ConfigureAwait(true);
+            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
+            EnsureSuccess(response, body);
+            return body;
+        }
+
+        async Task DeleteAsync(
+            string path, int timeoutSeconds, CancellationToken cancellationToken)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Delete, TrimOrAbsolute(path));
+            using var response = await SendWithTimeoutAsync(request, timeoutSeconds, cancellationToken)
+                .ConfigureAwait(true);
+            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
+            EnsureSuccess(response, body);
         }
 
         async Task<byte[]> GetBytesAsync(
@@ -621,6 +818,11 @@ namespace UnityAiAssets.Editor.Api
         static void ValidateBatchId(string batchId)
         {
             ValidateId(batchId, "batch_id");
+        }
+
+        static void ValidateModelId(string modelId)
+        {
+            ValidateId(modelId, "model_id");
         }
 
         static void ValidateId(string value, string fieldName)

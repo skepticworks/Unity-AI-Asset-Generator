@@ -47,6 +47,24 @@ class Settings(BaseSettings):
     device: DeviceChoice = Field(default="auto")
     torch_dtype: TorchDtypeChoice = Field(default="auto")
     output_directory: Path = Field(default=Path("generated"))
+    model_storage_directory: Path = Field(
+        default=Path("models"),
+        description="Primary directory for managed Diffusers model installs.",
+    )
+    model_storage_search_paths: tuple[Path, ...] = Field(
+        default=(),
+        description=(
+            "Additional directories scanned for previously installed models "
+            "(comma-separated paths in MODEL_STORAGE_SEARCH_PATHS)."
+        ),
+    )
+    offline_mode: bool = Field(
+        default=False,
+        description=(
+            "When true, block network-dependent model-management operations. "
+            "Locally installed and validated models remain usable."
+        ),
+    )
     enable_cpu_offload: bool = Field(default=False)
     exclusive_model_vram: bool = Field(
         default=True,
@@ -209,6 +227,17 @@ class Settings(BaseSettings):
     def _empty_job_dir_to_none(cls, value: object) -> object:
         if value == "":
             return None
+        return value
+
+    @field_validator("model_storage_search_paths", mode="before")
+    @classmethod
+    def _parse_search_paths(cls, value: object) -> object:
+        if value is None or value == "":
+            return ()
+        if isinstance(value, str):
+            return tuple(Path(part.strip()) for part in value.split(",") if part.strip())
+        if isinstance(value, list | tuple):
+            return tuple(Path(str(part)) for part in value if str(part).strip())
         return value
 
     @field_validator("seam_inpaint_model_revision", mode="before")

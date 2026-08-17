@@ -257,6 +257,17 @@ namespace UnityAiAssets.Editor.Api
         public List<string> States = new List<string>();
     }
 
+    public sealed class ModelManagementInfo
+    {
+        public bool Supported;
+        public bool OfflineMode;
+        public bool StorageConfigured;
+        public bool StorageAccessible;
+        public bool StorageWritable;
+        public int InstalledCount;
+        public string ActiveModelId;
+    }
+
     /// <summary>
     /// Typed, parsed form of GET /api/v1/capabilities. Built from <see cref="JsonNode"/>
     /// rather than JsonUtility because the payload contains string arrays nested inside
@@ -274,6 +285,7 @@ namespace UnityAiAssets.Editor.Api
         public LimitsInfo Limits;
         public JobSystemInfo Jobs;
         public BatchGenerationInfo Batches;
+        public ModelManagementInfo ModelManagement;
 
         public SchemaVersion CapabilitiesSchemaVersion => SchemaVersion.Parse(Schemas.Capabilities);
 
@@ -316,6 +328,7 @@ namespace UnityAiAssets.Editor.Api
             var limitsNode = root.Get("limits");
             var jobsNode = root.Get("jobs");
             var batchesNode = root.Get("batches");
+            var modelManagementNode = root.Get("model_management");
 
             return new CapabilityDocument
             {
@@ -382,6 +395,18 @@ namespace UnityAiAssets.Editor.Api
                         MaximumVariations = Math.Max(1, batchesNode.Get("maximum_variations").AsInt(16)),
                         SeedModes = batchesNode.Get("seed_modes").AsStringList(),
                         States = batchesNode.Get("states").AsStringList(),
+                    }
+                    : null,
+                ModelManagement = modelManagementNode != null && modelManagementNode.IsObject
+                    ? new ModelManagementInfo
+                    {
+                        Supported = modelManagementNode.Get("supported").AsBool(),
+                        OfflineMode = modelManagementNode.Get("offline_mode").AsBool(),
+                        StorageConfigured = modelManagementNode.Get("storage_configured").AsBool(),
+                        StorageAccessible = modelManagementNode.Get("storage_accessible").AsBool(),
+                        StorageWritable = modelManagementNode.Get("storage_writable").AsBool(),
+                        InstalledCount = modelManagementNode.Get("installed_count").AsInt(),
+                        ActiveModelId = modelManagementNode.Get("active_model_id").AsString(),
                     }
                     : null,
             };

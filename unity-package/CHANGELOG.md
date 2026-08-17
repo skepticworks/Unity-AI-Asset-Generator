@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.11.0 — Milestone 11 model management
+
+- Added a Models foldout for installed Diffusers models: validation state, license/source
+  provenance, compatibility, cached disk usage, activate, revalidate, and delete.
+- Delete asks for an editor confirmation dialog before calling the backend. The backend
+  still refuses paths outside managed storage.
+- Offline mode is toggled from the same panel. Remote installs are reported as unavailable
+  offline rather than as generic failures. Local validated models remain listed and usable.
+- Capabilities schema 1.7 advertises `model_management` (counts, offline, storage health)
+  without walking the filesystem on every capability refresh. API minor 1.5.
+
 ## 0.10.0 — Milestone 10 batch generation UI
 
 - Dedicated **Tools → AI Asset Generator → Batch Generation** window configures prompts, seed

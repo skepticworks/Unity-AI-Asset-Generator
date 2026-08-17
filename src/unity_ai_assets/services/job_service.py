@@ -19,7 +19,7 @@ from unity_ai_assets.core.errors import (
     JobStateConflictError,
 )
 from unity_ai_assets.core.logging import get_logger
-from unity_ai_assets.domain.enums import JobProgressStage, JobState
+from unity_ai_assets.domain.enums import JOB_ACTIVE_STATES, JobProgressStage, JobState
 from unity_ai_assets.domain.jobs import (
     JobError,
     JobProgress,
@@ -201,6 +201,13 @@ class JobService:
         return self._store.list_records(
             state=state, batch_id=batch_id, limit=limit, offset=offset
         )
+
+    def has_active_jobs(self) -> bool:
+        """True when any job is queued, running, or cancelling."""
+        with self._lock:
+            if self._busy > 0:
+                return True
+        return any(record.state.value in JOB_ACTIVE_STATES for record in self._store.all_records())
 
     def cancel(self, job_id: str) -> JobRecord:
         job_id = validate_job_id(job_id)

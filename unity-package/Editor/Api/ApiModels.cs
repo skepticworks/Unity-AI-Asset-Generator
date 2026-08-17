@@ -256,6 +256,12 @@ namespace UnityAiAssets.Editor.Api
         public const string Jobs = "/api/v1/jobs";
         public const string Batches = "/api/v1/batches";
         public const string BatchPreview = "/api/v1/batches/preview";
+        public const string Models = "/api/v1/models";
+        public const string ModelStorage = "/api/v1/models/storage";
+        public const string ModelDiskUsage = "/api/v1/models/disk-usage";
+        public const string ModelDiskUsageRefresh = "/api/v1/models/disk-usage/refresh";
+        public const string ModelOffline = "/api/v1/models/offline";
+        public const string ModelInstall = "/api/v1/models/install";
 
         public static string Job(string jobId) => $"/api/v1/jobs/{jobId}";
 
@@ -270,6 +276,12 @@ namespace UnityAiAssets.Editor.Api
         public static string JobCancel(string jobId) => $"/api/v1/jobs/{jobId}/cancel";
 
         public static string JobRetry(string jobId) => $"/api/v1/jobs/{jobId}/retry";
+
+        public static string Model(string modelId) => $"/api/v1/models/{modelId}";
+
+        public static string ModelValidate(string modelId) => $"/api/v1/models/{modelId}/validate";
+
+        public static string ModelActivate(string modelId) => $"/api/v1/models/{modelId}/activate";
 
         public static string GenerationImage(string generationId) =>
             $"/api/v1/generations/{generationId}/image";

@@ -136,6 +136,7 @@ namespace UnityAiAssets.Editor.Tests
             Assert.AreEqual("/api/v1/generations/textures", ApiEndpoints.GenerateTexture);
             Assert.AreEqual("/api/v1/jobs", ApiEndpoints.Jobs);
             Assert.AreEqual("/api/v1/batches", ApiEndpoints.Batches);
+            Assert.AreEqual("/api/v1/models", ApiEndpoints.Models);
             Assert.AreEqual(
                 "/api/v1/generations/abc/image",
                 ApiEndpoints.GenerationImage("abc"));

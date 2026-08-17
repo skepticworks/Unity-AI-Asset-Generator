@@ -6,6 +6,7 @@ using UnityAiAssets.Editor.Capabilities;
 using UnityAiAssets.Editor.Configuration;
 using UnityAiAssets.Editor.Generation;
 using UnityAiAssets.Editor.Importing;
+using UnityAiAssets.Editor.Models;
 using UnityAiAssets.Editor.Profiles;
 using UnityAiAssets.Editor.Tileable;
 using UnityEditor;
@@ -20,6 +21,7 @@ namespace UnityAiAssets.Editor.UI
     public sealed class UnityAiAssetGeneratorWindow : EditorWindow
     {
         GenerationController _controller;
+        ModelManagementController _models;
         TextureGenerationRequestModel _request;
         Vector2 _scroll;
         ProfileCatalog _catalog;
@@ -27,6 +29,8 @@ namespace UnityAiAssets.Editor.UI
         GenerationProfileResolver _resolver;
 
         bool _foldBackend = true;
+        bool _foldModels;
+        bool _modelsOpenedOnce;
         bool _foldProfile = true;
         bool _foldPrompt = true;
         bool _foldGeneration = true;
@@ -104,7 +108,7 @@ namespace UnityAiAssets.Editor.UI
 
         void EnsureInitialized()
         {
-            if (_controller != null && _request != null && _catalog != null && _profiles != null && _resolver != null)
+            if (_controller != null && _models != null && _request != null && _catalog != null && _profiles != null && _resolver != null)
                 return;
 
             var settings = UnityAiAssetSettings.instance;
@@ -114,6 +118,7 @@ namespace UnityAiAssets.Editor.UI
             _resolver = new GenerationProfileResolver(_catalog);
             _controller = new GenerationController(
                 profileRegistry: _profiles, profileResolver: _resolver, catalog: _catalog);
+            _models = new ModelManagementController();
             _request = new TextureGenerationRequestModel
             {
                 DestinationFolder = settings.DefaultTextureDirectory,
@@ -173,6 +178,7 @@ namespace UnityAiAssets.Editor.UI
             using (new EditorGUI.DisabledScope(busy))
             {
                 DrawBackendSection(progress, busy);
+                DrawModelsSection(busy);
                 DrawProfileSection(progress);
                 DrawPromptSection(progress);
                 DrawGenerationSection(progress);
@@ -290,6 +296,232 @@ namespace UnityAiAssets.Editor.UI
             }
 
             EditorGUILayout.EndFoldoutHeaderGroup();
+        }
+
+        void DrawModelsSection(bool generationBusy)
+        {
+            _foldModels = EditorGUILayout.BeginFoldoutHeaderGroup(_foldModels, "Models");
+            if (_foldModels)
+            {
+                if (_models == null)
+                    _models = new ModelManagementController();
+                if (!_modelsOpenedOnce && !_models.IsBusy)
+                {
+                    _modelsOpenedOnce = true;
+                    RunSafe(() => _models.RefreshAsync());
+                }
+
+                var state = _models.State;
+                var modelBusy = _models.IsBusy || generationBusy;
+                var catalog = state.Catalog;
+                var storage = catalog != null ? catalog.Storage : null;
+                var offline = catalog != null && catalog.OfflineMode;
+
+                EditorGUILayout.LabelField(
+                    "Install, validate, and remove local Diffusers models. Generation still uses the active model.",
+                    _sectionHelp);
+
+                using (new EditorGUI.DisabledScope(modelBusy))
+                {
+                    EditorGUILayout.BeginHorizontal();
+                    if (GUILayout.Button(
+                            Tip("Refresh Models", "List installed models without walking disk usage."),
+                            GUILayout.Height(22)))
+                        RunSafe(() => _models.RefreshAsync());
+                    if (GUILayout.Button(
+                            Tip("Refresh Disk Usage", "Walk managed model files once and cache sizes."),
+                            GUILayout.Height(22)))
+                        RunSafe(() => _models.RefreshDiskUsageAsync());
+                    EditorGUILayout.EndHorizontal();
+
+                    var offlineValue = EditorGUILayout.Toggle(
+                        Tip("Offline Mode",
+                            "Blocks network-dependent installs. Local validated models stay usable."),
+                        offline);
+                    if (offlineValue != offline)
+                        RunSafe(() => _models.SetOfflineAsync(offlineValue));
+
+                    if (offline)
+                    {
+                        EditorGUILayout.HelpBox(
+                            "Offline mode is on. Hugging Face installs are unavailable; this is not a backend error.",
+                            MessageType.Info);
+                    }
+
+                    if (storage != null)
+                    {
+                        EditorGUILayout.LabelField("Storage", storage.Directory ?? "unknown", _sectionHelp);
+                        var health = storage.Accessible
+                            ? (storage.Writable ? "accessible, writable" : "accessible, read-only")
+                            : "inaccessible";
+                        if (!string.IsNullOrWhiteSpace(storage.Issue))
+                            health += " — " + storage.Issue;
+                        EditorGUILayout.LabelField("Status", health, _sectionHelp);
+                        if (storage.FreeBytes.HasValue)
+                            EditorGUILayout.LabelField("Free space", FormatBytes(storage.FreeBytes.Value), _sectionHelp);
+                    }
+
+                    state.StorageDirectoryDraft = EditorGUILayout.TextField(
+                        Tip("Storage Directory", "Backend model-storage path. Previous locations stay searchable."),
+                        state.StorageDirectoryDraft ?? string.Empty);
+                    if (GUILayout.Button("Apply Storage Directory", GUILayout.Height(20)))
+                        RunSafe(() => _models.ApplyStorageDirectoryAsync());
+
+                    if (state.DiskUsage != null)
+                    {
+                        EditorGUILayout.LabelField(
+                            "Managed models on disk",
+                            FormatBytes(state.DiskUsage.TotalBytes) +
+                            (state.DiskUsage.Stale ? " (stale)" : ""),
+                            _sectionHelp);
+                    }
+
+                    var models = catalog != null && catalog.Models != null
+                        ? catalog.Models
+                        : new System.Collections.Generic.List<UnityAiAssets.Editor.Api.InstalledModelDocument>();
+                    if (models.Count == 0)
+                    {
+                        EditorGUILayout.HelpBox(
+                            "No validated models are installed in managed storage.",
+                            MessageType.None);
+                    }
+                    else
+                    {
+                        var labels = new string[models.Count];
+                        var selectedIndex = 0;
+                        for (var i = 0; i < models.Count; i++)
+                        {
+                            var item = models[i];
+                            var mark = item.Active ? " (active)" : string.Empty;
+                            var valid = item.Usable ? "" : " [invalid]";
+                            labels[i] = (item.Name ?? item.Id) + mark + valid;
+                            if (item.Id == state.SelectedModelId)
+                                selectedIndex = i;
+                        }
+
+                        var next = EditorGUILayout.Popup(
+                            Tip("Installed", "Select a managed model to inspect."),
+                            selectedIndex,
+                            labels);
+                        if (next >= 0 && next < models.Count)
+                            state.SelectedModelId = models[next].Id;
+                    }
+
+                    var selected = state.Selected;
+                    if (selected != null)
+                    {
+                        EditorGUILayout.LabelField("Id", selected.Id, _sectionHelp);
+                        EditorGUILayout.LabelField("Type / family",
+                            (selected.ModelType ?? "?") + " / " + (selected.Family ?? "unknown"),
+                            _sectionHelp);
+                        EditorGUILayout.LabelField("Source",
+                            (selected.Source ?? "unknown") + " · " + (selected.SourceIdentifier ?? ""),
+                            _sectionHelp);
+                        if (!string.IsNullOrWhiteSpace(selected.SourceUrl))
+                            EditorGUILayout.LabelField("Source URL", selected.SourceUrl, _sectionHelp);
+                        EditorGUILayout.LabelField("Revision", selected.Revision ?? "unknown", _sectionHelp);
+                        EditorGUILayout.LabelField("License", selected.License != null ? selected.License.Display : "Unknown", _sectionHelp);
+                        EditorGUILayout.LabelField("Installed", selected.InstalledAt ?? "unknown", _sectionHelp);
+                        EditorGUILayout.LabelField("Validation",
+                            selected.Validation != null ? selected.Validation.State : "unknown",
+                            _sectionHelp);
+                        EditorGUILayout.LabelField("Size", selected.SizeLabel, _sectionHelp);
+                        if (selected.Compatibility != null)
+                        {
+                            var compat = selected.Compatibility.SchemaSupported
+                                ? string.Join(", ", selected.Compatibility.SupportedOperations.ToArray())
+                                : "manifest " + (selected.Compatibility.SchemaStatus ?? "missing");
+                            EditorGUILayout.LabelField("Compatibility", compat, _sectionHelp);
+                            if (!selected.Compatibility.SchemaSupported &&
+                                selected.Compatibility.SchemaStatus == "unsupported_major")
+                            {
+                                EditorGUILayout.HelpBox(
+                                    "This compatibility manifest uses a newer schema major and is not applied to capability checks.",
+                                    MessageType.Warning);
+                            }
+                        }
+
+                        if (selected.Validation != null && selected.Validation.Issues != null &&
+                            selected.Validation.Issues.Count > 0)
+                        {
+                            EditorGUILayout.HelpBox(
+                                selected.Validation.Issues[0].Message,
+                                selected.Usable ? MessageType.Warning : MessageType.Error);
+                        }
+
+                        EditorGUILayout.BeginHorizontal();
+                        if (GUILayout.Button("Revalidate", GUILayout.Height(22)))
+                            RunSafe(() => _models.RevalidateSelectedAsync());
+                        using (new EditorGUI.DisabledScope(!selected.Usable))
+                        {
+                            if (GUILayout.Button("Activate", GUILayout.Height(22)))
+                                RunSafe(() => _models.ActivateSelectedAsync());
+                        }
+
+                        var deleteColor = GUI.backgroundColor;
+                        GUI.backgroundColor = new Color(0.85f, 0.45f, 0.45f);
+                        if (GUILayout.Button("Delete…", GUILayout.Height(22)))
+                            ConfirmDeleteSelected();
+                        GUI.backgroundColor = deleteColor;
+                        EditorGUILayout.EndHorizontal();
+                    }
+
+                    EditorGUILayout.Space(4);
+                    EditorGUILayout.LabelField("Install", EditorStyles.boldLabel);
+                    using (new EditorGUI.DisabledScope(offline))
+                    {
+                        state.HuggingFaceId = EditorGUILayout.TextField(
+                            Tip("Hugging Face repo", "Example: runwayml/stable-diffusion-v1-5"),
+                            state.HuggingFaceId ?? string.Empty);
+                        state.HuggingFaceRevision = EditorGUILayout.TextField(
+                            Tip("Revision", "Optional git revision. Leave empty for the default."),
+                            state.HuggingFaceRevision ?? string.Empty);
+                        if (GUILayout.Button("Install From Hugging Face", GUILayout.Height(22)))
+                            RunSafe(() => _models.InstallHuggingFaceAsync());
+                    }
+
+                    if (GUILayout.Button(
+                            Tip("Install From Local Folder…",
+                                "Copy a Diffusers directory into managed storage."),
+                            GUILayout.Height(22)))
+                    {
+                        var folder = EditorUtility.OpenFolderPanel("Select Diffusers model folder", "", "");
+                        if (!string.IsNullOrWhiteSpace(folder))
+                            RunSafe(() => _models.InstallLocalAsync(folder));
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(state.StatusMessage))
+                    EditorGUILayout.LabelField(state.StatusMessage, _sectionHelp);
+                if (!string.IsNullOrWhiteSpace(state.ErrorMessage))
+                    EditorGUILayout.HelpBox(state.ErrorMessage, MessageType.Warning);
+            }
+
+            EditorGUILayout.EndFoldoutHeaderGroup();
+        }
+
+        void ConfirmDeleteSelected()
+        {
+            var selected = _models != null ? _models.State.Selected : null;
+            if (selected == null)
+                return;
+            var message =
+                "Permanently delete '" + selected.Name + "' from managed model storage?\n\n" +
+                "This cannot be undone. Files outside the configured storage directory will not be touched.";
+            if (!EditorUtility.DisplayDialog("Delete Model", message, "Delete", "Cancel"))
+                return;
+            RunSafe(() => _models.DeleteSelectedAsync());
+        }
+
+        static string FormatBytes(long bytes)
+        {
+            if (bytes < 1024)
+                return bytes + " B";
+            if (bytes < 1024 * 1024)
+                return (bytes / 1024.0).ToString("0.0") + " KB";
+            if (bytes < 1024L * 1024 * 1024)
+                return (bytes / (1024.0 * 1024.0)).ToString("0.0") + " MB";
+            return (bytes / (1024.0 * 1024.0 * 1024.0)).ToString("0.00") + " GB";
         }
 
         void DrawProfileSection(GenerationProgress progress)

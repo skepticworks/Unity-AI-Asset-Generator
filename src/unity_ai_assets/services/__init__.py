@@ -5,6 +5,7 @@ from unity_ai_assets.services.generation_service import GenerationService
 from unity_ai_assets.services.job_executor import LocalGenerationExecutor
 from unity_ai_assets.services.job_service import JobService
 from unity_ai_assets.services.job_store import JobStore, validate_job_id
+from unity_ai_assets.services.model_service import ModelService
 from unity_ai_assets.services.output_service import (
     GenerationArtifacts,
     OutputService,
@@ -19,6 +20,7 @@ __all__ = [
     "JobService",
     "JobStore",
     "LocalGenerationExecutor",
+    "ModelService",
     "OutputService",
     "sanitize_output_name",
     "validate_generation_id",

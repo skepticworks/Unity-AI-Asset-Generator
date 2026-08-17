@@ -36,6 +36,10 @@ models--*/
 generated/*
 !generated/.gitkeep
 
+# Managed model installs (keep directory via .gitkeep)
+models/*
+!models/.gitkeep
+
 # IDE / OS
 .idea/
 .vscode/

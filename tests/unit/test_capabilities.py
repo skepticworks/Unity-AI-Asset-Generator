@@ -45,6 +45,8 @@ def test_capability_document_construction() -> None:
     assert document.batches.supported is True
     assert document.batches.maximum_jobs == 32
     assert "sequential" in document.batches.seed_modes
+    assert document.model_management.supported is True
+    assert document.model_management.offline_mode is False
     assert backend.calls == []
 
 
@@ -75,6 +77,9 @@ def test_capability_serialization() -> None:
     assert batches["supported"] is True
     assert batches["maximum_jobs"] == 32
     assert "fixed" in batches["seed_modes"]
+    models = payload["model_management"]
+    assert models["supported"] is True
+    assert models["offline_mode"] is False
     assert "diffusers" not in str(payload).lower()
     assert "C:\\" not in str(payload)
     assert "huggingface" not in str(payload).lower() or "model" in str(payload).lower()

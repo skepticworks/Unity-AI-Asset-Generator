@@ -20,7 +20,7 @@ def output_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def settings(output_dir: Path) -> Settings:
+def settings(output_dir: Path, tmp_path: Path) -> Settings:
     clear_settings_cache()
     return Settings(
         model_id="fake/test-model",
@@ -29,6 +29,7 @@ def settings(output_dir: Path) -> Settings:
         device="cpu",
         torch_dtype="float32",
         output_directory=output_dir,
+        model_storage_directory=tmp_path / "models",
         max_width=1024,
         max_height=1024,
         enable_cpu_offload=False,

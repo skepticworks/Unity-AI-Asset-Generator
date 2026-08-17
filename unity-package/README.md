@@ -73,6 +73,11 @@ variations into the same persistent job queue. Apply a generation profile to the
 preview the job count and seed list, then monitor, cancel, retry failed jobs, and import
 successful outputs without treating a single failure as a failed batch.
 
+The **Models** foldout (collapsed by default) lists managed installs, validation, license/source
+metadata, compatibility, and cached disk usage. Install from Hugging Face or a local Diffusers
+folder. Delete asks for confirmation. Offline mode disables remote installs without hiding local
+models. Storage directory changes are applied on the backend; previous locations remain searchable.
+
 ## Generate and import a texture
 
 1. Click **Refresh Capabilities** (also happens automatically before the first generate).

@@ -323,6 +323,18 @@ class BatchGenerationSchema(BaseModel):
     )
 
 
+class ModelManagementSchema(BaseModel):
+    """Managed local model installation. Disk sizes are not included here."""
+
+    supported: bool = True
+    offline_mode: bool = False
+    storage_configured: bool = True
+    storage_accessible: bool = True
+    storage_writable: bool = True
+    installed_count: int = 0
+    active_model_id: str | None = None
+
+
 class CapabilitiesResponse(BaseModel):
     """Versioned public capability document."""
 
@@ -336,6 +348,7 @@ class CapabilitiesResponse(BaseModel):
     limits: LimitsSchema
     jobs: JobSystemSchema
     batches: BatchGenerationSchema
+    model_management: ModelManagementSchema
 
     @classmethod
     def from_domain(cls, document: CapabilityDocument) -> CapabilitiesResponse:
@@ -510,6 +523,15 @@ class CapabilitiesResponse(BaseModel):
                 maximum_variations=document.batches.maximum_variations,
                 seed_modes=list(document.batches.seed_modes),
                 states=list(document.batches.states),
+            ),
+            model_management=ModelManagementSchema(
+                supported=document.model_management.supported,
+                offline_mode=document.model_management.offline_mode,
+                storage_configured=document.model_management.storage_configured,
+                storage_accessible=document.model_management.storage_accessible,
+                storage_writable=document.model_management.storage_writable,
+                installed_count=document.model_management.installed_count,
+                active_model_id=document.model_management.active_model_id,
             ),
         )
 

@@ -209,3 +209,36 @@ KNOWN_PIVOT_MODES: frozenset[str] = frozenset(item.value for item in PivotMode)
 def is_known_pivot_mode(value: str) -> bool:
     """Return whether value is a canonical pivot mode identifier."""
     return value in KNOWN_PIVOT_MODES
+
+
+class ModelSourceType(StrEnum):
+    """How a managed model was obtained."""
+
+    HUGGINGFACE = "huggingface"
+    LOCAL_DIRECTORY = "local_directory"
+
+
+class ModelInstallStatus(StrEnum):
+    """Lifecycle of a managed model directory."""
+
+    INSTALLING = "installing"
+    INSTALLED = "installed"
+    INVALID = "invalid"
+    DELETION_FAILED = "deletion_failed"
+
+
+class ModelValidationState(StrEnum):
+    """Result of the latest structural/hash validation."""
+
+    VALID = "valid"
+    INVALID = "invalid"
+    UNKNOWN = "unknown"
+
+
+class ModelCompatibilitySchemaStatus(StrEnum):
+    """How a compatibility manifest was interpreted."""
+
+    SUPPORTED = "supported"
+    UNSUPPORTED_MAJOR = "unsupported_major"
+    MISSING = "missing"
+    INVALID = "invalid"

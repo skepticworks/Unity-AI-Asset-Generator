@@ -12,12 +12,18 @@ from importlib.metadata import version as package_version
 
 # --- Public API versioning (independent of application semver) ---
 API_MAJOR_VERSION: int = 1
-API_MINOR_VERSION: int = 4
+API_MINOR_VERSION: int = 5
 
 # --- Schema versions (explicit; do not infer from application version) ---
-CAPABILITIES_SCHEMA_VERSION: str = "1.6"
+CAPABILITIES_SCHEMA_VERSION: str = "1.7"
 JOB_RECORD_SCHEMA_VERSION: str = "1.1"
 BATCH_RECORD_SCHEMA_VERSION: str = "1.0"
+MODEL_COMPATIBILITY_SCHEMA_NAME: str = "model-compatibility"
+MODEL_COMPATIBILITY_SCHEMA_VERSION: str = "1.0"
+MODEL_METADATA_SCHEMA_NAME: str = "model-metadata"
+MODEL_METADATA_SCHEMA_VERSION: str = "1.0"
+MODEL_REGISTRY_SCHEMA_NAME: str = "model-registry"
+MODEL_REGISTRY_SCHEMA_VERSION: str = "1.0"
 GENERATION_MANIFEST_SCHEMA_VERSION: str = "1.5"
 GENERATION_MANIFEST_SCHEMA_NAME: str = "generation-manifest"
 GENERATION_PROFILE_SCHEMA_NAME: str = "generation-profile"
@@ -33,7 +39,7 @@ UNITY_IMPORT_PROFILE_CATALOG_SCHEMA_VERSION: str = "1.0"
 
 # --- Application identity ---
 APPLICATION_NAME: str = "unity-ai-asset-generator"
-APPLICATION_VERSION_FALLBACK: str = "0.10.0"
+APPLICATION_VERSION_FALLBACK: str = "0.11.0"
 PACKAGE_DISTRIBUTION_NAME: str = "unity-ai-assets"
 
 

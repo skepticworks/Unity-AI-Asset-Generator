@@ -58,7 +58,8 @@ namespace UnityAiAssets.Editor.Configuration
 
             EditorGUILayout.HelpBox(
                 "Do not store Hugging Face tokens or backend secrets here. " +
-                "This package talks to a local loopback API only.",
+                "Model storage, offline mode, install, and deletion are configured in " +
+                "Tools > AI Asset Generator > Models (and backend env vars).",
                 MessageType.Info);
 
             if (GUI.changed)

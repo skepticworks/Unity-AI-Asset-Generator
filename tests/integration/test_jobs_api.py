@@ -20,6 +20,7 @@ def _settings(tmp_path: Path, **overrides: object) -> Settings:
         "model_family": "sd15",
         "device": "cpu",
         "output_directory": output,
+        "model_storage_directory": tmp_path / "models",
         "max_width": 1024,
         "max_height": 1024,
         "job_auto_retry": False,

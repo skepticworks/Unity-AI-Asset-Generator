@@ -354,6 +354,19 @@ class BatchGenerationCapabilities:
 
 
 @dataclass(frozen=True, slots=True)
+class ModelManagementCapabilities:
+    """Managed local model installation advertised to clients."""
+
+    supported: bool = True
+    offline_mode: bool = False
+    storage_configured: bool = True
+    storage_accessible: bool = True
+    storage_writable: bool = True
+    installed_count: int = 0
+    active_model_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class CapabilityDocument:
     """Complete versioned capability document (domain form)."""
 
@@ -367,6 +380,9 @@ class CapabilityDocument:
     limits: ConcurrencyLimits
     jobs: JobSystemCapabilities = field(default_factory=JobSystemCapabilities)
     batches: BatchGenerationCapabilities = field(default_factory=BatchGenerationCapabilities)
+    model_management: ModelManagementCapabilities = field(
+        default_factory=ModelManagementCapabilities
+    )
 
 
 @dataclass(frozen=True, slots=True)

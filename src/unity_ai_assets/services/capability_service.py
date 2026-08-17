@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from unity_ai_assets.core.config import Settings
 from unity_ai_assets.core.version import (
     API_MAJOR_VERSION,
@@ -25,6 +27,7 @@ from unity_ai_assets.domain.capabilities import (
     JobSystemCapabilities,
     MaskImageConstraints,
     ModelIdentity,
+    ModelManagementCapabilities,
     NegativePromptConstraints,
     NumericRangeFloat,
     NumericRangeInt,
@@ -56,6 +59,7 @@ from unity_ai_assets.processing.seam_inpaint import (
     SeamInpainter,
     UnavailableSeamInpainter,
 )
+from unity_ai_assets.services.model_service import ModelService
 
 
 class CapabilityService:
@@ -68,17 +72,48 @@ class CapabilityService:
         backend: ImageGenerationBackend,
         background_remover: ImageBackgroundRemover | None = None,
         seam_inpainter: SeamInpainter | None = None,
+        model_service: ModelService | None = None,
     ) -> None:
         self._settings = settings
         self._policy = policy
         self._backend = backend
         self._background_remover = background_remover
         self._seam_inpainter = seam_inpainter
+        self._model_service = model_service
 
     def get_capabilities(self) -> CapabilityDocument:
         """Assemble the versioned capability document."""
-        inference = self._backend.describe_capabilities()
+        inference = self._apply_managed_model_capabilities(self._backend.describe_capabilities())
         return self._assemble(inference)
+
+    def _apply_managed_model_capabilities(
+        self, inference: InferenceCapabilities
+    ) -> InferenceCapabilities:
+        """Restrict advertised operations using the active model's compatibility manifest.
+
+        The family helpers remain the source of truth for what this backend can
+        implement. The manifest may only further restrict operations, and is
+        ignored when its schema major is unsupported.
+        """
+        if self._model_service is None:
+            return inference
+        active = self._model_service.get_active()
+        if active is None or active.compatibility is None:
+            return inference
+        manifest = active.compatibility
+        if not manifest.is_supported_schema:
+            return inference
+        operations = set(manifest.supported_operations)
+        if not operations:
+            return inference
+        return replace(
+            inference,
+            text_to_image_supported=inference.text_to_image_supported
+            and "text_to_image" in operations,
+            image_to_image_supported=inference.image_to_image_supported
+            and "image_to_image" in operations,
+            inpainting_supported=inference.inpainting_supported and "inpainting" in operations,
+        )
 
     def _seam_inpaint_available(self) -> bool:
         if self._seam_inpainter is None:
@@ -303,6 +338,32 @@ class CapabilityService:
             processing=processing,
         )
 
+        model_id = settings.model_id
+        model_revision = settings.model_revision
+        model_family = settings.resolved_model_family
+        model_display_name = settings.model_display_name
+        model_management = ModelManagementCapabilities(
+            supported=True,
+            offline_mode=bool(settings.offline_mode),
+        )
+        if self._model_service is not None:
+            summary = self._model_service.model_management_summary()
+            model_management = ModelManagementCapabilities(
+                supported=True,
+                offline_mode=bool(summary["offline_mode"]),
+                storage_configured=bool(summary["storage_configured"]),
+                storage_accessible=bool(summary["storage_accessible"]),
+                storage_writable=bool(summary["storage_writable"]),
+                installed_count=int(summary["installed_count"]),
+                active_model_id=summary.get("active_model_id"),
+            )
+            active = self._model_service.get_active()
+            if active is not None:
+                model_id = active.source_identifier or active.id
+                model_revision = active.revision
+                model_family = active.family or model_family
+                model_display_name = active.name or model_display_name
+
         return CapabilityDocument(
             api=ApiVersionInfo(major=API_MAJOR_VERSION, minor=API_MINOR_VERSION),
             application=ApplicationIdentity(
@@ -321,10 +382,10 @@ class CapabilityService:
                 model_loaded=inference.model_loaded,
             ),
             model=ModelIdentity(
-                id=settings.model_id,
-                revision=settings.model_revision,
-                family=settings.resolved_model_family,
-                display_name=settings.model_display_name,
+                id=model_id,
+                revision=model_revision,
+                family=model_family,
+                display_name=model_display_name,
             ),
             operations=OperationsCapabilities(
                 text_to_image=text_to_image,
@@ -354,4 +415,5 @@ class CapabilityService:
                 maximum_prompts=settings.max_batch_prompts,
                 maximum_variations=settings.max_batch_variations,
             ),
+            model_management=model_management,
         )

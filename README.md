@@ -2,21 +2,24 @@
 
 Local, AI-assisted generation of Unity-ready **2D game assets** using pretrained generative models (Hugging Face Diffusers) plus an **editor-only Unity package**. No ComfyUI.
 
-## Current milestone scope (Milestone 10)
+## Current milestone scope (Milestone 11)
 
-1. Batch generation UI in Unity over the Milestone 9 persistent job queue (not a second executor)
-2. Multiple prompts per batch with add/remove/duplicate/edit and preserved order
-3. Fixed, random, and sequential seed modes with a pre-submit seed preview
-4. Variation count expands with prompts and seeds into ordinary generation jobs
-5. Preset/profile applied to the whole batch; batch fields override seed/prompt/variation
-6. Batch ID grouping metadata on jobs; batch state aggregated from real job states
-7. Queue visualization, per-job status, cancel, retry, retry-failed, and partial-failure handling
-8. Import all or selected successful outputs with collision-safe names and duplicate-import prevention
-9. Batch records persist beside job JSON so the Unity window can recover after close or backend restart
-10. Existing single-generation, img2img, inpainting, texture, sprite, icon, and tileable workflows remain unchanged
+1. Install Diffusers models from a local directory or Hugging Face into managed storage
+2. Validate structure, type, and SHA-256 hashes before a model is marked usable
+3. Configure the model storage directory (default `models/`) without hard-coded paths
+4. Report per-model and total disk usage, plus volume free space, outside UI refresh loops
+5. Store source/license/install provenance without inventing missing license data
+6. Revalidate installed models and detect missing or modified files
+7. Versioned compatibility manifests feed the existing capability/operation checks
+8. Explicit offline mode blocks network-dependent installs; local models stay usable
+9. Safe deletion with Unity confirmation and storage-boundary enforcement
+10. Unity Models foldout for inspection and actions without cluttering generation UI
 
-Automated Python tests use a **fake inference backend** (and fake background remover when needed).
-They do **not** download diffusion or rembg weights.
+Milestone 10 batch generation (prompts × seeds × variations over the local job queue) remains
+available from **Tools → AI Asset Generator → Batch Generation**.
+
+Automated Python tests use a **fake inference backend** and **tiny fake Diffusers trees**
+in temporary directories. They do **not** download diffusion or rembg weights.
 
 ## Explicit non-goals (this milestone)
 
@@ -25,7 +28,7 @@ They do **not** download diffusion or rembg weights.
 - ControlNet, IP-Adapter / reference-image conditioning
 - Guaranteed perfectly seamless textures (correction is best-effort diagnostics + soft blending)
 - Database, Redis, Celery, Docker, auth, cloud storage
-- Model installation UI, distributed/remote workers (RunPod), or an external database
+- Distributed/remote workers (RunPod) or an external database
 - Full material editor / per-request precision or scheduler selection
 
 ## System requirements
@@ -77,11 +80,12 @@ On low-VRAM GPUs, keep `ENABLE_CPU_OFFLOAD=false` and `EXCLUSIVE_MODEL_VRAM=true
 
 | Concern | Source | Notes |
 |---------|--------|-------|
-| Application semver | `pyproject.toml` / `core.version` | Currently `0.10.0` |
-| API major/minor | `core.version` | Independent of app semver; currently `1.4` |
-| Capabilities schema | `1.6` | Batch-generation block is additive |
+| Application semver | `pyproject.toml` / `core.version` | Currently `0.11.0` |
+| API major/minor | `core.version` | Independent of app semver; currently `1.5` |
+| Capabilities schema | `1.7` | Model-management block is additive; batches remain from 1.6 |
 | Generation manifest schema | `1.5` | Inpainting mask metadata is additive |
 | Generation profile schema | `1.2` | Tileable defaults are additive |
+| Model compatibility / metadata | `1.0` | Managed-model manifests |
 
 ## Tileable texture workflow
 
@@ -163,6 +167,49 @@ SHA-256) without storing uploaded pixels.
 In Unity: **Tools → AI Asset Generator → Masked Inpainting**. Select or load a source, load a mask
 from disk or paint one (white = regenerate), inspect the red overlay for alignment, then
 **Generate And Import**.
+
+## Model management
+
+Managed copies live under `MODEL_STORAGE_DIRECTORY` (default `models/`). Installs are staged in
+`.staging/`, validated, then moved into place. Failed or interrupted installs are not registered.
+
+```http
+GET    /api/v1/models
+GET    /api/v1/models/{id}
+POST   /api/v1/models/install
+POST   /api/v1/models/{id}/validate
+POST   /api/v1/models/{id}/activate
+DELETE /api/v1/models/{id}?confirm=true
+GET    /api/v1/models/storage
+PUT    /api/v1/models/storage
+POST   /api/v1/models/disk-usage/refresh
+PUT    /api/v1/models/offline
+```
+
+Install from a local Diffusers folder (tests and air-gapped machines):
+
+```powershell
+curl -X POST http://127.0.0.1:8000/api/v1/models/install `
+  -H "Content-Type: application/json" `
+  -d "{\"source\":\"local_directory\",\"path\":\"C:/models/sd15\",\"identifier\":\"local/sd15\"}"
+```
+
+Hugging Face installs require network access and are rejected with `OFFLINE_OPERATION_UNAVAILABLE`
+when `OFFLINE_MODE=true`. That code means the operation is disabled offline, not that the model
+is corrupt. Local validated models remain listed and can be activated for generation.
+
+Each install stores `.metadata.json` (name, source, license if known, SHA-256 file digests,
+install date) and `.compatibility.json` (schema 1.0: family, pipeline, supported operations,
+required components). License fields stay `known: false` when the source does not provide one.
+Compatibility schema major 1 is applied to existing capability checks; a newer major is kept
+on the record but ignored for operation advertising.
+
+`GET /api/v1/capabilities` includes `model_management` (counts, offline, storage health) and
+does not walk model files. Use `POST /api/v1/models/disk-usage/refresh` for sizes.
+
+In Unity: **Tools → AI Asset Generator → Models**. Inspect validation, license, compatibility,
+and disk usage. Delete shows a confirmation dialog. Changing the storage directory keeps previous
+roots searchable so already-installed models remain discoverable.
 
 ## Generation jobs
 
